@@ -2119,6 +2119,9 @@ end
 function RomImporter:_startExtractThread(version, prefix, data, displayName)
   if os.getenv("POKEPORT_NO_THREAD") == "1" then return false end
   if not (love.thread and love.thread.newThread) then return false end
+  -- A host whose threads may start but never run (the love.js compat build)
+  -- would leave _pumpExtract waiting forever, so go straight to the coroutine.
+  if not Platform.hasThreads() then return false end
   local ok, thread = pcall(love.thread.newThread, "src/import/ExtractThread.lua")
   if not ok or not thread then return false end
   local progressName = "rom_import_progress"
@@ -3686,30 +3689,30 @@ function RomImporter:update(dt)
         local modId, importId = self.pickerPendingModId, self.pickerPendingImportId
         self.pickerPendingModId, self.pickerPendingImportId = nil, nil
         if modId and importId then self:_importRequiredSource(modId, importId, path) end
-        if Platform.isUWP() then os.remove(path) end
+        if Platform.pickedFilesAreTemporary() then os.remove(path) end
       elseif kind == "mod" then
         self:_installMod(path)
-        if Platform.isUWP() and self.modNotice and self.modNotice.ok then
+        if Platform.pickedFilesAreTemporary() and self.modNotice and self.modNotice.ok then
           os.remove(path)
         end
       elseif kind == "importer" then
         local importerId = self.pickerPendingImporterId
         self.pickerPendingImporterId = nil
         if importerId then self:_runImporter(importerId, path) end
-        if Platform.isUWP() then os.remove(path) end
+        if Platform.pickedFilesAreTemporary() then os.remove(path) end
       elseif kind == "skin" then
         self:_installSkinZip(path)
-        if Platform.isUWP() and self._skinNotice and self._skinNotice.ok then
+        if Platform.pickedFilesAreTemporary() and self._skinNotice and self._skinNotice.ok then
           os.remove(path)
         end
       elseif kind == "sav" then
         local target = version or self:_savedropTarget()
         self:_importSave(target, path)
-        if Platform.isUWP() and self.saveNotice[target] and self.saveNotice[target].ok then
+        if Platform.pickedFilesAreTemporary() and self.saveNotice[target] and self.saveNotice[target].ok then
           os.remove(path)
         end
       elseif kind == "cart" then
-        if Platform.isUWP() then
+        if Platform.pickedFilesAreTemporary() then
           local installed = self:_installCartFile(path, version)
           if installed then os.remove(path) end
         else
@@ -3717,7 +3720,7 @@ function RomImporter:update(dt)
         end
       else
         self:startPath(path)
-        if Platform.isUWP() then os.remove(path) end
+        if Platform.pickedFilesAreTemporary() then os.remove(path) end
       end
     elseif love.system.getPickError then
       local errorText = love.system.getPickError()

@@ -12,7 +12,8 @@
 #      "\xc3" as the literal text "xc3" with no error.  Use decimal escapes
 #      ("\195"), which every Lua reads the same way.
 #   3. the LuaCompat shim suite passes under lua5.1, where it actually patches
-#      load().
+#      load(), and the Web platform-profile suite (which loads main.lua and
+#      drives love.run) passes under the interpreter the browser runs.
 #
 #   scripts/ci/lua51_compat.sh        (needs luac5.1 + lua5.1 on PATH)
 
@@ -71,8 +72,9 @@ else
   echo "   none"
 fi
 
-echo "-- LuaCompat suite under lua5.1"
+echo "-- suites under lua5.1"
 "$LUA" tests/engine/lua_compat_test.lua || fail=1
+"$LUA" tests/engine/web_profile_test.lua || fail=1
 
 if [ "$fail" = 0 ]; then
   echo "lua 5.1 compat gate: PASS"

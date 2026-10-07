@@ -130,6 +130,11 @@ function Job.run(loader, modId, modPath, script, arg, opts)
     if dataErr then return nil, dataErr end
   end
 
+  -- a host without real threads (love.js) would leave the job pending forever
+  if not require("src.core.Platform").hasThreads() then
+    return nil, "background threads unavailable on this platform"
+  end
+
   nextId = nextId + 1
   local argName = "modjob_arg_" .. nextId
   local resultName = "modjob_result_" .. nextId

@@ -45,7 +45,8 @@ local unavailableReason
 
 local function ensureWorkers()
   if ready ~= nil then return ready end
-  if not (love and love.thread and love.thread.newThread) then
+  if not (love and love.thread and love.thread.newThread)
+      or not require("src.core.Platform").hasThreads() then
     ready, unavailableReason = false, "background threads unavailable"
     return false
   end

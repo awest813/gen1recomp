@@ -869,7 +869,7 @@ local cartShaderError = nil
 local function cartShaderIsEs()
   if not (love.system and love.system.getOS) then return false end
   local osName = love.system.getOS()
-  return osName == "Android" or osName == "iOS"
+  return osName == "Android" or osName == "iOS" or osName == "Web"
 end
 
 local function cartHoverShader(imp)

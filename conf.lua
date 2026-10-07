@@ -135,6 +135,17 @@ function love.conf(t)
     -- player around by tilt.  Nothing in the game reads the accelerometer,
     -- so drop the device entirely (#468).
     t.accelerometerjoystick = false
+  elseif osName == "Web" then
+    -- love.js: the page shell sizes the canvas to the viewport and SDL's
+    -- emscripten backend turns that into resize events for a resizable
+    -- window; the renderer letterboxes the 160x144 game into whatever it
+    -- gets.  highdpi stays off -- device-pixel-ratio canvases cost fill rate
+    -- the non-JIT build cannot spare, and the game is integer-scaled pixels.
+    -- See docs/proposals/web-port.md.
+    t.window.resizable = true
+    t.window.highdpi = false
+    t.window.minwidth = 160
+    t.window.minheight = 144
   else
     t.window.resizable = true
     pcall(function() require("src.core.PadHints").apply(osName) end)

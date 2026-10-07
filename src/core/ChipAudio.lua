@@ -100,6 +100,12 @@ local function ensureWorker()
     workerReady = false
     return false
   end
+  -- No trustworthy threads (the love.js compat build): a worker that never
+  -- runs would leave music silent instead of taking the synchronous path.
+  if not require("src.core.Platform").hasThreads() then
+    workerReady = false
+    return false
+  end
   local ok, thread = pcall(love.thread.newThread, "src/core/chip_worker.lua")
   if not ok or not thread then
     workerReady = false

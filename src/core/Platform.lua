@@ -10,6 +10,12 @@ local function compute()
   local nx = osName == "NX"
   local uwp = osName == "UWP"
   local mobile = osName == "Android" or osName == "iOS"
+  -- love.js (LÖVE compiled to WebAssembly).  No processes, no threads to
+  -- trust (the compat build has none), no self-update, and no curl: see
+  -- docs/proposals/web-port.md.  Its file picker is the love.system.pickFile
+  -- / getPickedFile bridge src/core/WebHost.lua installs from the native
+  -- `lovejs` module, so it lands on the native-picker path below.
+  local web = osName == "Web"
   local nativePicker = love and love.system
     and type(love.system.pickFile) == "function"
   local nativeHttp = love and love.system
@@ -19,13 +25,19 @@ local function compute()
     nx = nx,
     uwp = uwp,
     mobile = mobile,
+    web = web,
     console = nx or uwp,
+    -- love.thread workers are actually scheduled.  Every worker in the engine
+    -- has a main-thread fallback, but most only take it when thread creation
+    -- *fails*; a thread that starts and never runs would hang the caller, so
+    -- the hosts without real threads opt out up front.
+    hasThreads = not web,
     hasNativePicker = nativePicker,
     canSpawnProcess = osName == "OS X" or osName == "Windows" or osName == "Linux",
     romImportMode = nx and "save-directory"
       or (nativePicker and "native-picker")
       or "desktop",
-    networkValidated = not nx and not uwp,
+    networkValidated = not nx and not uwp and not web,
     -- networkValidated is the self-updater's gate and stays a per-platform
     -- policy call: a console package cannot replace itself on disk, so that
     -- answer never depends on whether a transport exists.  Fetching a mod
@@ -36,7 +48,12 @@ local function compute()
     -- (#597).  The UWP LOVE backend does not export that bridge yet, so this
     -- still resolves false on Xbox and the launcher still says so, but the
     -- day the backend grows one, nothing here or in RomImporter has to change.
-    canFetchRemote = (not nx and not uwp) or nativeHttp,
+    canFetchRemote = (not nx and not uwp and not web) or nativeHttp,
+    -- Picked files are scratch copies the host made for this one import, so
+    -- the importer deletes them once read.  UWP copies into LocalState; the
+    -- browser bridge writes into a non-persistent /tmp so a ROM never lands
+    -- in IndexedDB.
+    pickedFilesAreTemporary = uwp or web,
   }
 end
 
@@ -51,6 +68,18 @@ end
 
 function Platform.isUWP()
   return Platform.detect().uwp
+end
+
+function Platform.isWeb()
+  return Platform.detect().web
+end
+
+function Platform.hasThreads()
+  return Platform.detect().hasThreads
+end
+
+function Platform.pickedFilesAreTemporary()
+  return Platform.detect().pickedFilesAreTemporary
 end
 
 function Platform.romImportMode()

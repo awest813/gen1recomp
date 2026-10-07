@@ -11,6 +11,11 @@
 -- conf.lua normally installed this already; repeat it for hosts that boot
 -- main.lua without conf.lua (it is idempotent).
 require("src.core.LuaCompat").install()
+-- Browser build: install the love.js picker/storage bridge before anything
+-- calls Platform.detect() (which caches whether love.system.pickFile exists).
+-- A no-op everywhere else.
+local WebHost = require("src.core.WebHost")
+WebHost.install()
 
 local SwitchDiagnostics = require("src.debug.SwitchDiagnostics")
 
@@ -164,7 +169,8 @@ do
                 checkEmergencyQuit(0.016)
                 CrashScreen.draw(screen)
                 love.graphics.present()
-                if love.timer then love.timer.sleep(0.016) end
+                -- (the browser paces this loop with requestAnimationFrame)
+                if love.timer and not WebHost.isWeb() then love.timer.sleep(0.016) end
               end)
               if drawn then return result end
               if defaultErrorHandler then
@@ -1598,7 +1604,10 @@ function love.quit()
   -- SessionLifecycle workers (ChipAudio / Fetch / Check) make that warning
   -- real -- endProcess joins them, then the native restart still blows up.
   local osName = love.system and love.system.getOS and love.system.getOS()
-  local inProcessReturn = (osName == "Android" or osName == "iOS")
+  -- love.js too: love.event.quit("restart") ends the Emscripten main loop
+  -- for good, so the browser can only return to the launcher in-process.
+  local inProcessReturn = (osName == "Android" or osName == "iOS"
+    or osName == "Web")
   local wouldReturnToLauncher = PlatformHooks.quitToLauncher(function()
     return Game and not Importer and not quitToLauncher and not scripted
       and (inProcessReturn or not launchedIntoGame)
@@ -1663,13 +1672,20 @@ function love.run()
   if love.timer then love.timer.step() end
 
   local FrameCap = require("src.core.FrameCap")
-  _G.POKEPORT_LOOP_PANEL_SYNC = true
-  FrameCap.bootPanelSync()
+  -- In the browser love.js drives this function from requestAnimationFrame,
+  -- which already paces presentation to the display.  love.timer.sleep there
+  -- busy-waits the page's only thread, and PresentSync's vsync probing has
+  -- nothing to measure, so the web loop does neither: events, update, draw,
+  -- present, return.  FixedStep keeps game logic at 60 Hz regardless of the
+  -- display rate.
+  local web = WebHost.isWeb()
+  _G.POKEPORT_LOOP_PANEL_SYNC = not web
+  if not web then FrameCap.bootPanelSync() end
   local RefreshRate = require("src.core.RefreshRate")
   local FixedStep = require("src.core.FixedStep")
   local VSync = require("src.core.VSync")
   local PresentSync = require("src.core.PresentSync")
-  local paced = pacingEnabled()
+  local paced = pacingEnabled() and not web
   -- The deadline the next present() should not beat.  Carried forward one
   -- budget per frame so pacing stays even instead of drifting with the
   -- per-frame sleep-granularity jitter.
@@ -1739,6 +1755,7 @@ function love.run()
 
     -- call update and draw
     if love.update then love.update(dt) end
+    WebHost.update(dt)
 
     local visible = not (love.window and love.window.isVisible)
       or love.window.isVisible()
@@ -1767,14 +1784,14 @@ function love.run()
       love.graphics.origin()
       love.graphics.clear(love.graphics.getBackgroundColor())
       if love.draw then love.draw() end
-      PresentSync.waitBeforePresent()
+      if not web then PresentSync.waitBeforePresent() end
       love.graphics.present()
-      PresentSync.notePresent()
+      if not web then PresentSync.notePresent() end
     end
 
-    PresentSync.applyFixedStepPeriod()
+    if not web then PresentSync.applyFixedStepPeriod() end
 
-    if love.timer then
+    if love.timer and not web then
       if paced and cap ~= FrameCap.DISPLAY and not PresentSync.hardwarePacesCap(cap) then
         -- Sleep out the remainder of the frame budget, measured from the
         -- carried deadline.  When vsync already gates at or above the cap,
