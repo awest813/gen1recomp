@@ -69,6 +69,7 @@ fi
 echo "-- suites under lua5.1"
 "$LUA" tests/engine/lua_compat_test.lua || fail=1
 "$LUA" tests/engine/web_profile_test.lua || fail=1
+"$LUA" tests/engine/chip_audio_web_test.lua || fail=1
 
 if [ "$fail" = 0 ]; then
   echo "lua 5.1 compat gate: PASS"

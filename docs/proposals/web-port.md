@@ -243,7 +243,53 @@ desktop immediately and benefit every platform.
 
 **Exit:** Blue playable from import to first gym in desktop Chrome and Firefox; measurements recorded in this doc.
 
-### Phase 3: performance and audio
+### Phase 3: performance and audio -- in progress
+
+Done so far (measured with `smoke_test.mjs --play` and a slow-frame profiler
+build, Blue, headless Chromium):
+
+| | Before | After |
+|---|---|---|
+| Main-thread stalls >50 ms in the scripted run | 9-10, worst 375-493 ms | 5-6, worst ~105 ms |
+| Song start (sync path) | ~150-160 ms | 9-15 ms |
+| First play of an everyday SFX | 40-150 ms | 0 ms (prewarmed) |
+| Steady-state music synthesis | -- | ~2-2.5 ms/frame at 22.05 kHz |
+| `game.love` / site | 26 / 32 MB | 16 / 21 MB |
+
+- **Music:** on Web the synchronous path queues 2048-sample buffers and
+  prefills one, instead of 4 x 8192. The per-tick slice runs 1.5x faster
+  than playback drains, and the 32 queue slots still hold about 3 s.
+- **SFX:** `ChipSynth.newEffectJob` renders an effect a slice at a time,
+  sample-identical to `renderEffectData`. With no worker thread, ChipAudio's
+  prewarm runs that on the main thread at 3 ms per update, into the same
+  cache `newSfx` reads from. A play that arrives mid-render finishes the job
+  instead of starting over. `Sound.prewarmCommon` queues the intro, Oak's
+  speech and the everyday effects at game load. The title screen prewarms
+  the cry of whichever Pokemon is showing, which also helps desktop through
+  the worker.
+- **Payload:** the web build drops the cart-label `.psd` sources (~14 MB, not
+  loaded by any code) and the launcher videos.
+- **Shaders:** the launcher's invert shader is now `pcall`-guarded. The
+  GbcPalette remap shader stays at 64 entries: shrinking it would drop
+  palette entries, and a GPU that rejects it already falls back to the
+  non-shader fade.
+- **Import:** no work needed; it takes about 4 s.
+
+Still open:
+
+- **Remaining stalls:**
+  - the first sound after load (`Shooting_Star`, ~80 ms), which plays before
+    any prewarm can run;
+  - map entry (~80-100 ms: map load plus two song starts in one frame);
+  - one-off ~50 ms texture-upload frames on the title.
+- **Frame rate on real GPUs and audio quality.** Headless SwiftShader draws
+  in software, which gives 48-60 fps at 960x720; Lua update plus draw is only
+  ~3 ms per frame. Audible underruns can only be judged on a real browser.
+- **The original exit targets:** "no transition hitch over one frame" is not
+  met yet (see the stalls above), and the 16 MB `game.love` is just over the
+  15 MB goal.
+
+Original plan:
 
 - Audio (L3):
   - 22.05 kHz on Web;

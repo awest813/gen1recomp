@@ -1428,6 +1428,9 @@ function Game:applyOptions(opts)
   local Sound = require("src.core.Sound")
   if Music.applyOptions then Music.applyOptions(opts) end
   if Sound.applyOptions then Sound.applyOptions(opts) end
+  -- no-worker hosts (browser): synthesize the everyday effects in the
+  -- background before their first play (a no-op where a worker exists)
+  if Sound.prewarmCommon and self.data then pcall(Sound.prewarmCommon, self.data) end
   require("src.render.PaletteFX").applyOptions(opts)
   require("src.render.Tilt").applyOptions(opts)
   require("src.render.Letterbox").applyOptions(opts)

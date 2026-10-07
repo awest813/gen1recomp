@@ -866,6 +866,35 @@ function Sound.prewarmSfx(data, name)
   return ok and queued or false
 end
 
+-- The effects nearly every play session hits in its first minutes, in the
+-- order they first play: the Game Freak/title intro (it starts within a
+-- second or two of boot), Oak's speech, then menus, saves, items, doors, the
+-- PC and battle basics.  Names a version lacks are skipped.
+local COMMON_SFX = {
+  "Shooting_Star", "Intro_Hip", "Intro_Hop", "Intro_Raise", "Intro_Crash",
+  "Intro_Lunge", "Intro_Whoosh", "Press_AB", "Shrink",
+  "Start_Menu", "Collision", "Save", "Get_Item1", "Go_Inside",
+  "Go_Outside", "Swap", "Tink", "Heal_HP", "Enter_PC", "Turn_On_PC",
+  "Turn_Off_PC", "Denied", "Purchase", "Switch", "Run", "Ledge",
+  "Ball_Toss", "Ball_Poof", "Faint_Fall", "Faint_Thud", "Withdraw_Deposit",
+}
+
+-- Hosts without a chip-audio worker (the browser build) render each effect's
+-- first play on the calling frame -- up to ~150 ms there.  This queues the
+-- common set on ChipAudio's main-thread prewarm, which renders them a few ms
+-- per tick in the background, so the first menu press or door is already
+-- synthesized.  Unknown names are skipped; it is a no-op where a worker
+-- exists (desktop renders fast enough on first play, and prewarms battles).
+function Sound.prewarmCommon(data)
+  if not love.audio or deviceSuspended() then return 0 end
+  if require("src.core.Platform").hasThreads() then return 0 end
+  local queued = 0
+  for _, name in ipairs(COMMON_SFX) do
+    if Sound.prewarmSfx(data, name) then queued = queued + 1 end
+  end
+  return queued
+end
+
 -- GROWL/ROAR are the only two moves that play a cry (IsCryMove checks
 -- wAnimationID); GetMoveSound still adds their own MoveSoundTable pitch/
 -- tempo bytes on top of the cry's species modifiers before the tempo

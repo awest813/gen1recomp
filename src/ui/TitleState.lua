@@ -462,6 +462,10 @@ function TitleState:currentSprite()
     local image = tryImage(path)
     cached = image and { image = image, trueColor = trueColor } or false
     self.sprites[species] = cached
+    -- this mon cries if the player leaves the title now: synthesize the cry
+    -- while it is on screen instead of on the press (a no-op if cached, and
+    -- a worker or main-thread prewarm never delays the play itself)
+    pcall(require("src.core.Sound").prewarmCry, self.game.data, species)
   end
   return cached and cached.image or nil, cached and cached.trueColor or false
 end

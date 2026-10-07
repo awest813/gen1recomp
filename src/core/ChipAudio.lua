@@ -92,7 +92,11 @@ local fxReady = {}    -- key -> SoundData | false (renders to nothing)
 local fxPending = {}  -- key -> true while a request is in flight
 local fxReadyCount = 0
 local FX_READY_MAX = 64
-local drainEffects, dropEffects
+local drainEffects, dropEffects, pumpMainEffects
+-- main-thread prewarm queue (see requestMainEffect); declared up here because
+-- dropEffects and ChipAudio.update reach it before its section
+local mainJobs = {}      -- FIFO of { key, epoch, job }
+local mainJobByKey = {}  -- key -> entry
 
 local function ensureWorker()
   if workerReady ~= nil then return workerReady end
@@ -178,9 +182,34 @@ local MUSIC_FILL_INITIAL = 4
 local MUSIC_FILL_TICK_SAMPLES = 1024 -- at 44100 Hz; scaled with the rate
 local MUSIC_FILL_LOW_WATER = 2
 
+-- The browser build (PUC Lua, no JIT, one thread) renders ~6x slower, so the
+-- 4 x 8192-sample prefill above is a ~150 ms frame at every song start.
+-- There it queues 2048-sample buffers instead and prefills just one (~10 ms
+-- of synthesis); the per-tick slice runs 1.5x faster than playback drains,
+-- so each 2048 buffer (~93 ms at 22050 Hz) is ready before the one ahead of
+-- it runs out, and the 32 queue slots still hold ~3 s of stall tolerance.
+local WEB_BUFFER_SAMPLES = 2048
+local WEB_FILL_TICK_SAMPLES = 1536 -- at 44100 Hz; scaled with the rate
+
+local webAudio = nil
+local function isWebAudio()
+  if webAudio == nil then
+    webAudio = require("src.core.Platform").isWeb() == true
+  end
+  return webAudio
+end
+
+local function syncBufferSamples()
+  return isWebAudio() and WEB_BUFFER_SAMPLES or MUSIC_BUFFER_SAMPLES
+end
+
+local function fillInitial()
+  return isWebAudio() and 1 or MUSIC_FILL_INITIAL
+end
+
 local function tickSamples()
-  return math.max(256,
-    math.floor(MUSIC_FILL_TICK_SAMPLES * sampleRate() / 44100 + 0.5))
+  local base = isWebAudio() and WEB_FILL_TICK_SAMPLES or MUSIC_FILL_TICK_SAMPLES
+  return math.max(256, math.floor(base * sampleRate() / 44100 + 0.5))
 end
 
 -- render up to `budget` samples of the fallback song, queueing each staging
@@ -192,15 +221,15 @@ local function renderSync(music, budget)
       if music.engine:finished() then return end
       local ok, free = pcall(music.source.getFreeBufferCount, music.source)
       if not ok or type(free) ~= "number" or free <= 0 then return end
-      music.staging = ChipSynth.newBuffer(MUSIC_BUFFER_SAMPLES, 2)
+      music.staging = ChipSynth.newBuffer(syncBufferSamples(), 2)
       music.stagingFill = 0
     end
-    local count = math.min(budget, MUSIC_BUFFER_SAMPLES - music.stagingFill)
+    local count = math.min(budget, syncBufferSamples() - music.stagingFill)
     ChipSynth.renderInto(music.engine, music.staging, music.stagingFill,
                          count, 2)
     music.stagingFill = music.stagingFill + count
     budget = budget - count
-    if music.stagingFill >= MUSIC_BUFFER_SAMPLES then
+    if music.stagingFill >= syncBufferSamples() then
       local sd = music.staging
       music.staging, music.stagingFill = nil, 0
       if not pcall(music.source.queue, music.source, sd) then return end
@@ -217,13 +246,13 @@ local function fillSync(buffers)
   if not music.staging and music.engine:finished() then return end
   local budget
   if buffers then
-    budget = buffers * MUSIC_BUFFER_SAMPLES - (music.stagingFill or 0)
+    budget = buffers * syncBufferSamples() - (music.stagingFill or 0)
   else
     budget = tickSamples()
     local ok, free = pcall(music.source.getFreeBufferCount, music.source)
     if ok and type(free) == "number"
         and MUSIC_BUFFER_COUNT - free < MUSIC_FILL_LOW_WATER then
-      budget = MUSIC_BUFFER_SAMPLES
+      budget = syncBufferSamples()
     end
   end
   renderSync(music, budget)
@@ -241,7 +270,7 @@ local function playMusicSync(data, header, allowLoops)
   ChipAudio.stopMusic()
   currentMusic = { source = source, engine = engine, threaded = false,
                    started = true, finished = false }
-  fillSync(MUSIC_FILL_INITIAL)
+  fillSync(fillInitial())
   if not musicHeld then pcall(source.play, source) end
   return source
 end
@@ -422,6 +451,7 @@ end
 function ChipAudio.update()
   if suspended then return end
   if fxCh then drainEffects() end
+  pumpMainEffects()
   local m = currentMusic
   if not m then return end
   if m.threaded then
@@ -735,11 +765,77 @@ end
 function dropEffects()
   fxEpoch = fxEpoch + 1
   fxReady, fxPending, fxReadyCount = {}, {}, 0
+  mainJobs, mainJobByKey = {}, {}
   if fxCh then fxCh:clear() end
 end
 
+-- Main-thread prewarm, for hosts with no trustworthy threads (the browser).
+-- The same contract as the worker path -- a prewarm never delays a play, and
+-- the PCM is identical -- but the render runs here, MAIN_PREWARM_BUDGET
+-- seconds of it per ChipAudio.update tick, through ChipSynth.newEffectJob.
+-- A play that arrives while its job is still running finishes that job
+-- rather than starting over.
+local MAIN_PREWARM_BUDGET = 0.003
+local MAIN_PREWARM_SLICE = 256
+
+local function mainPrewarmEnabled()
+  return not require("src.core.Platform").hasThreads()
+end
+
+local function effectOptionsCopy(options)
+  return {
+    frequencyOffset = options.frequencyOffset,
+    frameTicks = options.frameTicks,
+    plainFrames = options.plainFrames,
+    cryLength = options.cryLength,
+    maxSeconds = options.maxSeconds,
+  }
+end
+
+local function requestMainEffect(data, header, options)
+  if not mainPrewarmEnabled() then return false end
+  local key = effectKey(data, header, options)
+  if not key then return false end
+  if fxReady[key] ~= nil or mainJobByKey[key] then return true end
+  if fxReadyCount + #mainJobs >= FX_READY_MAX then return false end
+  local ok, job = pcall(ChipSynth.newEffectJob, data, header, effectOptionsCopy(options))
+  if not ok or not job then return false end
+  local entry = { key = key, epoch = fxEpoch, job = job }
+  mainJobs[#mainJobs + 1] = entry
+  mainJobByKey[key] = entry
+  return true
+end
+
+local function finishMainEffect(entry)
+  for i = 1, #mainJobs do
+    if mainJobs[i] == entry then table.remove(mainJobs, i) break end
+  end
+  mainJobByKey[entry.key] = nil
+end
+
+function pumpMainEffects()
+  if #mainJobs == 0 then return end
+  local clock = love.timer and love.timer.getTime
+  local deadline = clock and clock() + MAIN_PREWARM_BUDGET
+  while #mainJobs > 0 do
+    local entry = mainJobs[1]
+    local ok, done = pcall(entry.job.step, entry.job, MAIN_PREWARM_SLICE)
+    if not ok or done then
+      finishMainEffect(entry)
+      if ok and entry.epoch == fxEpoch and fxReady[entry.key] == nil
+          and fxReadyCount < FX_READY_MAX then
+        fxReady[entry.key] = entry.job.result or false
+        fxReadyCount = fxReadyCount + 1
+      end
+    end
+    if not deadline or clock() >= deadline then return end
+  end
+end
+
 local function requestEffect(data, header, options)
-  if not ensureWorker() or not workerAlive() then return false end
+  if not ensureWorker() or not workerAlive() then
+    return requestMainEffect(data, header, options)
+  end
   local key = effectKey(data, header, options)
   if not key then return false end
   drainEffects()
@@ -767,15 +863,24 @@ end
 
 -- a finished prewarm for exactly this render, or nil
 local function takeEffect(data, header, options)
-  if not fxCh then return nil end
+  if not fxCh and #mainJobs == 0 and fxReadyCount == 0 then return nil end
   local key = effectKey(data, header, options)
   if not key then return nil end
-  drainEffects()
+  if fxCh then drainEffects() end
   local sd = fxReady[key]
   if sd ~= nil then
     fxReady[key] = nil
     fxReadyCount = fxReadyCount - 1
     return sd
+  end
+  local entry = mainJobByKey[key]
+  if entry then
+    -- finish the main-thread prewarm now instead of rendering from scratch
+    finishMainEffect(entry)
+    local ok = pcall(function()
+      while not entry.job:step(4096) do end
+    end)
+    if ok then return entry.job.result or false end
   end
   -- about to render it here; the worker's copy would arrive unused
   fxPending[key] = nil
@@ -840,7 +945,8 @@ end
 function ChipAudio._effectStateForTest()
   local pending = 0
   for _ in pairs(fxPending) do pending = pending + 1 end
-  return { ready = fxReadyCount, pending = pending, epoch = fxEpoch }
+  return { ready = fxReadyCount, pending = pending, epoch = fxEpoch,
+    mainJobs = #mainJobs }
 end
 
 -- Two channels for the same reason ChipSynth.renderEffectData renders stereo:
