@@ -152,9 +152,9 @@ PrizeMenu.COUNTERS = {
     menu = { x = 0, y = 4, w = 16, h = 8 },
     prizes = {
       { amount = 50,  cost = 1000,
-        label = Strings.source(" 50 :  \xc2\xa51000") },
+        label = Strings.source(" 50 :  \194\1651000") },
       { amount = 500, cost = 10000,
-        label = Strings.source("500 : \xc2\xa510000") },
+        label = Strings.source("500 : \194\16510000") },
     },
   },
 }

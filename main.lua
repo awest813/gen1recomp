@@ -8,6 +8,10 @@
 --     opens the editor on that slot's file, and restores the launcher when
 --     the editor's Close button is pressed (openEditor / closeEditor below)
 
+-- conf.lua normally installed this already; repeat it for hosts that boot
+-- main.lua without conf.lua (it is idempotent).
+require("src.core.LuaCompat").install()
+
 local SwitchDiagnostics = require("src.debug.SwitchDiagnostics")
 
 -- Global emergency quit: holding Start + Select for 5 seconds forcefully terminates LOVE.

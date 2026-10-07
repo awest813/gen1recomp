@@ -56,8 +56,8 @@ local MAIL_INPUT_UPPER = {
   rowCells("1 2 3 4 5 6 7 8 9 0"),
   -- "<PK> <MN> <PO> <KE> é ♂ ♀ ¥ … ×".  All ten are single font glyphs and
   -- Font.split matches charmap sequences, so <PO>/<KE> draw one tile each.
-  { "<PK>", "<MN>", "<PO>", "<KE>", "\xc3\xa9", "\xe2\x99\x82",
-    "\xe2\x99\x80", "\xc2\xa5", "\xe2\x80\xa6", "\xc3\x97" },
+  { "<PK>", "<MN>", "<PO>", "<KE>", "\195\169", "\226\153\130",
+    "\226\153\128", "\194\165", "\226\128\166", "\195\151" },
 }
 local MAIL_INPUT_LOWER = {
   rowCells("a b c d e f g h i j"),
@@ -67,7 +67,7 @@ local MAIL_INPUT_LOWER = {
   -- each ($d0-$d6), not two characters.
   { "'d", "'l", "'m", "'r", "'s", "'t", "'v", "&", "(", ")" },
   -- "“ ” [ ] ' : ;      "
-  { "\xe2\x80\x9c", "\xe2\x80\x9d", "[", "]", "'", ":", ";", " ", " ", " " },
+  { "\226\128\156", "\226\128\157", "[", "]", "'", ":", ";", " ", " ", " " },
 }
 
 -- "lower  DEL   END   " / "UPPER  DEL   END   ", written raw from x = 1: the

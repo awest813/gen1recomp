@@ -624,7 +624,7 @@ local KATAKANA = "アイウエオカキクケコサシスセソタチツテト�
 local function japanese_glyphs()
   local t = {}
   local code = 0x01
-  for ch in (HIRAGANA .. KATAKANA):gmatch("[\xE0-\xEF][\x80-\xBF][\x80-\xBF]") do
+  for ch in (HIRAGANA .. KATAKANA):gmatch("[\224-\239][\128-\191][\128-\191]") do
     t[ch] = code
     code = code + 1
   end
@@ -739,7 +739,7 @@ local function buildRev()
     ["'"] = 0xB4,
     ["$"] = 0xB7,
     ["¥"] = 0xB7,
-    ["\xC2\xA5"] = 0xB7,
+    ["\194\165"] = 0xB7,
   }
   for code, ch in pairs(TextIR.CHARMAP or {}) do
     if type(ch) == "string" and #ch > 0 and not rev[ch] then

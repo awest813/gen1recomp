@@ -60,8 +60,8 @@ DayCareMenu.isOpaque = false
 -- charmap.asm's currency glyph and the text-advance arrow (font code $ee),
 -- spelled the same way MartMenu spells them so both go through Font.split's
 -- charmap match rather than through four ASCII tiles.
-local YEN = "\xc2\xa5"
-local DOWN_ARROW = "\xe2\x96\xbc"
+local YEN = "\194\165"
+local DOWN_ARROW = "\226\150\188"
 
 -- ---------------------------------------------------------------- layout
 local TEXT_BOX_X, TEXT_BOX_Y, TEXT_BOX_W, TEXT_BOX_H = 0, 12, 20, 6

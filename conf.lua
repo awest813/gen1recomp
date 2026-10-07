@@ -1,3 +1,8 @@
+-- PUC Lua 5.1 (love.js in the browser) lacks the 5.2 load(string, name,
+-- mode, env) form the engine sandboxes its cache modules with; patch it in
+-- before anything else runs.  A no-op under LuaJIT.
+pcall(function() require("src.core.LuaCompat").install() end)
+
 function love.conf(t)
   -- PhysFS ignores symlinks unless told otherwise, so a mod dev-linked into
   -- mods/ (ln -s, matching the mklink /J workflow on Windows) is invisible

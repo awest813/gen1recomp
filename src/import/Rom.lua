@@ -8,20 +8,28 @@ function Rom.new(data)
   return setmetatable({ data = data }, Rom)
 end
 
+-- The checks below format their message only on failure: assert() evaluates
+-- its message argument eagerly, and these run for every ROM byte the importer
+-- reads -- a string.format per byte that the JIT hid, but PUC Lua (love.js)
+-- pays in full.
 function Rom.offset(bank, address)
   if bank == 0 then
-    assert(address >= 0 and address < BANK_SIZE,
-      ("ROM0 address out of range: $%04X"):format(address))
+    if not (address >= 0 and address < BANK_SIZE) then
+      error(("ROM0 address out of range: $%04X"):format(address))
+    end
     return address
   end
-  assert(address >= BANK_SIZE and address < BANK_SIZE * 2,
-    ("bank %02X address out of range: $%04X"):format(bank, address))
+  if not (address >= BANK_SIZE and address < BANK_SIZE * 2) then
+    error(("bank %02X address out of range: $%04X"):format(bank, address))
+  end
   return bank * BANK_SIZE + address - BANK_SIZE
 end
 
 function Rom:byte(bank, address)
   local value = self.data:byte(Rom.offset(bank, address) + 1)
-  assert(value, ("ROM read past end at %02X:%04X"):format(bank, address))
+  if not value then
+    error(("ROM read past end at %02X:%04X"):format(bank, address))
+  end
   return value
 end
 
@@ -32,8 +40,9 @@ end
 function Rom:bytes(bank, address, length)
   local first = Rom.offset(bank, address) + 1
   local last = first + length - 1
-  assert(last <= #self.data,
-    ("ROM read past end at %02X:%04X + %d"):format(bank, address, length))
+  if last > #self.data then
+    error(("ROM read past end at %02X:%04X + %d"):format(bank, address, length))
+  end
   local out = {}
   for index = 1, length do
     out[index] = self.data:byte(first + index - 1)

@@ -69,7 +69,7 @@ local CLASS_X, CLASS_Y = 6, 2
 -- ships there; a cache whose font_extra page still carries FontExtra's own
 -- $62 draws a bold C in its place, which is an extractor gap and not a
 -- layout one, so the sequence is written out here the way the cart writes it.
-local PHONE_ICON = "\xe2\x98\x8e"
+local PHONE_ICON = "\226\152\142"
 
 -- `name` / `className` are what src/core/gen2/Phone.lua contactName answers:
 -- the caller's name, and the trainer class under it or nil for a non-trainer.

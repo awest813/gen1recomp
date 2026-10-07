@@ -47,8 +47,8 @@ local UBER_TEXT = Strings.source(
 -- ../pokecrystal/mobile/mobile_46.asm:5473-5476
 local QUIT_TEXT = Strings.source("Cancel your BATTLE\nROOM challenge?")
 -- ../pokecrystal/constants/charmap.asm:89 and :192, tiles $61 and $ee.
-local UP_ARROW = "\xe2\x96\xb2"
-local DOWN_ARROW = "\xe2\x96\xbc"
+local UP_ARROW = "\226\150\178"
+local DOWN_ARROW = "\226\150\188"
 
 -- ../pokecrystal/mobile/mobile_46.asm:3880 and :4623-4627
 local CANCEL_LABEL = Strings.source("CANCEL")

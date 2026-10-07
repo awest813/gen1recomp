@@ -47,8 +47,8 @@ local ARROW_X, ARROW_Y = 18, 17
 local YESNO_X, YESNO_Y, YESNO_W, YESNO_H = 14, 7, 6, 5
 
 local GENDER_GLYPH = {
-  TRADE_GENDER_MALE = "\xe2\x99\x82",
-  TRADE_GENDER_FEMALE = "\xe2\x99\x80",
+  TRADE_GENDER_MALE = "\226\153\130",
+  TRADE_GENDER_FEMALE = "\226\153\128",
 }
 
 -- Fallbacks for a cache with no tradeTexts (one built before the extractor
@@ -349,14 +349,14 @@ function TradeMenu:draw()
   if self.message then
     self:drawTextBox(Typer.text(self, self.message.pages[self.message.page]))
     if typed and self.message.page < #self.message.pages and Typer.arrowOn(self) then
-      Chrome.print("\xe2\x96\xbc", ARROW_X, ARROW_Y)
+      Chrome.print("\226\150\188", ARROW_X, ARROW_Y)
     end
   elseif self.confirm then
     self:drawTextBox(Typer.text(self, self.confirm.pages[self.confirm.page]))
     if typed and self.confirm.page >= #self.confirm.pages then
       self:drawYesNo(self.confirm.choice)
     elseif typed and Typer.arrowOn(self) then
-      Chrome.print("\xe2\x96\xbc", ARROW_X, ARROW_Y)
+      Chrome.print("\226\150\188", ARROW_X, ARROW_Y)
     end
   else
     self:drawTextBox(nil)

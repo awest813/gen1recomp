@@ -345,7 +345,7 @@ end
 -- hand-ported string in this port may too.  One glyph per replacement
 -- character comes back out of Font.split, all of them pinned to the byte the
 -- command sits on so a cut never lands inside the expansion.
-local MACRO_TEXT = { ["#"] = "POK\xc3\xa9" }
+local MACRO_TEXT = { ["#"] = "POK\195\169" }
 
 -- Segment text into glyph spans: `{ from, to, code }` byte ranges, one per
 -- drawn glyph, code nil when the charmap has nothing.  A span is a whole

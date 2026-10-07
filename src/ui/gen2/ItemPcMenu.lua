@@ -112,7 +112,7 @@ local VISIBLE_ROWS = 4
 local LIST_X = 5
 
 -- charmap.asm: the quantity glyph.
-local TIMES = "\xc3\x97"
+local TIMES = "\195\151"
 
 function ItemPcMenu:wantsFillScale() return true end
 

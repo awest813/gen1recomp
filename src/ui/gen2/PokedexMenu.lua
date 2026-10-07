@@ -1358,7 +1358,7 @@ function PokedexMenu:unownCursor(tx, ty)
     and sheet:draw((self.unownFontBase or 0x40) + Unown.NUM_UNOWN, tx, ty) then
     return
   end
-  self:text("\xe2\x96\xb6", tx, ty)
+  self:text("\226\150\182", tx, ty)
 end
 
 function PokedexMenu:drawUnownPic(letter, tx, ty)
@@ -1480,7 +1480,7 @@ function PokedexMenu:drawOption()
   local rows = self:optionRows()
   for i, row in ipairs(rows) do
     self:text(Strings(row.label), 3, 2 + i * 2)
-    if i == self.optionIndex then self:text("\xe2\x96\xb6", 2, 2 + i * 2) end
+    if i == self.optionIndex then self:text("\226\150\182", 2, 2 + i * 2) end
   end
   local current = rows[self.optionIndex]
   if current then
@@ -1512,7 +1512,7 @@ function PokedexMenu:drawSearch()
   if self.searchMessage then self:text(Strings(self.searchMessage), 3, 10) end
   local rows = { 4, 6, 13, 15 }
   local y = rows[self.searchIndex] or 4
-  self:text("\xe2\x96\xb6", 2, y)
+  self:text("\226\150\182", 2, y)
 end
 
 function PokedexMenu:drawPanel()

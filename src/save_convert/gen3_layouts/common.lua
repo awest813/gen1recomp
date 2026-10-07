@@ -171,7 +171,7 @@ C.BOX_NAME_LENGTH = 8
 C.LANGUAGE_JAPANESE = 1
 C.LANGUAGE_ENGLISH = 2
 -- src/daycare.c:135
-C.EGG_NICKNAME = "\x60\x6F\x8B"
+C.EGG_NICKNAME = "\96\111\139"
 -- include/constants/easy_chat.h:1091
 C.EC_WORD_UNDEFINED = 0xFFFF
 -- src/easy_chat.c:444

@@ -1070,9 +1070,9 @@ function BoxMenu:drawPanel()
       -- (home/pokemon.asm:178-183).
       Chrome.print("<LV>" .. tostring(mon.level or 1), PIC_X, 12)
       if mon.gender == "male" then
-        Chrome.print("\xe2\x99\x82", 5, 12)
+        Chrome.print("\226\153\130", 5, 12)
       elseif mon.gender == "female" then
-        Chrome.print("\xe2\x99\x80", 5, 12)
+        Chrome.print("\226\153\128", 5, 12)
       end
       Chrome.print(mon.name or mon.species or "?", PIC_X, 14)
       self:drawHeldIcon(mon)

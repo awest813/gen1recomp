@@ -28,7 +28,7 @@ Chrome.SCREEN_W = 20
 Chrome.SCREEN_H = 18
 
 -- charmap.asm "¥", the money field's own prefix tile.
-local YEN = "\xc2\xa5"
+local YEN = "\194\165"
 
 function Chrome.paletteFill(px, py, pw, ph, palette)
   palette = palette or Chrome.DEFAULT_BOX_PALETTE

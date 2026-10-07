@@ -81,7 +81,7 @@ local OVERWRITE_PROMPT_SOURCE = Strings.source("There is already a\nsave file. I
 local SAVING_PROMPT_SOURCE = Strings.source("SAVING… DON'T TURN\nOFF THE POWER.")
 
 -- ../pokecrystal/home/text.asm:630 LoadBlinkingCursor
-local DOWN_ARROW = "\xe2\x96\xbc"
+local DOWN_ARROW = "\226\150\188"
 local ARROW_X, ARROW_Y = 18, 17
 
 -- ../pokecrystal/home/text.asm:479 Paragraph
