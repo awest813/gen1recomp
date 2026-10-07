@@ -203,31 +203,33 @@ function MapTree.walk(rom, version, opts)
   local numGroups = #order
 
   for gi = 0, numGroups - 1 do
+    repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
     if allowSet and not allowSet[gi] then
-      goto continue_group
+      do break end
     end
     local groupInfo = groupsData.groups[gi]
     if not groupInfo then
-      goto continue_group
+      do break end
     end
     local groupPtr = rom:u32(gMapGroups + gi * 4)
     local groupOff = gba_off(rom, groupPtr)
     if not groupOff then
-      goto continue_group
+      do break end
     end
     local mapNames = groupInfo.maps or {}
     local groupMaps = {}
     for mi = 0, #mapNames - 1 do
+      repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
       local headerPtr = rom:u32(groupOff + mi * 4)
       local headerOff = gba_off(rom, headerPtr)
       if not headerOff then
-        goto continue_map
+        do break end
       end
       local header = MapTree.parseHeader(rom, headerOff)
       local layoutOff = gba_off(rom, header.layout)
       local layout = MapTree.parseLayout(rom, layoutOff)
       if not layout then
-        goto continue_map
+        do break end
       end
 
       local pretName = mapNames[mi + 1]
@@ -269,7 +271,7 @@ function MapTree.walk(rom, version, opts)
       }
       maps[#maps + 1] = entry
       groupMaps[#groupMaps + 1] = { slot = slot, id = mapId, num = mi }
-      ::continue_map::
+      until true
     end
     groupSummaries[#groupSummaries + 1] = {
       group = gi,
@@ -277,7 +279,7 @@ function MapTree.walk(rom, version, opts)
       count = #groupMaps,
       maps = groupMaps,
     }
-    ::continue_group::
+    until true
   end
 
   table.sort(maps, function(a, b)

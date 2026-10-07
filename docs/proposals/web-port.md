@@ -25,6 +25,66 @@ platform profile, a sleep-free main loop, a custom love.js build (for the
 `bit` library and a file-picker/storage bridge), and audio tuning for a
 non-JIT interpreter.
 
+## Status
+
+**Phases 0-2 are done.** Blue runs end to end in the browser: import, title,
+new game, naming, the bedroom, an F1 save, and CONTINUE back into the bedroom
+from a fresh tab.
+`ports/web/smoke_test.mjs --rom <blue.gb> --play` drives that whole path in
+headless Chromium. Build and layout notes are in
+[ports/web/BUILD.md](../../ports/web/BUILD.md).
+
+Phase 2 measurements (headless Chromium, SwiftShader WebGL, x86-64 container):
+
+| Metric | Result |
+|---|---|
+| Blue import (pick to `rom-cache.complete`) | **4.2 s**, on the coroutine path |
+| Gameplay frame rate | 60 fps on title/intro; ~46 fps measured right after a save, under software GL |
+| wasm heap | 256 MiB initial; no growth seen through import and play |
+| `game.love` / whole site | 26 MB / 32 MB (all games' code and assets; launcher videos removed) |
+| Cache persistence | Reaches IndexedDB through `WebHost`'s debounced sync; a second tab sees it without love.js's `beforeunload` flush |
+
+What the spike found that the audit had not:
+
+- **The love.js `emscripten` branch is LÖVE 11.4**, not 11.5. `conf.lua`'s
+  `t.version = "11.5"` only prints a notice. Nothing in the Gen 1 path has
+  needed 11.5 so far.
+- **C++ exceptions escaped `pcall`.** Upstream love.js passes
+  `DISABLE_EXCEPTION_CATCHING=0` only at link time. LÖVE errors (for example
+  `love.filesystem.read` of a missing file) therefore unwound straight through
+  Lua's `pcall`: `conf.lua`'s guarded `require("src.core.Version")` died, and
+  the boot then failed with "loop or previous error loading module". The build
+  now passes the flag at compile time too.
+- **The Gen 3 importer is on the boot path.** The launcher's cache check loads
+  the Gen 3 plan registry, so the six `goto` files had to become
+  `repeat ... until true` loops now rather than "later". Two loops had a real
+  loop-exit `break` that the rewrite would have turned into `continue`; the
+  `repeat` was moved below those exits. The `lua51_compat.sh` allowlist is now
+  empty.
+- **Import is fast.** The 10-40 s estimate (L12) was pessimistic; Blue
+  imports in about 4 s.
+- **A latent launcher crash on every platform.** `Theme.versionRail` could
+  index one past its colour table, because `x % 1` is exactly `1.0` for a tiny
+  negative `x`. It surfaced first in the browser because love.js timer values
+  differ. Fixed, with `tests/engine/theme_version_rail_test.lua`.
+- **Post-spike audit fixes**, from an independent review of the diff:
+  - Lua and the page now flush IndexedDB through one coalescer
+    (`Module.g1rSync`), so a save can no longer be left unflushed when two
+    syncs overlap.
+  - Streamed `File` writes mark the store dirty.
+  - A Web Lock keeps the game to one tab. IDBFS mirroring would otherwise let
+    two tabs delete each other's data.
+  - The picker shows a Browse/Cancel bar as a real-click fallback when the
+    automatic dialog is refused (a gamepad press is never a user gesture), and
+    reports a cancel back to the game.
+  - Temporary pick paths are no longer remembered in options.
+  - `Rom.lua` errors keep their pre-change text (`error(msg, 0)`).
+  - The build script's generated-data guard no longer passes vacuously under
+    `pipefail`.
+- **Not yet verified:** audio output. Headless Chromium plays to a null sink,
+  so whether music is audible and free of underruns is a Phase 3 check on a
+  real browser.
+
 ## How the audit was done
 
 - ROM unpacked and SHA-1 verified against the importer's table.
@@ -108,8 +168,8 @@ browser: a visible hitch on every map or battle transition until L3 lands.
 
 ## Architecture decisions
 
-1. **love.js (Davidobot fork, LÖVE 11.5), not a rewrite or a different
-   runtime.** It is the only path that keeps the 770k-line Lua codebase as
+1. **love.js (Davidobot fork; its `emscripten` branch is LÖVE 11.4), not a
+   rewrite or a different runtime.** It is the only path that keeps the 770k-line Lua codebase as
    the single source of truth. Fengari (Lua in JS) has no LÖVE API; a
    bespoke WebGL renderer would fork the engine.
 2. **Custom love.js build, pinned.** Needed anyway for B1 (`bit`). The same
@@ -133,7 +193,7 @@ browser: a visible hitch on every map or battle transition until L3 lands.
 Each phase ends in something testable. Phases 0-1 are safe to land on
 desktop immediately and benefit every platform.
 
-### Phase 0: Lua 5.1 hygiene (desktop-safe, no web build yet)
+### Phase 0: Lua 5.1 hygiene (desktop-safe, no web build yet) -- done
 
 - `src/core/LuaCompat.lua`: a 5.2-style `load` shim for runtimes without it (B2).
 - Replace `\x` escapes with decimal escapes, Gen 1 first: `Font.lua:348`, `StartMenu.lua:227`, `ListMenu.lua:340`, then Gen 2 (L1).
@@ -145,7 +205,7 @@ desktop immediately and benefit every platform.
 
 **Exit:** CI green under both interpreters; desktop behaviour unchanged.
 
-### Phase 1: `"Web"` platform profile (desktop-safe)
+### Phase 1: `"Web"` platform profile (desktop-safe) -- done
 
 - `Platform.lua`: add `web`, `hasThreads()`, and the flag values from L5.
 - Gate `_startExtractThread` and `ChipAudio.ensureWorker` on `hasThreads()` (L2).
@@ -157,7 +217,7 @@ desktop immediately and benefit every platform.
 
 **Exit:** with the OS faked as Web, desktop LÖVE boots to the launcher, imports via the pending-file path, and plays without threads or sleeps.
 
-### Phase 2: web build spike (Blue end-to-end)
+### Phase 2: web build spike (Blue end-to-end) -- done
 
 - `scripts/build_web.sh`:
   - `pack_love.sh` → love.js (custom build, pinned version, `-c`, `-m` sized from measurement; start at 256 MB with growth) → `split_web_build.py` → `scripts/web-theme/`.

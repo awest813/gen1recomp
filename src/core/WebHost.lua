@@ -15,7 +15,8 @@
 --     filesystem but only flushes it on page load and beforeunload, which a
 --     closed tab or a crash can skip.  install() wraps the write entry points
 --     (io.open for writing, os.remove/rename, love.filesystem.write/append/
---     remove/createDirectory) to mark the store dirty, and update() flushes
+--     remove/createDirectory, and File write/flush/close) to mark the store
+--     dirty, and update() flushes
 --     it shortly after the writes stop -- one sync per import, save or
 --     options change instead of one per file.
 --
@@ -77,6 +78,35 @@ local function wrapWrites()
   if fs then
     for _, name in ipairs({ "write", "append", "remove", "createDirectory" }) do
       if type(fs[name]) == "function" then fs[name] = dirtying(fs[name]) end
+    end
+    -- Streamed writes (CacheFs.openWrite: newFile + open("w") + write...) go
+    -- through File methods, which every File shares via its type metatable;
+    -- patch those once, on the first File created.
+    if type(fs.newFile) == "function" then
+      local newFile = fs.newFile
+      local patched = false
+      fs.newFile = function(...)
+        local file, err = newFile(...)
+        if file and not patched then
+          patched = true
+          local mt = getmetatable(file)
+          local methods = mt and (type(mt.__index) == "table" and mt.__index or mt)
+          if type(methods) == "table" then
+            for _, name in ipairs({ "write", "flush" }) do
+              if type(methods[name]) == "function" then
+                methods[name] = dirtying(methods[name])
+              end
+            end
+            if type(methods.close) == "function" then
+              methods.close = dirtying(methods.close, function(self)
+                local ok, mode = pcall(self.getMode, self)
+                return not ok or mode ~= "r"
+              end)
+            end
+          end
+        end
+        return file, err
+      end
     end
   end
 end

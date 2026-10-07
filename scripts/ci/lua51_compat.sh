@@ -5,9 +5,9 @@
 # that only LuaJIT accepts either fails to load in the browser or, worse,
 # loads and silently misbehaves.  This gate catches both classes:
 #
-#   1. every shipped Lua file must compile under luac5.1 (goto, 5.2+ syntax);
-#      the Gen 3 importer files below still use goto and are allowlisted
-#      until the Gen 3 web work removes it.
+#   1. every shipped Lua file must compile under luac5.1 (no goto, no 5.2+
+#      syntax).  A file that fails here is reported by require() in the
+#      browser as "module not found", which hides the real cause.
 #   2. no \xHH or \u{...} string escapes outside comments: PUC 5.1 reads
 #      "\xc3" as the literal text "xc3" with no error.  Use decimal escapes
 #      ("\195"), which every Lua reads the same way.
@@ -24,15 +24,9 @@ LUAC=${LUAC51:-luac5.1}
 LUA=${LUA51:-lua5.1}
 SHIPPED=(main.lua conf.lua src data mods tools/save-editor)
 
-# Gen 3 importer files that still use goto (not loaded by the Gen 1 web build).
-ALLOW_GOTO=(
-  src/import/gba/battle_anim_extract.lua
-  src/import/gba/door_anim_extract.lua
-  src/import/gba/encounters_extract.lua
-  src/import/gba/extract_map_events.lua
-  src/import/gba/extract_scripts.lua
-  src/import/gba/map_tree.lua
-)
+# Files allowed to fail luac5.1 (none: the Gen 3 importer's goto loops were
+# rewritten as repeat/until because the launcher loads them at boot).
+ALLOW_GOTO=()
 
 fail=0
 
@@ -50,7 +44,7 @@ while IFS= read -r -d '' f; do
   total=$((total + 1))
   if ! out=$("$LUAC" -p "$f" 2>&1); then
     allowed=0
-    for a in "${ALLOW_GOTO[@]}"; do [ "$f" = "$a" ] && allowed=1; done
+    for a in "${ALLOW_GOTO[@]+"${ALLOW_GOTO[@]}"}"; do [ "$f" = "$a" ] && allowed=1; done
     if [ "$allowed" = 0 ]; then
       echo "  $out"
       bad=$((bad + 1))

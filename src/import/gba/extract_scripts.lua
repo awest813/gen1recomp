@@ -263,12 +263,13 @@ function ExtractScripts.bfsFromSeeds(rom, seedPtrs)
 
   local processed = 0
   while #queue > 0 and processed < BFS_MAX do
+    repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
     local ptr = table.remove(queue, 1)
     processed = processed + 1
     local key = Opcodes.key(ptr)
-    if scripts[key] then goto continue end
+    if scripts[key] then do break end end
     local off = rom:ptrOffset(ptr)
-    if not off then goto continue end
+    if not off then do break end end
     local bytes = rom:readBytes(off, SCRIPT_CHUNK)
     local rows = {}
     local i = 1
@@ -372,7 +373,7 @@ function ExtractScripts.bfsFromSeeds(rom, seedPtrs)
       end
     end
     scripts[key] = rows
-    ::continue::
+    until true
   end
   assert(#queue == 0, "script BFS stopped at BFS_MAX with " .. #queue .. " scripts queued")
 

@@ -15,12 +15,12 @@ end
 function Rom.offset(bank, address)
   if bank == 0 then
     if not (address >= 0 and address < BANK_SIZE) then
-      error(("ROM0 address out of range: $%04X"):format(address))
+      error(("ROM0 address out of range: $%04X"):format(address), 0)
     end
     return address
   end
   if not (address >= BANK_SIZE and address < BANK_SIZE * 2) then
-    error(("bank %02X address out of range: $%04X"):format(bank, address))
+    error(("bank %02X address out of range: $%04X"):format(bank, address), 0)
   end
   return bank * BANK_SIZE + address - BANK_SIZE
 end
@@ -28,7 +28,7 @@ end
 function Rom:byte(bank, address)
   local value = self.data:byte(Rom.offset(bank, address) + 1)
   if not value then
-    error(("ROM read past end at %02X:%04X"):format(bank, address))
+    error(("ROM read past end at %02X:%04X"):format(bank, address), 0)
   end
   return value
 end
@@ -41,7 +41,7 @@ function Rom:bytes(bank, address, length)
   local first = Rom.offset(bank, address) + 1
   local last = first + length - 1
   if last > #self.data then
-    error(("ROM read past end at %02X:%04X + %d"):format(bank, address, length))
+    error(("ROM read past end at %02X:%04X + %d"):format(bank, address, length), 0)
   end
   local out = {}
   for index = 1, length do

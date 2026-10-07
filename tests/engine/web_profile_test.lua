@@ -37,6 +37,18 @@ for _, k in ipairs({ "write", "append", "remove", "createDirectory" }) do
   savedFs[k] = love.filesystem and love.filesystem[k]
 end
 
+-- a File type whose methods live on a shared metatable, like LÖVE's
+local FileMethods = {}
+FileMethods.__index = FileMethods
+function FileMethods:open(mode) self.mode = mode; return true end
+function FileMethods:write() return true end
+function FileMethods:flush() return true end
+function FileMethods:getMode() return self.mode or "c" end
+function FileMethods:close() self.mode = "c"; return true end
+local savedNewFile = love.filesystem and love.filesystem.newFile
+love.filesystem = love.filesystem or {}
+love.filesystem.newFile = function() return setmetatable({}, FileMethods) end
+
 WebHost._resetForTests()
 Platform._resetForTests()
 check(WebHost.install({ bridge = fakeBridge }), "install takes the native bridge")
@@ -80,6 +92,24 @@ do
   check(syncCalls >= 2, "steady writes still flush within SYNC_MAX_DELAY")
   os.remove(tmp)
 end
+
+-- streamed writes through File methods (CacheFs.openWrite)
+do
+  WebHost.syncNow()
+  local reader = love.filesystem.newFile("a")
+  reader:open("r")
+  reader:close()
+  check(not WebHost.isDirty(), "opening and closing a File for reading stays clean")
+  local writer = love.filesystem.newFile("b")
+  writer:open("w")
+  writer:write("chunk")
+  check(WebHost.isDirty(), "File:write dirties the store")
+  WebHost.syncNow()
+  writer:close()
+  check(WebHost.isDirty(), "closing a written File dirties it again (final flush)")
+  WebHost.syncNow()
+end
+love.filesystem.newFile = savedNewFile
 
 -- ---------------------------------------------------------------- drops
 do

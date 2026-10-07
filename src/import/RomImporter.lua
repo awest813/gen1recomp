@@ -2265,7 +2265,10 @@ function RomImporter:_rememberRomSource(version, displayName)
   local prior = RomSources.get(version)
   if source == kept then
     rec.path, rec.kept = kept, true
-  elseif RomSources.isAbsolute(source) and not self.mobileFileBridge then
+  elseif RomSources.isAbsolute(source) and not self.mobileFileBridge
+      and not Platform.pickedFilesAreTemporary() then
+    -- (a temporary pick -- UWP LocalState, the browser's /tmp -- is deleted
+    -- once read, so remembering its path would only store a dead filename)
     rec.path = source
   elseif self.mobileFileBridge then
     if prior and prior.kept and prior.sha1 == rec.sha1
