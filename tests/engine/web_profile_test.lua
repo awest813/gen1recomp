@@ -186,6 +186,8 @@ eq(Performance.CAPS.high.shaderfx, 1.0, "the shared HIGH table is not mutated")
 arg = arg or {}
 local mainOk, mainErr = pcall(dofile, "main.lua")
 check(mainOk, "main.lua loads under the stub: " .. tostring(mainErr))
+check(require("src.core.FixedStep").sustainedCatchup == true,
+  "main.lua keeps a low frame rate at real-time speed on Web")
 
 local function runFrames(os, frames)
   osName = os

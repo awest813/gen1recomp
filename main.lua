@@ -16,6 +16,12 @@ require("src.core.LuaCompat").install()
 -- A no-op everywhere else.
 local WebHost = require("src.core.WebHost")
 WebHost.install()
+if WebHost.isWeb() then
+  -- browsers often hold a steady low frame rate (phones, software GL): keep
+  -- the game at real-time speed there instead of slowing down
+  -- (src/core/FixedStep.lua sustainedCatchup)
+  require("src.core.FixedStep").sustainedCatchup = true
+end
 
 local SwitchDiagnostics = require("src.debug.SwitchDiagnostics")
 

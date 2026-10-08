@@ -42,4 +42,25 @@ function PixelCanvas.new(w, h, filter)
   return canvas
 end
 
+-- A finished bake as something to keep and draw: a static Image read back
+-- from the canvas, or -- in the browser -- the canvas itself.  The readback
+-- (Canvas:newImageData) makes the GPU finish all queued work first; in the
+-- browser that is a visible stall on every map change (measured: 1.3 s of
+-- one walk under software GL, ~95% of it in readPixels).  Keeping the canvas
+-- draws identically, and its 32x32 power-of-two size wrap-repeats on
+-- WebGL 1.  Desktop keeps the Image, byte for byte as before.
+function PixelCanvas.toStatic(canvas)
+  if not canvas then return nil end
+  local okP, Platform = pcall(require, "src.core.Platform")
+  if okP and Platform.isWeb() then return canvas end
+  if canvas.newImageData then
+    local ok, data = pcall(canvas.newImageData, canvas)
+    if ok and data then
+      local okImg, made = pcall(love.graphics.newImage, data)
+      if okImg and made then return made end
+    end
+  end
+  return canvas
+end
+
 return PixelCanvas

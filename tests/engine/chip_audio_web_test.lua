@@ -166,6 +166,20 @@ do
   ChipAudio.stopMusic()
 end
 
+-- Sound.prewarmCommon takes a per-generation list (Gen 2: COMMON_SFX_GEN2):
+-- the names the cart has are queued, the rest skipped
+do
+  local Sound = require("src.core.Sound")
+  check(type(Sound.COMMON_SFX_GEN2) == "table" and #Sound.COMMON_SFX_GEN2 > 20,
+    "Sound has a Gen 2 common-effects list")
+  local data2 = { audio = { sfx = { Sfx_ReadText2 = sfx } } }
+  local before = ChipAudio._effectStateForTest().mainJobs
+  eq(Sound.prewarmCommon(data2, { "Sfx_ReadText2", "Sfx_NotInThisCart" }), 1,
+    "prewarmCommon queues the listed effects the cart has")
+  check(ChipAudio._effectStateForTest().mainJobs >= before, "on the main-thread prewarm queue")
+  ChipAudio.pumpPrewarm(10)
+end
+
 -- a mix change drops in-flight main-thread jobs: they read the live mix and
 -- would finish as mixed PCM under the old key
 do

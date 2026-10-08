@@ -589,7 +589,7 @@ local function bakeBorderFill(self, block)
   end
   love.graphics.setCanvas()
   love.graphics.pop()
-  local img = love.graphics.newImage(canvas:newImageData())
+  local img = require("src.render.PixelCanvas").toStatic(canvas)
   img:setWrap("repeat", "repeat")
   img:setFilter("nearest", "nearest")
   self.borderFill = img

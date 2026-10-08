@@ -2440,7 +2440,13 @@ function Game2:applyOptions()
   local options = self.options or {}
   require("src.core.FaithfulRes").setNativeSize(160, 144)
   Music.applyOptions(options)
-  require("src.core.Sound").applyOptions(options)
+  local Sound = require("src.core.Sound")
+  Sound.applyOptions(options)
+  -- browser build: synthesize the common Gen 2 effects in the background so
+  -- a first menu press or door does not render on that frame (Sound.lua)
+  if Sound.prewarmCommon and self.data then
+    pcall(Sound.prewarmCommon, self.data, Sound.COMMON_SFX_GEN2)
+  end
   local Zoom = require("src.render.Zoom")
   Zoom.applyOptions(options)
   local caps = require("src.core.Performance").applyOptions(options)
