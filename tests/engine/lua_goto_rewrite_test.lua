@@ -159,6 +159,34 @@ do
       return s]], "=goto_mod", env)
     check(fn ~= nil, "a mod chunk with goto continue compiles on " .. _VERSION .. " " .. tostring(err))
     eq(fn and fn(), 7, "and runs")
+    -- a mod's own coroutine can yield through its pcall (LuaJIT semantics)
+    local modEnv = Sandbox.envFor({ modId = "yield_test" })
+    local builder = Sandbox.compile([[
+      return coroutine.create(function()
+        local ok, v = pcall(function() return coroutine.yield("slice") end)
+        return ok and v
+      end)]], "=yield_mod", modEnv)
+    local co = builder and builder()
+    local r1, first = coroutine.resume(co)
+    check(r1 and first == "slice", "a mod coroutine yields through its pcall on " .. _VERSION)
+    local r2, last = coroutine.resume(co, "done")
+    check(r2 and last == "done", "and finishes")
+    -- no love.thread for mods on a host whose threads never run (the
+    -- browser): a mod waiting on a worker would hang the page
+    love.thread = love.thread or { newThread = function() end, getChannel = function() end }
+    love.system = love.system or {}
+    local savedOS = love.system.getOS
+    local Platform = require("src.core.Platform")
+    love.system.getOS = function() return "Web" end
+    Platform._resetForTests()
+    local webEnv = Sandbox.envFor({ modId = "t", permissions = { compute = true } })
+    eq(webEnv.love.thread, nil, "a compute mod gets no love.thread where threads never run")
+    love.system.getOS = function() return "Linux" end
+    Platform._resetForTests()
+    local deskEnv = Sandbox.envFor({ modId = "t", permissions = { compute = true } })
+    check(deskEnv.love.thread ~= nil, "and keeps it on desktop")
+    love.system.getOS = savedOS
+    Platform._resetForTests()
   end
 end
 

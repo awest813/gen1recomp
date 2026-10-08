@@ -784,6 +784,50 @@ local function readArchive(source)
   return nil, "unsupported archive source"
 end
 
+-- Browser: a picked or dropped zip sits in /tmp (MEMFS), outside the save
+-- directory love.filesystem.mount reaches, and reading it whole into a Lua
+-- string (which FileData then copies again) runs the wasm heap out of memory
+-- for a mod of a few hundred MB.  Stream it into a save-dir temp in chunks
+-- instead and mount that by path; only the largest single file inside is
+-- ever held whole.  False when the source is not a host file this applies
+-- to (the caller then reads it as usual).
+local STAGE_CHUNK = 1024 * 1024
+local function stageHostZip(source)
+  local path = source
+  if type(source) ~= "string" then
+    local ok, name = pcall(function() return source:getFilename() end)
+    path = ok and name or nil
+  end
+  if type(path) ~= "string" or not isHostAbsolutePath(path) then return false end
+  local src = io.open(path, "rb")
+  if not src then return false end
+  if src:read(2) ~= "PK" then
+    src:close()
+    return false
+  end
+  src:seek("set", 0)
+  local fs = love.filesystem
+  local tmp = ("mod_import_%d_%d.zip"):format(os.time(), math.random(0, 999999))
+  local out = io.open(fs.getSaveDirectory() .. "/" .. tmp, "wb")
+  if not out then
+    src:close()
+    return false
+  end
+  local okCopy = true
+  while true do
+    local chunk = src:read(STAGE_CHUNK)
+    if not chunk then break end
+    if not out:write(chunk) then okCopy = false break end
+  end
+  src:close()
+  out:close()
+  if not okCopy then
+    fs.remove(tmp)
+    return nil, "could not stage the .zip (out of storage space?)"
+  end
+  return tmp
+end
+
 -- Local PK\3\4 / empty-file check before mount (corrupt MTP / AppleDouble).
 local function zipLooksValid(data)
   if type(data) ~= "string" or #data < 4 then return false end
@@ -1032,22 +1076,38 @@ function LauncherMods._installZipInner(source, opts)
     return nil, "mod install needs LOVE"
   end
   local fs = love.filesystem
-  local data, readErr = readArchive(source)
-  if not data then return nil, readErr end
-  if not zipLooksValid(data) then
-    local label = type(source) == "string" and (source:match("[^/\\]+$") or source)
-      or "archive"
-    return nil, "not a zip file: " .. tostring(label)
-      .. " (need a real .zip; skip Mac ._ files from MTP)"
-  end
-
-  -- Prefer in-memory mount (PHYSFS_mountMemory via FileData). Avoids Horizon's
-  -- "file already open" failure when write-then-mount reopens a save-dir zip.
   local mount = "mod_import_mount"
   local tmp = nil
   local mountKey = nil
   local mounted = false
-  if fs.newFileData then
+  local data
+  if require("src.core.WebHost").isWeb() then
+    local staged, stageErr = stageHostZip(source)
+    if staged == nil then return nil, stageErr end
+    if staged then
+      tmp = staged
+      if not fs.mount(tmp, mount) then
+        fs.remove(tmp)
+        return nil, "that .zip could not be opened"
+      end
+      mounted, mountKey = true, tmp
+    end
+  end
+  if not mounted then
+    local readErr
+    data, readErr = readArchive(source)
+    if not data then return nil, readErr end
+    if not zipLooksValid(data) then
+      local label = type(source) == "string" and (source:match("[^/\\]+$") or source)
+        or "archive"
+      return nil, "not a zip file: " .. tostring(label)
+        .. " (need a real .zip; skip Mac ._ files from MTP)"
+    end
+  end
+
+  -- Prefer in-memory mount (PHYSFS_mountMemory via FileData). Avoids Horizon's
+  -- "file already open" failure when write-then-mount reopens a save-dir zip.
+  if not mounted and fs.newFileData then
     local archiveName = ("mod_import_%d_%d.zip"):format(
       os.time(), math.random(0, 999999))
     local okFd, fd = pcall(fs.newFileData, data, archiveName)

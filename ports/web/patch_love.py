@@ -29,6 +29,13 @@ What it does:
      blocking dialog.  Real failures still reach Lua and the game's error
      screen.
 
+  6. Canvas setFilter / setWrap / setMipmapSharpness skip the GL calls on a
+     canvas with no texture (a non-readable depth canvas is a renderbuffer;
+     the voxel mods create them for depth testing).  LÖVE bound texture 0
+     and set parameters on it: a silent GL error on desktop, but WebGL logs
+     every one to the console ("no texture bound"), a flood of warnings per
+     frame.  The requested state is still kept.
+
 Usage: patch_love.py <path/to/love>
 """
 
@@ -93,6 +100,12 @@ EXCEPTION_QUIET = """	// %s: no alert/print per exception -- most are caught and
 """
 
 
+CANVAS_FILTER_ANCHOR = "\tgl.bindTextureToUnit(this, 0, false);\n\tgl.setTextureFilter(texType, filter);\n"
+CANVAS_WRAP_ANCHOR = "\tgl.bindTextureToUnit(this, 0, false);\n\tgl.setTextureWrap(texType, wrap);\n"
+CANVAS_LOD_ANCHOR = "\tgl.bindTextureToUnit(this, 0, false);\n\n\t// negative bias is sharper\n"
+CANVAS_GUARD = "\t// %s: no texture (a renderbuffer canvas) -> no GL calls\n\tif (texture == 0)\n\t\treturn%s;\n"
+
+
 def pristine(path: Path):
     """Text of the untouched file, normalized to \n, plus its newline style
     (love's CMakeLists.txt is CRLF; keep it that way so the diff stays small)."""
@@ -150,6 +163,16 @@ def main() -> None:
     text = replace_once(text, OPENGL_RGBA8_ANCHOR,
                         OPENGL_RGBA8 % (MARKER, OPENGL_RGBA8_ANCHOR), "RGBA8 render target")
     write(opengl_cpp, text, newline)
+
+    canvas_cpp = love / "src" / "modules" / "graphics" / "opengl" / "Canvas.cpp"
+    text, newline = pristine(canvas_cpp)
+    text = replace_once(text, CANVAS_FILTER_ANCHOR,
+                        CANVAS_GUARD % (MARKER, "") + CANVAS_FILTER_ANCHOR, "Canvas::setFilter")
+    text = replace_once(text, CANVAS_WRAP_ANCHOR,
+                        CANVAS_GUARD % (MARKER, " success") + CANVAS_WRAP_ANCHOR, "Canvas::setWrap")
+    text = replace_once(text, CANVAS_LOD_ANCHOR,
+                        CANVAS_GUARD % (MARKER, " true") + CANVAS_LOD_ANCHOR, "Canvas::setMipmapSharpness")
+    write(canvas_cpp, text, newline)
 
     text, newline = pristine(exception_cpp)
     text = replace_once(text, EXCEPTION_ALERT, EXCEPTION_QUIET % MARKER, "Exception alert")

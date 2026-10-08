@@ -285,6 +285,81 @@ check(not ok, "a listed install still refuses a plain duplicate import")
 check(tostring(err):find("already installed", 1, true),
   "duplicate refusal still names already installed")
 
+-- Browser: a picked/dropped zip outside the save dir is streamed into a
+-- save-dir temp in chunks and path-mounted, never read whole into Lua
+do
+  local savedWebHost = package.loaded["src.core.WebHost"]
+  local web = true
+  package.loaded["src.core.WebHost"] = { isWeb = function() return web end }
+  vfs.newFileData = function(data, name)
+    return { __filedata = true, data = data, name = name }
+  end
+  LauncherMods = freshMods()
+  local saveDir = vfs.getSaveDirectory()
+  os.execute("mkdir -p " .. saveDir .. " /tmp/pokeport-install-zip-host")
+  local hostZip = "/tmp/pokeport-install-zip-host/picked.zip"
+  local body = "PK\3\4" .. ("z"):rep(2 * 1024 * 1024 + 123)
+  local fh = assert(io.open(hostZip, "wb"))
+  fh:write(body)
+  fh:close()
+  local removed = {}
+  local realRemove = vfs.remove
+  vfs.remove = function(name)
+    removed[#removed + 1] = name
+    return realRemove(name)
+  end
+  local realMount = vfs.mount
+  local stagedBytes
+  vfs.mount = function(archive, point)
+    if type(archive) == "string" then
+      local sf = io.open(saveDir .. "/" .. archive, "rb")
+      stagedBytes = sf and sf:read("*a")
+      if sf then sf:close() end
+    end
+    return realMount(archive, point)
+  end
+
+  resetFs()
+  local okW, errW = LauncherMods.installZip(hostZip)
+  check(okW == true, "web host zip installs (" .. tostring(errW) .. ")")
+  eq(fileDataMounts, 0, "web host zip is not copied into a FileData")
+  eq(pathMounts, 1, "web host zip is path-mounted from the save dir")
+  check(stagedBytes == body, "the staged copy is byte-identical across chunks")
+  check(removed[1] and removed[1]:match("^mod_import_.*%.zip$"),
+    "the staged temp is removed after the install")
+  if removed[1] then os.remove(saveDir .. "/" .. removed[1]) end
+
+  -- a DroppedFile-shaped source goes the same way
+  resetFs()
+  removed = {}
+  local dropped = { getFilename = function() return hostZip end }
+  okW, errW = LauncherMods.installZip(dropped)
+  check(okW == true and pathMounts == 1 and fileDataMounts == 0,
+    "a dropped file stages the same way (" .. tostring(errW) .. ")")
+  if removed[1] then os.remove(saveDir .. "/" .. removed[1]) end
+
+  -- a non-zip host file still gets the usual rejection
+  local junk = "/tmp/pokeport-install-zip-host/junk.zip"
+  fh = assert(io.open(junk, "wb"))
+  fh:write("not a zip")
+  fh:close()
+  resetFs()
+  okW, errW = LauncherMods.installZip(junk)
+  check(not okW and tostring(errW):find("not a zip file", 1, true),
+    "a non-zip host file is still rejected as not a zip")
+
+  -- off the web the same host path keeps the in-memory mount
+  web = false
+  resetFs()
+  okW = LauncherMods.installZip(hostZip)
+  check(okW == true and fileDataMounts == 1 and pathMounts == 0,
+    "desktop keeps the FileData mount for host zips")
+
+  vfs.remove, vfs.mount = realRemove, realMount
+  os.execute("rm -rf /tmp/pokeport-install-zip-host " .. saveDir)
+  package.loaded["src.core.WebHost"] = savedWebHost
+end
+
 -- Restore
 love.filesystem = savedFs
 SaveData.portableBaseDir = savedSaveDataPortable

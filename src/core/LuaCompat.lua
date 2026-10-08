@@ -94,6 +94,26 @@ function LuaCompat.yieldablePcall(f, ...)
   end
 end
 
+-- LuaJIT semantics for code written against LuaJIT (mods): a pcall made from
+-- inside a coroutine may yield through it, and xpcall forwards extra
+-- arguments.  Outside a coroutine coPcall is the plain pcall (no cost on the
+-- common path; there is nothing to yield to there anyway).
+function LuaCompat.coPcall(f, ...)
+  if coroutine.running() then return LuaCompat.yieldablePcall(f, ...) end
+  return pcall(f, ...)
+end
+
+function LuaCompat.coXpcall(f, handler, ...)
+  local n, args = select("#", ...), { ... }
+  local function call() return f(unpack(args, 1, n)) end
+  if coroutine.running() then
+    local res = pack(LuaCompat.yieldablePcall(call))
+    if res[1] then return unpack(res, 1, res.n) end
+    return false, handler(res[2])
+  end
+  return xpcall(call, handler)
+end
+
 -- `goto continue` on PUC Lua 5.1.  LuaJIT (every native build) accepts Lua
 -- 5.2's goto, and community mods use it -- almost always as "skip to the next
 -- loop iteration":

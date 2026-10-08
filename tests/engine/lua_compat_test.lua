@@ -105,4 +105,30 @@ do
   eq(LuaCompat.pcallYields(), jit, "pcallYields: true on LuaJIT, false on PUC 5.1 (" .. _VERSION .. ")")
 end
 
+-- coPcall / coXpcall: LuaJIT semantics for mod code
+do
+  local co = coroutine.create(function()
+    local ok, v = LuaCompat.coPcall(function() return coroutine.yield("y") + 1 end)
+    return ok, v
+  end)
+  local _, y = coroutine.resume(co)
+  eq(y, "y", "coPcall: a yield inside it reaches the resumer")
+  local _, ok, v = coroutine.resume(co, 41)
+  check(ok == true and v == 42, "coPcall: and the call completes with the resumed value")
+  local okMain, errMain = LuaCompat.coPcall(function() error("main", 0) end)
+  check(okMain == false and errMain == "main", "coPcall outside a coroutine is a plain pcall")
+  local okX, sum = LuaCompat.coXpcall(function(a, b) return a + b end, tostring, 2, 3)
+  check(okX == true and sum == 5, "coXpcall forwards its extra arguments")
+  local okE, handled = LuaCompat.coXpcall(function() error("boom", 0) end,
+    function(e) return "handled " .. e end)
+  check(okE == false and handled == "handled boom", "coXpcall runs the handler on error")
+  local co2 = coroutine.create(function()
+    return LuaCompat.coXpcall(function(a) return coroutine.yield(a) * 2 end, tostring, 21)
+  end)
+  local _, a = coroutine.resume(co2)
+  eq(a, 21, "coXpcall inside a coroutine yields through with its argument")
+  local _, ok2, v2 = coroutine.resume(co2, 4)
+  check(ok2 == true and v2 == 8, "and completes")
+end
+
 T.finish()

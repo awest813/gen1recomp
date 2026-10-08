@@ -126,6 +126,11 @@ local function loveFacade(compat, permissions)
         if not (permissions or {}).compute then
           error('love.thread needs the "compute" permission in manifest.json', 2)
         end
+        -- Hosts whose threads never run (the browser's compat build): the
+        -- module exists and newThread succeeds, but the worker never starts,
+        -- so a mod that then waits on a channel blocks the page for good.
+        -- Absent, mods take the same fallback they use headless.
+        if not require("src.core.Platform").hasThreads() then return nil end
         return _G.love.thread
       end
       local hint = BLOCKED_LOVE[key]
@@ -271,6 +276,13 @@ function Sandbox.envFor(opts)
   opts = opts or {}
   local compat = opts.compat
   local env = baseGlobals()
+  -- PUC Lua 5.1 (the browser build): mods are written against LuaJIT, where a
+  -- coroutine may yield through pcall (mesh/tree builders that slice their
+  -- work) and xpcall takes arguments
+  local LuaCompat = require("src.core.LuaCompat")
+  if not LuaCompat.pcallYields() then
+    env.pcall, env.xpcall = LuaCompat.coPcall, LuaCompat.coXpcall
+  end
   env.love = loveFacade(compat, opts.permissions)
   env.require = sandboxedRequire(opts.modId, opts.permissions, compat)
   local loader = sandboxedLoad(env)
