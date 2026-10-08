@@ -27,9 +27,12 @@ non-JIT interpreter.
 
 ## Status
 
-**Phases 0-2 are done.** Blue runs end to end in the browser: import, title,
-new game, naming, the bedroom, an F1 save, and CONTINUE back into the bedroom
-from a fresh tab.
+**Phases 0-2 are done, Phase 3 is mostly done, and the first Phase 4/5
+items are in.** Blue is playable in the browser on desktop and on phones.
+A scripted playthrough covered import, the intro, naming, the bedroom,
+Pallet Town, Oak's cutscene, choosing SQUIRTLE, the rival battle (won,
+level 6), the party menu, Route 1, a wild RATTATA battle, and saving and
+continuing across tabs.
 `ports/web/smoke_test.mjs --rom <blue.gb> --play` drives that whole path in
 headless Chromium. Build and layout notes are in
 [ports/web/BUILD.md](../../ports/web/BUILD.md).
@@ -345,7 +348,20 @@ Original plan:
 - Import under ~30 s.
 - First-load download within a target size, e.g. ≤15 MB compressed.
 
-### Phase 4: product polish
+### Phase 4: product polish -- in progress
+
+Done:
+
+- **Phone touch controls.** The overlay turns on at the first real touch,
+  because phone browsers report "Web". Verified on an emulated phone: the
+  overlay's A button advances the game.
+- **Saves.** "Export save" downloads the `.sav`, and "Import save" goes
+  through the page picker. The start card says storage is per-browser, and
+  the page calls `navigator.storage.persist()`.
+- **Controls hint** on the start card, Fullscreen moved clear of the touch
+  controls, and URL launch options (`?game=blue`).
+
+Original list:
 
 - Mobile browsers: `TouchControls`, orientation, iOS Safari audio unlock, safe areas.
 - Save export/import as `.sav` downloads/uploads (the save converter already handles formats). Show a "browser storage can be cleared" notice and call `navigator.storage.persist()`.
@@ -353,7 +369,14 @@ Original plan:
 - Red and Yellow verification (same importer, different manifests).
 - Docs: `docs/platforms/web.md`, README Quick Start row.
 
-### Phase 5: release pipeline
+### Phase 5: release pipeline -- in progress
+
+Done: `.github/workflows/web.yml` builds the site, runs the ROM-free browser
+smoke test, uploads the site as an artifact, and deploys to GitHub Pages on a
+manual run with "deploy" ticked (see ports/web/BUILD.md). Not done: a `web`
+job in `release.yml`.
+
+Original list:
 
 - `web` job in `release.yml`, built from the shared `love-payload` artifact.
 - Deploy to GitHub Pages or gen1re.com (static hosting; no COOP/COEP needed for the compat build).

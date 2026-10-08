@@ -53,6 +53,26 @@ WebGL.
 
 Screenshots and the console log go to `dist/web-smoke/`.
 
+## CI and GitHub Pages
+
+`.github/workflows/web.yml` runs on pushes to `dev`/`main` and on pull requests
+that touch the engine or the web port. Each run builds the site, runs the
+ROM-free smoke test, and uploads two artifacts:
+
+- **`gen1recomp-web`**: the site. Unzip it and serve it to play.
+- **`gen1recomp-web-smoke`**: the smoke screenshots and console log.
+
+The emsdk and love.js build tree are cached between runs.
+
+To publish on GitHub Pages:
+
+1. Set **Settings > Pages > Source** to **GitHub Actions** (once).
+2. Go to **Actions > web > Run workflow**, tick **deploy**, and run it. The
+   workflow must exist on the default branch to be runnable by hand.
+
+The page carries no ROM and no game data. Each player imports their own ROM,
+which stays in their browser.
+
 ## How it fits together
 
 | Piece | What it does |
