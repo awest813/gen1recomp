@@ -425,7 +425,10 @@
       // IndexedDB after the game shows it as done; closing the tab mid-sync
       // keeps only part of it.  Ask first, only while a sync is in flight.
       window.addEventListener("beforeunload", function (e) {
-        if (typeof Module.g1rSyncBusy === "function" && Module.g1rSyncBusy()) {
+        var busy = typeof Module.g1rSyncBusy === "function" && Module.g1rSyncBusy();
+        // g1rDirty: writes still waiting for the game's debounced sync
+        if (Module.g1rDirty || busy) {
+          flushStorage();
           e.preventDefault();
           e.returnValue = "";
         }

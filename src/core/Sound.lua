@@ -916,7 +916,9 @@ function Sound.prewarmCommon(data, list)
   -- spend up to 120 ms of it so the intro's opening effects (queued first)
   -- are ready before the intro plays them.  Later calls (every options
   -- change) leave the queue to the per-frame budget.
-  if not commonPumped[list] then
+  -- (only once something was queued: a call before the cart's audio data
+  -- has loaded must not spend the one-time pump on an empty queue)
+  if queued > 0 and not commonPumped[list] then
     commonPumped[list] = true
     pcall(require("src.core.ChipAudio").pumpPrewarm, 0.12)
   end

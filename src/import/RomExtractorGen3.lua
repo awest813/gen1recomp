@@ -733,16 +733,22 @@ function RomExtractorGen3:run()
   local stagePcall = (not LuaCompat.pcallYields()) and LuaCompat.yieldablePcall or realPcall
   local co = coroutine.create(runBody)
   local args = pack(self, sha1)
+  local pinned = GameVersion.get()
   while true do
+    -- pin while the body runs, put the launcher's version back across every
+    -- yield (other frames run in between, and a dropped worker never resumes)
+    GameVersion.set(pinned)
     _G.pcall = stagePcall
     local res = pack(coroutine.resume(co, unpack(args, 1, args.n)))
     _G.pcall = realPcall
+    GameVersion.set(before)
     if not res[1] then
-      GameVersion.set(before)
+      -- rethrowing from here loses the failing frame from the importer's
+      -- traceback, so log the inner one first
+      print(debug.traceback(co, tostring(res[2])))
       error(res[2], 0)
     end
     if coroutine.status(co) == "dead" then
-      GameVersion.set(before)
       return res[2]
     end
     args = pack(coroutine.yield(unpack(res, 2, res.n)))

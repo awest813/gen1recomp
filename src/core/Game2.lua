@@ -1082,6 +1082,12 @@ function Game2:load(opts)
   self.data.font = loadGenerated("data/generated/font.lua")
   self.fontData = self.data.font
   self.data.audio = loadGenerated("data/generated/audio.lua") or {}
+  -- the applyOptions above ran before the audio data existed; prewarm the
+  -- common effects now so the intro's (queued first) are ready in time
+  do
+    local Sound = require("src.core.Sound")
+    if Sound.prewarmCommon then pcall(Sound.prewarmCommon, self.data, Sound.COMMON_SFX_GEN2) end
+  end
   self.data.pokemon = loadGenerated("data/generated/pokemon.lua") or {}
   self.data.items = loadGenerated("data/generated/items.lua") or {}
   self.data.moves = loadGenerated("data/generated/moves.lua") or {}

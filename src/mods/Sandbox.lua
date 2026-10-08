@@ -200,11 +200,25 @@ local function rejectBytecode(source, what)
   return true
 end
 
+-- PUC Lua 5.1 (the browser build) has no goto; mods written against LuaJIT
+-- use it for `goto continue`.  When a chunk does not compile there, retry
+-- once with that idiom rewritten (LuaCompat.rewriteGoto, which declines any
+-- other shape so the original error stands).  LuaJIT never gets here.
+local function compile51(source, chunkname)
+  local chunk, err = loadstring(source, chunkname)
+  if chunk or rawget(_G, "jit") then return chunk, err end
+  local rewritten = require("src.core.LuaCompat").rewriteGoto(source)
+  if not rewritten then return nil, err end
+  local again = loadstring(rewritten, chunkname)
+  if again then return again end
+  return nil, err
+end
+
 function Sandbox.compile(source, chunkname, env)
   local ok, err = rejectBytecode(source, chunkname)
   if not ok then return nil, err end
   if setfenv then
-    local chunk, compileErr = loadstring(source, chunkname)
+    local chunk, compileErr = compile51(source, chunkname)
     if not chunk then return nil, compileErr end
     return setfenv(chunk, env)
   end
@@ -285,6 +299,10 @@ function Sandbox.loadFile(fs, path, env)
   end
   if setfenv then
     local chunk, err = fs.load(path)
+    if not chunk and fs.read and not rawget(_G, "jit") then
+      local source = fs.read(path)
+      if type(source) == "string" then chunk = compile51(source, "@" .. path) end
+    end
     if not chunk then return nil, err end
     return setfenv(chunk, env)
   end

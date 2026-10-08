@@ -46,8 +46,17 @@ function WebHost.isWeb()
     and love.system.getOS() == "Web"
 end
 
+-- the page's close-tab prompt needs to know about writes still waiting for
+-- their debounced sync, not just a sync already running (index.html)
+local function publishDirty(value)
+  if bridge and type(bridge.setDirty) == "function" then pcall(bridge.setDirty, value) end
+end
+
 local function markDirty()
-  if not dirty then dirtyFor = 0 end
+  if not dirty then
+    dirtyFor = 0
+    publishDirty(true)
+  end
   dirty = true
   quietFor = 0
 end
@@ -152,6 +161,17 @@ function WebHost.hasBridge()
   return bridge ~= nil
 end
 
+-- Open a URL in a new browser tab.  False when the browser would block the
+-- pop-up (only allowed during a click or key press's user activation) or off
+-- the web.
+function WebHost.openURL(url)
+  if bridge and type(bridge.openURL) == "function" then
+    local ok, opened = pcall(bridge.openURL, url)
+    return ok and opened == true
+  end
+  return false
+end
+
 -- The bridge's browser fetch() transport (fetchStart/fetchPoll/fetchForget),
 -- or nil.  src/net/Fetch.lua routes its jobs here on the web.
 function WebHost.fetchBridge()
@@ -163,6 +183,7 @@ function WebHost.fetchBridge()
 end
 
 function WebHost.syncNow()
+  if dirty then publishDirty(false) end
   dirty = false
   quietFor, dirtyFor = 0, 0
   if bridge and type(bridge.syncStorage) == "function" then

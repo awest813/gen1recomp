@@ -60,18 +60,21 @@ end
 -- PUC Lua 5.1 a yield cannot cross pcall, so the yields must pass through
 do
   GameVersion.set("red")
+  local resumedAs
   local ext = extractor(function()
     local reply = coroutine.yield("progress", nil, 3)
+    resumedAs = GameVersion.get()
     return reply == "go"
   end)
   local co = coroutine.create(function() return ext:run() end)
   local ok, a, b, c = coroutine.resume(co)
   check(ok and a == "progress" and b == nil and c == 3,
     "a stage's yield reaches the importer's coroutine, nils included")
-  eq(GameVersion.get(), "emerald", "the version stays pinned while suspended")
+  eq(GameVersion.get(), "red", "while suspended the launcher's version is back")
   local ok2, result = coroutine.resume(co, "go")
   check(ok2 and result and result.romSha1 == EMERALD_SHA1,
     "resuming finishes the run with the importer's reply delivered")
+  eq(resumedAs, "emerald", "and the body runs pinned again after the resume")
   eq(GameVersion.get(), "red", "and restores the version")
 end
 

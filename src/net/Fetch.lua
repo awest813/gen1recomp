@@ -40,7 +40,9 @@ local workers = {}
 local cmdCh, resCh, quitCh
 local ready          -- nil = untried, true = running, false = unavailable
 local jobs = {}      -- id -> { status, body, err, progress, path }
-local nextId = 0
+-- ids start at a per-boot offset: after love.event.quit("restart") a page
+-- fetch from the previous boot may still land under its old id
+local nextId = (os.time() % 100000) * 1000
 local unavailableReason
 
 -- ---------------------------------------------------------------- browser
@@ -50,6 +52,9 @@ local unavailableReason
 -- the contract above and finish inside drain().  Hosts must allow CORS --
 -- GitHub Pages, raw.githubusercontent.com and api.github.com do.
 local WEB_TMP = "/tmp/g1r_fetch/"
+-- The page never kills a stalled fetch on its own; Fetch's contract is that
+-- nothing waits forever, so a job without its own ceiling gets this one.
+local WEB_DEFAULT_SECONDS = 120
 
 local function webBridge()
   local okW, WebHost = pcall(require, "src.core.WebHost")
@@ -80,8 +85,12 @@ local function startWeb(web, id, cmd)
   else
     dest = WEB_TMP .. id
   end
+  -- request: any HTTP status is a result (the desktop worker returns the
+  -- code and body); download: an empty body is a failure, as on desktop
+  local flags = (cmd.kind == "request" and 1 or 0) + (cmd.kind == "download" and 2 or 0)
+  local timeoutMs = math.floor((tonumber(cmd.maxSeconds) or WEB_DEFAULT_SECONDS) * 1000)
   local ok, started = pcall(web.fetchStart, id, method, cmd.url, headerText(cmd),
-    cmd.body, dest)
+    cmd.body, dest, flags, timeoutMs)
   local j = jobs[id]
   if not (ok and started) then
     j.status, j.err = "error", ok and "the browser refused the request" or tostring(started)
@@ -113,6 +122,7 @@ local function drainWeb()
         local w = j.web
         j.web = nil
         pcall(web.fetchForget, id)
+        if j.orphan then jobs[id] = nil end
         if j.status ~= "pending" then
           -- cancelled while in flight: drop what landed
           if w.kind ~= "download" then os.remove(w.dest) end
@@ -286,6 +296,13 @@ end
 -- Forget a finished job.  Callers should do this once they have consumed the
 -- result, or the table grows for the life of the process.
 function Fetch.release(id)
+  local j = jobs[id]
+  if j and j.web then
+    -- still running in the page: keep it until it lands so drainWeb can
+    -- forget the page's job and remove its temp file
+    j.status, j.orphan = "cancelled", true
+    return
+  end
   jobs[id] = nil
 end
 

@@ -558,8 +558,10 @@ function ModUpdate.beginDownloadZip(url, destName, size)
     return h
   end
   if ModUpdate.browserMustDownload(url) then
-    local opened = love and love.system and love.system.openURL
-      and pcall(love.system.openURL, url)
+    -- WebHost.openURL knows when the browser would block the tab (anything
+    -- not started by the click itself, e.g. the later rows of Update all)
+    local okW, WebHost = pcall(require, "src.core.WebHost")
+    local opened = okW and WebHost.openURL and WebHost.openURL(url)
     h.browserDownload = true
     h.err = opened and BROWSER_DOWNLOAD_HINT
       or ("Download it in your browser, then drop the .zip on the page: " .. url)

@@ -16,8 +16,9 @@ love.filesystem.getSaveDirectory = function() return TMP .. "/g1r_fetch_test_sav
 
 local started, states, forgotten = {}, {}, {}
 local fake = {}
-function fake.fetchStart(id, method, url, headers, body, dest)
-  started[id] = { method = method, url = url, headers = headers, body = body, dest = dest }
+function fake.fetchStart(id, method, url, headers, body, dest, flags, timeoutMs)
+  started[id] = { method = method, url = url, headers = headers, body = body, dest = dest,
+    flags = flags, timeoutMs = timeoutMs }
   states[id] = { "pending", 0, 0.25, nil }
   return true
 end
@@ -38,6 +39,7 @@ package.loaded["src.core.WebHost"] = {
   fetchBridge = function() return fake end,
   markDirty = function() dirtied = dirtied + 1 end,
   isWeb = function() return true end,
+  openURL = function(url) return love.system.openURL and love.system.openURL(url) or false end,
 }
 
 local Fetch = require("src.net.Fetch")
@@ -93,6 +95,27 @@ eq(st.status, "cancelled", "a cancelled job stays cancelled when its response la
 eq(st.body, nil, "and keeps no body")
 check(forgotten[c], "the page job is still forgotten")
 
+-- every page fetch has a ceiling (Fetch never waits forever); the caller's
+-- maxSeconds wins over the default
+eq(started[get].timeoutMs, 120000, "a get without maxSeconds gets the default ceiling")
+local quick = Fetch.download("https://example.com/t.png", "t.png", { maxSeconds = 15 })
+eq(started[quick].timeoutMs, 15000, "maxSeconds becomes the page's timeout")
+eq(started[quick].flags, 2, "a download fails on an empty body")
+local rq = Fetch.request("https://example.com/api", { method = "PUT", body = "x" })
+eq(started[rq].flags, 1, "a request keeps any HTTP status as a result")
+eq(started[rq].method, "PUT", "and its method")
+
+-- releasing a job still running in the page keeps it until it lands, so the
+-- page job is forgotten and its temp file removed
+local rel = Fetch.get("https://example.com/released")
+Fetch.release(rel)
+eq(Fetch.poll(rel).status, "cancelled", "a released in-flight job reads as cancelled")
+land(rel, "late body")
+Fetch.poll(rel)
+check(forgotten[rel], "the page job is forgotten when it lands")
+eq(io.open(started[rel].dest, "rb"), nil, "and its temp file removed")
+eq(Fetch.poll(rel).err, "unknown job", "then the job is gone")
+
 -- Platform: the browser can fetch remotely once the bridge has fetch
 package.loaded["src.core.Platform"] = nil
 local savedGetOS = love.system.getOS
@@ -119,6 +142,11 @@ check(h.browserDownload and h.err and h.err:find("Drop the .zip", 1, true),
 local after = 0
 for _ in pairs(started) do after = after + 1 end
 eq(after, before, "no page fetch is started for it")
+-- a pop-up the browser blocks (no click left to ride on) says so
+love.system.openURL = function() return false end
+local blocked = ModUpdate.beginDownloadZip(REL, "mod.zip", 3584)
+check(blocked.err and blocked.err:find(REL, 1, true) and not blocked.err:find("opened", 1, true),
+  "a blocked tab gives the link to download by hand instead")
 
 love.system.getOS = savedGetOS
 if Platform._resetForTests then Platform._resetForTests() end

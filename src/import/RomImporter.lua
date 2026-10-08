@@ -7406,12 +7406,13 @@ function RomImporter:_beginCartInstall(entry, spec)
     "v" .. tostring(release.version or entry.version or "?"))
 end
 
-function RomImporter:_cartInstallFailed(msg, job)
+function RomImporter:_cartInstallFailed(msg, job, neutral)
   job = job or self._cartInstall
   self._cartInstall = nil
   self:_clearBusy()
   if not (job and job.quiet) then
-    self.findNotice = { ok = false, text = tostring(msg) }
+    -- neutral: the browser downloading a GitHub release itself, a next step
+    self.findNotice = { ok = neutral == true, text = tostring(msg) }
   end
   if job and job.done then job.done(false, tostring(msg)) end
 end
@@ -7431,7 +7432,8 @@ function RomImporter:_pumpCartInstall()
     return self:_cartInstallFailed(name .. ": download failed: " .. tostring(done))
   end
   if not path then
-    return self:_cartInstallFailed(name .. ": " .. tostring(err or "download failed"))
+    return self:_cartInstallFailed(name .. ": " .. tostring(err or "download failed"),
+      nil, job.h and job.h.browserDownload)
   end
   self._cartInstall = nil
   local read, bytes = pcall(love.filesystem.read, path)

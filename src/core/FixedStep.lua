@@ -79,7 +79,8 @@ FixedStep.maxAccum = MAX_ACCUM
 -- 50 ms frame is 40 of 60 steps a second).  With sustainedCatchup on (set
 -- for the browser build in main.lua), a moving average of the frame time
 -- tells the two apart: only while it stays above SMOOTH_MAX does a frame
--- buy its real length in steps, up to SUSTAINED_MAX_STEPS of them.
+-- buy its real length in steps, capped at SUSTAINED_MAX_STEPS of frame time
+-- (catchupLimit's usual 1.5x headroom makes that at most six steps).
 FixedStep.sustainedCatchup = false
 local SUSTAINED_MAX_STEPS = 4
 local SUSTAINED_ALPHA = 0.1
@@ -193,6 +194,11 @@ function FixedStep:update(dt, speed)
   end
 end
 
+-- Tests only.
+function FixedStep._resetSustainedForTests()
+  frameEma = nil
+end
+
 function FixedStep:endFrame()
   self.frameBreak = true
 end
@@ -202,11 +208,6 @@ end
 -- next real-time dt huge; without this the while-loop above would advance
 -- many walk frames before the next draw, which looks like a slide with no
 -- leg animation (issue #93).
--- Tests only.
-function FixedStep._resetSustainedForTests()
-  frameEma = nil
-end
-
 function FixedStep:discardCatchup()
   self.accum = 0
   self.suppressCatchup = true

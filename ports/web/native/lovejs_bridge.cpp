@@ -122,8 +122,12 @@ EM_JS(int, g1r_download_file, (const char *path, const char *name), {
 // Asynchronous: start returns at once, the body streams into the virtual
 // filesystem at `dest`, and Lua polls.  Cross-origin hosts must send CORS
 // headers -- GitHub Pages, raw.githubusercontent.com and api.github.com do.
+// flags: 1 = any HTTP status finishes ok (Fetch.request, like the desktop
+// worker), 2 = an empty body is a failure (downloads).  timeoutMs > 0 aborts
+// a request that has not finished by then.
 EM_JS(int, g1r_fetch_start, (int id, const char *method, const char *url,
-		const char *headers, const char *body, int bodyLen, const char *dest), {
+		const char *headers, const char *body, int bodyLen, const char *dest,
+		int flags, int timeoutMs), {
 	var jobs = Module["g1rFetches"] = Module["g1rFetches"] || {};
 	var job = jobs[id] = { state: 0, code: 0, progress: 0, err: "" };
 	var m = UTF8ToString(method) || "GET";
@@ -134,19 +138,30 @@ EM_JS(int, g1r_fetch_start, (int id, const char *method, const char *url,
 		if (i > 0) init.headers[line.slice(0, i).trim()] = line.slice(i + 1).trim();
 	});
 	if (body && m !== "GET" && m !== "HEAD") init.body = HEAPU8.slice(body, body + bodyLen);
-	function fail(why) { job.state = 2; job.err = String(why); }
+	var phase = "connect";
+	var timer = 0;
+	function fail(why) { if (timer) clearTimeout(timer); job.state = 2; job.err = String(why); }
+	if (timeoutMs > 0 && typeof AbortController === "function") {
+		var ctl = new AbortController();
+		init.signal = ctl.signal;
+		timer = setTimeout(function () { phase = "timeout"; ctl.abort(); }, timeoutMs);
+	}
 	try {
 		fetch(UTF8ToString(url), init).then(function (res) {
 			job.code = res.status;
-			if (!res.ok) { fail("HTTP " + res.status); return; }
+			phase = "read";
+			if (!res.ok && !(flags & 1)) { fail("HTTP " + res.status); return; }
 			var total = Number(res.headers.get("content-length")) || 0;
 			var chunks = [], got = 0;
 			function finish() {
+				if (got === 0 && (flags & 2)) { fail("the server sent an empty file"); return; }
+				phase = "write";
 				var data = new Uint8Array(got), at = 0;
 				chunks.forEach(function (c) { data.set(c, at); at += c.length; });
 				var dir = path.substring(0, path.lastIndexOf("/"));
 				if (dir) { try { FS.mkdirTree(dir); } catch (e) {} }
 				FS.writeFile(path, data);
+				if (timer) clearTimeout(timer);
 				job.progress = 1;
 				job.state = 1;
 			}
@@ -167,14 +182,39 @@ EM_JS(int, g1r_fetch_start, (int id, const char *method, const char *url,
 			}
 			return pump();
 		}).catch(function (e) {
-			// a CORS refusal and an offline network look the same from here
-			fail("network error (offline, or the host does not allow browser requests): " + (e && e.message || e));
+			var msg = e && e.message || e;
+			if (phase === "timeout") fail("timed out");
+			else if (phase === "connect")
+				// a CORS refusal and an offline network look the same from here
+				fail("network error (offline, or the host does not allow browser requests): " + msg);
+			else if (phase === "write") fail("could not save the download: " + msg);
+			else fail("the connection dropped: " + msg);
 		});
 	} catch (e) {
 		fail(e && e.message || e);
 		return 0;
 	}
 	return 1;
+});
+
+// Open a URL in a new tab; 0 when the browser would block it.  A pop-up is
+// only allowed inside a click/key's user activation, so with no activation
+// left this does not try (window.open with noopener returns null either way,
+// so its result cannot tell).
+EM_JS(int, g1r_open_url, (const char *url), {
+	try {
+		if (navigator.userActivation && !navigator.userActivation.isActive) return 0;
+		window.open(UTF8ToString(url), "_blank", "noopener");
+		return 1;
+	} catch (e) {
+		return 0;
+	}
+});
+
+// WebHost's "writes waiting for their debounced sync" flag, for the page's
+// close-tab prompt.
+EM_JS(void, g1r_set_dirty, (int dirty), {
+	Module["g1rDirty"] = dirty !== 0;
 });
 
 // 0 pending, 1 ok, 2 error, -1 unknown id
@@ -258,8 +298,23 @@ static int w_fetchStart(lua_State *L)
 	size_t bodyLen = 0;
 	const char *body = lua_isstring(L, 5) ? lua_tolstring(L, 5, &bodyLen) : nullptr;
 	const char *dest = luaL_checkstring(L, 6);
-	lua_pushboolean(L, g1r_fetch_start(id, method, url, headers, body, (int) bodyLen, dest) != 0);
+	int flags = (int) luaL_optinteger(L, 7, 0);
+	int timeoutMs = (int) luaL_optinteger(L, 8, 0);
+	lua_pushboolean(L, g1r_fetch_start(id, method, url, headers, body, (int) bodyLen, dest,
+		flags, timeoutMs) != 0);
 	return 1;
+}
+
+static int w_openURL(lua_State *L)
+{
+	lua_pushboolean(L, g1r_open_url(luaL_checkstring(L, 1)) != 0);
+	return 1;
+}
+
+static int w_setDirty(lua_State *L)
+{
+	g1r_set_dirty(lua_toboolean(L, 1));
+	return 0;
 }
 
 // fetchPoll(id) -> "pending"|"ok"|"error"|"unknown", httpCode, progress, err
@@ -292,6 +347,8 @@ static const luaL_Reg functions[] = {
 	{ "fetchStart", w_fetchStart },
 	{ "fetchPoll", w_fetchPoll },
 	{ "fetchForget", w_fetchForget },
+	{ "openURL", w_openURL },
+	{ "setDirty", w_setDirty },
 	{ "pickFile", w_pickFile },
 	{ "getPickedFile", w_getPickedFile },
 	{ "getPickError", w_getPickError },
