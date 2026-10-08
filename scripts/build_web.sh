@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Browser build: game.love + a custom love.js (LÖVE 11.5 -> WebAssembly).
+# Browser build: game.love + a custom love.js (LÖVE 11.4 -> WebAssembly).
 # See docs/proposals/web-port.md and ports/web/BUILD.md.
 #
 # Usage:
 #   scripts/build_web.sh [--emsdk DIR] [--work DIR] [--out DIR]
 #                        [--memory BYTES] [--split-mb N] [--skip-native]
+#                        [--love FILE]
 #
 #   --emsdk DIR     emsdk checkout with 2.0.0 installed + activated
 #                   (default: $EMSDK, else <work>/emsdk, installed on demand)
@@ -14,6 +15,9 @@
 #   --split-mb N    split game.data into N MB parts for hosts with a per-file
 #                   cap (scripts/split_web_build.py); 0 = off (default)
 #   --skip-native   reuse the love.js/love.wasm already in <work>/native-out
+#   --love FILE     package this game.love (e.g. the release workflow's
+#                   version-stamped payload) instead of running pack_love.sh;
+#                   the web trims below still apply to a copy of it
 #
 # Output: <out>/index.html, game.js, game.data, love.js, love.wasm.  Serve it
 # over http(s) (python3 -m http.server -d dist/web) -- file:// will not load
@@ -30,6 +34,7 @@ OUT="$ROOT/dist/web"
 MEMORY=268435456
 SPLIT_MB=0
 SKIP_NATIVE=0
+LOVE_INPUT=""
 EMSDK_DIR="${EMSDK:-}"
 
 # --- pins -------------------------------------------------------------------
@@ -57,7 +62,8 @@ while [ $# -gt 0 ]; do
     --memory) MEMORY="$2"; shift 2 ;;
     --split-mb) SPLIT_MB="$2"; shift 2 ;;
     --skip-native) SKIP_NATIVE=1; shift ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --love) LOVE_INPUT="$2"; shift 2 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
 done
@@ -147,9 +153,15 @@ fi
   || fail "no love.js/love.wasm in $NATIVE_OUT (run without --skip-native)"
 
 # --- payload ---------------------------------------------------------------
-say "packing game.love"
 LOVE_FILE="$WORK/game.love"
-"$ROOT/scripts/pack_love.sh" --output "$LOVE_FILE" --listing "$WORK/love-listing.txt" >/dev/null
+if [ -n "$LOVE_INPUT" ]; then
+  [ -f "$LOVE_INPUT" ] || fail "--love: no such file $LOVE_INPUT"
+  say "using $LOVE_INPUT"
+  cp "$LOVE_INPUT" "$LOVE_FILE"
+else
+  say "packing game.love"
+  "$ROOT/scripts/pack_love.sh" --output "$LOVE_FILE" --listing "$WORK/love-listing.txt" >/dev/null
+fi
 # Trim what the browser never loads -- every byte here is downloaded and held
 # in memory before the game starts:
 #   * the launcher videos (no Theora worker thread in the compat build;

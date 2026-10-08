@@ -142,6 +142,49 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  web:
+    name: build web (love.js) site
+    needs: [version, love-payload]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # same cache as .github/workflows/web.yml: emsdk + the love.js tree
+      - name: cache emsdk and love.js build
+        uses: actions/cache@v6
+        with:
+          path: |
+            .bazinga/work/web/emsdk
+            .bazinga/work/web/megasource
+            .bazinga/work/web/SDL2
+            .bazinga/work/web/build
+            .bazinga/work/web/native-out
+          key: web-native-${{ hashFiles('scripts/build_web.sh', 'ports/web/patch_love.py', 'ports/web/native/**') }}
+          restore-keys: web-native-
+      - name: Download shared payload
+        uses: actions/download-artifact@v8
+        with:
+          name: gen1recomp-release-love
+          path: dist/payload
+      # the same version-stamped game.love every other platform ships
+      - name: Build the web site
+        run: ./scripts/build_web.sh --love dist/payload/game.love --out dist/web
+      - name: Browser smoke (ROM-free)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node ports/web/smoke_test.mjs --site dist/web --out dist/web-smoke --timeout-s 180
+      - name: Zip the site
+        run: |
+          mkdir -p dist/web-release
+          (cd dist/web && zip -q -9 -r ../web-release/gen1recomp-web.zip .)
+      - name: Upload web release
+        uses: actions/upload-artifact@v7
+        with:
+          name: gen1recomp-web-release
+          path: dist/web-release/gen1recomp-web.zip
+          if-no-files-found: error
+          retention-days: 7
+
   linux-arm64:
     name: build Linux arm64 AppImage
     needs: [version, love-payload, shaderfx-bridge]
@@ -985,7 +1028,7 @@ jobs:
           retention-days: 7
 
   release:
-    needs: [version, notes, love-payload, xbox-uwp, linux-arm64, linux-flatpak, desktop, windows-sign, android, ios, switch, rg34xxsp, linux-arm-sbc]
+    needs: [version, notes, love-payload, web, xbox-uwp, linux-arm64, linux-flatpak, desktop, windows-sign, android, ios, switch, rg34xxsp, linux-arm-sbc]
     if: github.repository == 'bryanthaboi/gen1recomp'
     runs-on: ubuntu-latest
     steps:
@@ -1006,6 +1049,12 @@ jobs:
         with:
           name: gen1recomp-release-love
           path: dist/payload
+
+      - name: Download gen1recomp-web-release
+        uses: actions/download-artifact@v8
+        with:
+          name: gen1recomp-web-release
+          path: dist/web-release
 
       - name: Download gen1recomp-desktop-release
         uses: actions/download-artifact@v8
@@ -1131,6 +1180,12 @@ jobs:
           [ -f "$love_file" ] || { echo "::error::$love_file not found (expected from the love-payload job)"; exit 1; }
           cp "$love_file" "$outdir/gen1recomp-${v}.love"
 
+          # Browser build: a static site (index.html, love.js/.wasm, game.data)
+          # to unzip onto any web server; see docs/platforms/web.md.
+          web_zip="dist/web-release/gen1recomp-web.zip"
+          [ -f "$web_zip" ] || { echo "::error::$web_zip not found (expected from the web job)"; exit 1; }
+          cp "$web_zip" "$outdir/gen1recomp-${v}-web.zip"
+
           ls -lh "$outdir"
 
           # Checksums for every staged release asset (sums file itself is
@@ -1164,6 +1219,7 @@ jobs:
             "dist/release/gen1recomp-${v}-rg34xxsp-stockos64-mod.zip"
             "dist/release/gen1recomp-${v}-sbc-portmaster.zip"
             "dist/release/gen1recomp-${v}.love"
+            "dist/release/gen1recomp-${v}-web.zip"
             "dist/release/sha256sums.txt"
           )
 

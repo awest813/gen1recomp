@@ -27,8 +27,8 @@ non-JIT interpreter.
 
 ## Status
 
-**Phases 0-2 are done, Phase 3 is mostly done, and the first Phase 4/5
-items are in.** Blue is playable in the browser on desktop and on phones.
+**All five phases are done.** Red, Blue and Yellow are playable in the browser
+on desktop, on phones (touch) and with gamepads, and releases ship a web zip.
 A scripted playthrough covered import, the intro, naming, the bedroom,
 Pallet Town, Oak's cutscene, choosing SQUIRTLE, the rival battle (won,
 level 6), the party menu, Route 1, a wild RATTATA battle, and saving and
@@ -352,7 +352,7 @@ Original plan:
 - Import under ~30 s.
 - First-load download within a target size, e.g. ≤15 MB compressed.
 
-### Phase 4: product polish -- in progress
+### Phase 4: product polish -- done
 
 Done:
 
@@ -362,8 +362,17 @@ Done:
 - **Saves.** "Export save" downloads the `.sav`, and "Import save" goes
   through the page picker. The start card says storage is per-browser, and
   the page calls `navigator.storage.persist()`.
-- **Controls hint** on the start card, Fullscreen moved clear of the touch
-  controls, and URL launch options (`?game=blue`).
+- **Controls hint** on the start card. The Fullscreen button sits clear of
+  the touch controls and fades when idle. URL launch options (`?game=blue`).
+- **Red and Yellow verified** against their canonical US dumps with the full
+  browser smoke run (import, play, save, CONTINUE in a new tab), like Blue.
+- **Gamepads verified** with an emulated standard-mapped gamepad: A advances
+  the title, the D-pad moves the menu cursor.
+- **Audio.** The page resumes suspended AudioContexts on any gesture (for
+  iOS Safari). The smoke test logs every buffer OpenAL schedules and showed
+  continuous music: 83 s covered across ~950 non-silent buffers, with one
+  scripted song-change pause.
+- **Docs:** docs/platforms/web.md, linked from the README.
 
 Original list:
 
@@ -373,12 +382,17 @@ Original list:
 - Red and Yellow verification (same importer, different manifests).
 - Docs: `docs/platforms/web.md`, README Quick Start row.
 
-### Phase 5: release pipeline -- in progress
+### Phase 5: release pipeline -- done
 
-Done: `.github/workflows/web.yml` builds the site, runs the ROM-free browser
-smoke test, uploads the site as an artifact, and deploys to GitHub Pages on a
-manual run with "deploy" ticked (see ports/web/BUILD.md). Not done: a `web`
-job in `release.yml`.
+- **`.github/workflows/web.yml`** builds the site on pushes and PRs, runs the
+  ROM-free browser smoke test, uploads the site as an artifact, and deploys to
+  GitHub Pages on a manual run with "deploy" ticked (see ports/web/BUILD.md).
+- **The `web` job in `release.yml`** builds from the same version-stamped
+  `game.love` every other platform ships (`build_web.sh --love`), smoke-tests
+  it, and publishes `gen1recomp-<version>-web.zip` with the release, covered
+  by `sha256sums.txt`.
+- **Verified locally:** a fully clean `build_web.sh` takes 4m42s, and its site
+  passes the full smoke run with Red, Blue and Yellow.
 
 Original list:
 

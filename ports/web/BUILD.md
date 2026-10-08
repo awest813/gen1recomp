@@ -73,6 +73,13 @@ To publish on GitHub Pages:
 The page carries no ROM and no game data. Each player imports their own ROM,
 which stays in their browser.
 
+### Releases
+
+`release.yml`'s `web` job builds from the release's own version-stamped
+`game.love` (`scripts/build_web.sh --love dist/payload/game.love`) and runs
+the smoke test. The site is published as `gen1recomp-<version>-web.zip`,
+ready to unzip onto any static host.
+
 ## How it fits together
 
 | Piece | What it does |
