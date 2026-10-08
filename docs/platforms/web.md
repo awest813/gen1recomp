@@ -1,8 +1,11 @@
 # Web browser (beta)
 
 The browser build runs the same engine as the desktop app, compiled to
-WebAssembly with love.js. Pokemon Red, Blue and Yellow are supported. Gen 2
-and Gen 3 tabs appear in the launcher but are untested in the browser.
+WebAssembly with love.js. Pokemon Red, Blue and Yellow are supported. Gold,
+Silver, Crystal and Emerald import and boot in the browser but are still being
+tested (beta). Imports take about 5 s for Gen 1, 20 s for Gen 2 and 3 minutes
+for Emerald, which extracts on the page's one thread instead of a desktop's
+worker threads.
 
 ## Playing
 

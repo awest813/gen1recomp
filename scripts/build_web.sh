@@ -19,6 +19,9 @@
 #                   version-stamped payload) instead of running pack_love.sh;
 #                   the web trims below still apply to a copy of it
 #
+# G1R_WEB_LDFLAGS=--profiling-funcs keeps wasm function names, so a trap's
+# stack trace names the C++ function (debugging only; ~16% larger wasm).
+#
 # Output: <out>/index.html, game.js, game.data, love.js, love.wasm.  Serve it
 # over http(s) (python3 -m http.server -d dist/web) -- file:// will not load
 # the wasm.  The compat (no-pthreads) build needs no COOP/COEP headers.
@@ -134,7 +137,9 @@ build_native() {
   clone_at "$WORK/SDL2" "$SDL2_REPO" "$SDL2_COMMIT" "$SDL2_TAG"
 
   say "patching LÖVE (ports/web/patch_love.py)"
-  python3 "$ROOT/ports/web/patch_love.py" "$WORK/megasource/libs/love"
+  python3 -B "$ROOT/ports/web/patch_love.py" "$WORK/megasource/libs/love"
+  say "building Lua as C++ (ports/web/patch_lua.py)"
+  python3 -B "$ROOT/ports/web/patch_lua.py" "$WORK/megasource/libs/lua-5.1.5"
 
   say "building love.js (compat, no pthreads)"
   local build="$WORK/build/compat"
@@ -152,7 +157,8 @@ build_native() {
       -DLOVEJS_COMPAT=1 -DSEXPORT_ALL=1 -DSMAIN_MODULE=1 \
       -DSERROR_ON_UNDEFINED_SYMBOLS=0 \
       "-DCMAKE_C_FLAGS=-s DISABLE_EXCEPTION_CATCHING=0" \
-      "-DCMAKE_CXX_FLAGS=-s DISABLE_EXCEPTION_CATCHING=0" >/dev/null
+      "-DCMAKE_CXX_FLAGS=-s DISABLE_EXCEPTION_CATCHING=0" \
+      "-DCMAKE_EXE_LINKER_FLAGS=${G1R_WEB_LDFLAGS:-}" >/dev/null
     # megasource builds zlib's shared and static targets into the same
     # libz.a, which races under -j; a serial pass finishes what is left
     emmake make -j"$(nproc 2>/dev/null || echo 4)" \

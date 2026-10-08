@@ -84,4 +84,25 @@ do
   eq(fn and fn(), "ok", "real load sandboxes with env after install")
 end
 
+-- yieldablePcall: pcall whose callee may yield to the enclosing coroutine
+do
+  local ypcall = LuaCompat.yieldablePcall
+  eq(select("#", ypcall(function() return 1, nil, 3 end)), 4, "returns true plus every result, nils included")
+  local ok, err = ypcall(function() error("boom", 0) end)
+  check(ok == false and err == "boom", "errors come back as false, message")
+  local co = coroutine.create(function()
+    local okInner, got = ypcall(function()
+      local reply = coroutine.yield("tick", nil)
+      return reply * 2
+    end)
+    return okInner, got
+  end)
+  local r1, a, b = coroutine.resume(co)
+  check(r1 and a == "tick" and b == nil, "a yield inside it reaches the outer resumer")
+  local r2, okInner, got = coroutine.resume(co, 21)
+  check(r2 and okInner == true and got == 42, "the resume value flows back in and the call completes")
+  local jit = rawget(_G, "jit") ~= nil
+  eq(LuaCompat.pcallYields(), jit, "pcallYields: true on LuaJIT, false on PUC 5.1 (" .. _VERSION .. ")")
+end
+
 T.finish()

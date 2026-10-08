@@ -133,6 +133,14 @@ checkout that is not at its pin.
   converts to Lua errors. Without the compile flag those exceptions unwind
   straight through Lua's `pcall`, so any guarded `love.filesystem.read` of a
   missing file aborts the caller.
+- **PUC Lua built as C++** (`patch_lua.py`). Compiled as C, Lua raises
+  errors with `longjmp`, and emscripten 2.0.0 mishandles a `longjmp` through
+  C++ frames built with exception catching. Every LÖVE error that comes back
+  through `luax_catchexcept` then broke the caller's `pcall`:
+  `newImageData`/`newSource` jumped out of it, and `newImage` on a missing
+  file trapped and killed the runtime (Gold's intro probing for Crystal's
+  `kris.png`). As C++, `lua_error` is a `throw` (Lua's own `LUAI_THROW`), and
+  the public API keeps C linkage. Measured: no speed difference.
 - **RGBA8 canvases** (patched in `patch_love.py`). Upstream LÖVE gives
   GLES2 an RGBA8 render target only if `OES_rgb8_rgba8` is reported, and
   WebGL never reports it, so every Canvas was RGBA4.

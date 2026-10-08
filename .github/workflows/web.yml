@@ -72,7 +72,7 @@ jobs:
             .bazinga/work/web/SDL2
             .bazinga/work/web/build
             .bazinga/work/web/native-out
-          key: web-native-${{ hashFiles('scripts/build_web.sh', 'ports/web/patch_love.py', 'ports/web/native/**') }}
+          key: web-native-${{ hashFiles('scripts/build_web.sh', 'ports/web/patch_love.py', 'ports/web/patch_lua.py', 'ports/web/native/**') }}
           restore-keys: web-native-
 
       - name: build the site
