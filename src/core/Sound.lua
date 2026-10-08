@@ -892,6 +892,12 @@ function Sound.prewarmCommon(data)
   for _, name in ipairs(COMMON_SFX) do
     if Sound.prewarmSfx(data, name) then queued = queued + 1 end
   end
+  -- This runs during game load, a pause the player already sees; spend up
+  -- to 120 ms of it so the intro's opening effects (queued first) are ready
+  -- before the intro plays them.  Later calls find everything cached, unless
+  -- a sample-rate or channel-mix change invalidated it (an options screen,
+  -- where a short pause is fine).
+  pcall(require("src.core.ChipAudio").pumpPrewarm, 0.12)
   return queued
 end
 

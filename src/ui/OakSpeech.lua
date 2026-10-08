@@ -78,6 +78,17 @@ local function namePresets(game, who, fallback)
 end
 
 -- SGB: generic whole-screen palette (SET_PAL_GENERIC)
+-- The species whose cry the show-off plays.  Red/Blue show NIDORINO but voice
+-- NIDORINA (pokered's quirk); a data-configured demoSpecies cries as itself.
+function OakSpeech:demoCrySpecies()
+  local species = self.demoSpecies
+  if not require("src.core.GameVersion").isYellow() and species == "NIDORINO"
+      and not (self.cfg and self.cfg.demoSpecies) then
+    species = "NIDORINA"
+  end
+  return species
+end
+
 function OakSpeech:sgbPalettes(game)
   return require("src.render.PaletteFX").wholeNamed(game.data, "MEWMON")
 end
@@ -310,6 +321,9 @@ function OakSpeech.new(game, onDone)
   local demoPath, demoTrueColor = require("src.pokemon.Sprites").path(
     game.data, self.demoSpecies, "front", { kind = "oak" })
   self.demoPic = tryImage(demoPath)
+  -- the show-off cry plays ~50 s from now; synthesize it in the background
+  -- meanwhile rather than on that frame (a no-op when already cached)
+  pcall(Sound.prewarmCry, game.data, self:demoCrySpecies())
   self.demoTrueColor = self.demoPic and demoTrueColor or false
   local constants = game.data.constants or {}
   self.nameLen = constants.playerNameLength or 7
@@ -462,11 +476,7 @@ function OakSpeech:runStep(step)
     self.picFlip = true
     self.picTrueColor = self.demoTrueColor
     self:revealPic("wipe", function()
-      local species = self.demoSpecies
-      if not require("src.core.GameVersion").isYellow() and species == "NIDORINO"
-          and not (self.cfg and self.cfg.demoSpecies) then
-        species = "NIDORINA"
-      end
+      local species = self:demoCrySpecies()
       self:sayText(textOr(self.game, "_OakSpeechText2A"), function() self:advance() end,
         {auto = {wait = true, sound = function()
           return Sound.playCry(self.game.data, species, false)

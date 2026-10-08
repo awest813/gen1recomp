@@ -105,6 +105,7 @@ do
   eq(ChipAudio._effectStateForTest().mainJobs, 1, "one main-thread job queued")
   local ticks, state = 0, nil
   repeat
+    now = now + 1 / 60 -- one real frame per update (the pump runs once a frame)
     ChipAudio.update()
     ticks = ticks + 1
     state = ChipAudio._effectStateForTest()
@@ -126,6 +127,16 @@ do
   ChipSynth.renderEffectData = realRender
 end
 
+-- pumpPrewarm: a load screen can finish the queue synchronously
+do
+  check(ChipAudio.prewarmSfx(data, "TEST", 7, nil, sfx), "queue another variant")
+  eq(ChipAudio._effectStateForTest().mainJobs, 1, "queued, not rendered")
+  local before = ChipAudio._effectStateForTest().ready
+  eq(ChipAudio.pumpPrewarm(10), 0, "pumpPrewarm drains the queue within its budget")
+  eq(ChipAudio._effectStateForTest().ready, before + 1, "and the result is cached")
+  eq(ChipAudio.pumpPrewarm(10), 0, "an empty queue is a no-op")
+end
+
 -- ---------------------------------------------------------------- web music prefill
 do
   local song = ChipAsm.song{
@@ -140,8 +151,17 @@ do
   if source then
     eq(#source.queued, 1, "one buffer prefilled at song start")
     eq(source.queued[1] and source.queued[1]:getSampleCount(), 2048, "a 2048-sample buffer")
+    -- catch-up ticks inside one real frame: only the low-water rescue fills
+    local frozen = now
+    love.timer = { getTime = function() return frozen end }
     for _ = 1, 12 do ChipAudio.update() end
-    check(#source.queued >= 3, "per-tick slices keep the queue growing (" .. #source.queued .. ")")
+    eq(#source.queued, 2, "12 catch-up ticks in one frame fill only to the low-water mark")
+    -- one tick per real frame: each adds a slice, so the queue keeps growing
+    for _ = 1, 12 do
+      frozen = frozen + 1 / 60
+      ChipAudio.update()
+    end
+    check(#source.queued >= 5, "a slice per frame keeps the queue growing (" .. #source.queued .. ")")
   end
   ChipAudio.stopMusic()
 end

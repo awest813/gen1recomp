@@ -203,6 +203,26 @@ local function syncBufferSamples()
   return isWebAudio() and WEB_BUFFER_SAMPLES or MUSIC_BUFFER_SAMPLES
 end
 
+-- Game:update runs up to 15 catch-up audio ticks back to back after a long
+-- frame.  ranThisFrame(slot) is true when `slot` already ran within this real
+-- frame: rAF frames are >= ~6.9 ms apart even at 144 Hz, catch-up ticks land
+-- microseconds apart.  Used on Web to keep per-frame work per frame.
+local SAME_FRAME = 0.004
+local lastRun = {}
+local function ranThisFrame(slot)
+  local clock = love.timer and love.timer.getTime
+  if not clock then return false end
+  local now = clock()
+  local last = lastRun[slot]
+  if last and now - last < SAME_FRAME then return true end
+  lastRun[slot] = now
+  return false
+end
+
+local function webFilledThisFrame()
+  return ranThisFrame("fill")
+end
+
 local function fillInitial()
   return isWebAudio() and 1 or MUSIC_FILL_INITIAL
 end
@@ -250,9 +270,17 @@ local function fillSync(buffers)
   else
     budget = tickSamples()
     local ok, free = pcall(music.source.getFreeBufferCount, music.source)
-    if ok and type(free) == "number"
-        and MUSIC_BUFFER_COUNT - free < MUSIC_FILL_LOW_WATER then
+    local low = ok and type(free) == "number"
+      and MUSIC_BUFFER_COUNT - free < MUSIC_FILL_LOW_WATER
+    if low then
       budget = syncBufferSamples()
+    elseif isWebAudio() and webFilledThisFrame() then
+      -- After a long frame Game:update runs up to 15 catch-up audio ticks at
+      -- once; rendering a slice on each made the next frame long too.  The
+      -- web queue holds ~3 s and one slice outpaces playback 1.5x, so one
+      -- fill per real frame keeps up down to ~30 fps (the low-water branch
+      -- above still rescues a queue that is actually running dry).
+      return
     end
   end
   renderSync(music, budget)
@@ -451,7 +479,8 @@ end
 function ChipAudio.update()
   if suspended then return end
   if fxCh then drainEffects() end
-  pumpMainEffects()
+  -- the prewarm budget is per real frame, not per catch-up tick
+  if #mainJobs > 0 and not ranThisFrame("prewarm") then pumpMainEffects() end
   local m = currentMusic
   if not m then return end
   if m.threaded then
@@ -813,10 +842,10 @@ local function finishMainEffect(entry)
   mainJobByKey[entry.key] = nil
 end
 
-function pumpMainEffects()
+function pumpMainEffects(budget)
   if #mainJobs == 0 then return end
   local clock = love.timer and love.timer.getTime
-  local deadline = clock and clock() + MAIN_PREWARM_BUDGET
+  local deadline = clock and clock() + (budget or MAIN_PREWARM_BUDGET)
   while #mainJobs > 0 do
     local entry = mainJobs[1]
     local ok, done = pcall(entry.job.step, entry.job, MAIN_PREWARM_SLICE)
@@ -939,6 +968,15 @@ function ChipAudio.prewarmCry(data, species, resolved)
   local header = cry.chip and cry or cry.header
   if not header then return false end
   return requestEffect(data, header, cryOptions(cry))
+end
+
+-- Run the main-thread prewarm queue for up to `seconds` right now, in queue
+-- order.  For load screens, where a pause is invisible: Sound.prewarmCommon
+-- uses it so the intro's first effect is ready before the intro starts.
+-- A no-op with an empty queue (the worker path never fills it).
+function ChipAudio.pumpPrewarm(seconds)
+  pumpMainEffects(seconds)
+  return #mainJobs
 end
 
 -- test hook: prewarm bookkeeping

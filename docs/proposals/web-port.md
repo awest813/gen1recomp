@@ -250,7 +250,7 @@ build, Blue, headless Chromium):
 
 | | Before | After |
 |---|---|---|
-| Main-thread stalls >50 ms in the scripted run | 9-10, worst 375-493 ms | 5-6, worst ~105 ms |
+| Main-thread stalls >50 ms in the scripted run | 9-10, worst 375-493 ms | 5-6, worst ~120-130 ms (game start) |
 | Song start (sync path) | ~150-160 ms | 9-15 ms |
 | First play of an everyday SFX | 40-150 ms | 0 ms (prewarmed) |
 | Steady-state music synthesis | -- | ~2-2.5 ms/frame at 22.05 kHz |
@@ -275,19 +275,39 @@ build, Blue, headless Chromium):
   non-shader fade.
 - **Import:** no work needed; it takes about 4 s.
 
+Second pass, attributing the remaining slow frames with a sampling profiler
+built on an instruction-count hook:
+
+- **Catch-up ticks compounded.** After a long frame, `Game:update` runs up to
+  15 catch-up audio ticks back to back, and each rendered a music slice and
+  ran the 3 ms prewarm pump, so one slow frame made the next one slow too. On
+  Web both now run once per real frame (`ranThisFrame`). The low-water rule
+  still renders a whole buffer if the queue actually runs short.
+- **Load-time prewarm.** `Sound.prewarmCommon` now spends up to 120 ms of the
+  game-load pause (`ChipAudio.pumpPrewarm`), so the intro's first effect is
+  ready: `Shooting_Star` went from ~80 ms to 3 ms.
+- **Oak's show-off cry** (NIDORINA in Red/Blue; it shows NIDORINO) is
+  prewarmed by `OakSpeech` itself when the speech starts, ~50 s before it
+  plays.
+- **Sprite palette bakes run on the GPU on Web.** `SpriteRenderer`'s
+  per-pixel `mapPixel` recolor cost 60-70 ms per intro sprite without the JIT.
+  A shader with the same thresholds renders it once into a Canvas. Verified
+  pixel-identical to the CPU bake in the browser for every intro sprite.
+  Desktop keeps the CPU path.
+
 Still open:
 
-- **Remaining stalls:**
-  - the first sound after load (`Shooting_Star`, ~80 ms), which plays before
-    any prewarm can run;
-  - map entry (~80-100 ms: map load plus two song starts in one frame);
-  - one-off ~50 ms texture-upload frames on the title.
+- **The game-start transition** (title menu to overworld, ~120-130 ms once):
+  creating the overworld controller and loading the map scripts. This is a
+  one-time load at a menu transition.
+- **Texture and canvas creation under software GL** (~40-60 ms each for the
+  title's images, ~18 ms even for the launcher logo). This isn't Lua (heap
+  size doesn't change) and isn't GC (a full collect of the ~18 MB heap takes
+  ~21 ms). It should be far cheaper on a real GPU, but that's unverified.
 - **Frame rate on real GPUs and audio quality.** Headless SwiftShader draws
-  in software, which gives 48-60 fps at 960x720; Lua update plus draw is only
-  ~3 ms per frame. Audible underruns can only be judged on a real browser.
-- **The original exit targets:** "no transition hitch over one frame" is not
-  met yet (see the stalls above), and the 16 MB `game.love` is just over the
-  15 MB goal.
+  in software, which gives 43-60 fps at 960x720; Lua update plus draw is ~3 ms
+  per frame. Audible underruns can only be judged on a real browser.
+- **The 15 MB payload goal**: `game.love` is 16 MB.
 
 Original plan:
 

@@ -47,6 +47,61 @@ local obpCache = {}
 local obpByPath = {}
 local groupStrings = {}
 
+-- GPU twin of the mapPixel bake below, for the browser build: there every
+-- pixel's Lua callback is a C->Lua call on a JIT-less interpreter, and an
+-- intro sprite bake cost 60-70 ms of one frame.  Same thresholds, run once
+-- into a nearest-filtered Canvas with replace/premultiplied blending so the
+-- stored texels are exactly the colours the CPU path writes (sprite alpha is
+-- only ever 0 or 1).  nil = untried, false = unavailable (shader refused):
+-- the CPU path is always the fallback.
+local obpShader = nil
+local OBP_SHADER = [[
+extern vec3 col2;
+extern vec3 col3;
+extern vec3 col4;
+vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen) {
+  vec4 p = Texel(tex, uv);
+  if (p.a == 0.0) { return p; }
+  if (p.r > 0.83) { return vec4(p.rgb, 0.0); }
+  vec3 c = p.r > 0.5 ? col2 : (p.r > 0.17 ? col3 : col4);
+  return vec4(c, p.a);
+}
+]]
+
+local function gpuBakeAvailable()
+  if obpShader ~= nil then return obpShader ~= false end
+  obpShader = false
+  local g = love.graphics
+  if not (g and g.newShader and g.newCanvas and g.setCanvas) then return false end
+  if not require("src.core.Platform").isWeb() then return false end
+  local ok, shader = pcall(g.newShader, OBP_SHADER)
+  if ok and shader then obpShader = shader end
+  return obpShader ~= false
+end
+
+local function gpuBake(path, colors)
+  local g = love.graphics
+  local source = getImage(path)
+  local w, h = source:getDimensions()
+  local canvas = g.newCanvas(w, h, { dpiscale = 1 })
+  canvas:setFilter("nearest", "nearest")
+  local function rgb(c) return { c[1] / 255, c[2] / 255, c[3] / 255 } end
+  obpShader:send("col2", rgb(colors[2]))
+  obpShader:send("col3", rgb(colors[3]))
+  obpShader:send("col4", rgb(colors[4]))
+  g.push("all")
+  g.setCanvas(canvas)
+  g.clear(0, 0, 0, 0)
+  g.origin()
+  g.setScissor()
+  g.setShader(obpShader)
+  g.setBlendMode("replace", "premultiplied")
+  g.setColor(1, 1, 1, 1)
+  g.draw(source, 0, 0)
+  g.pop()
+  return canvas
+end
+
 local function getObpImage(path, colors, group)
   local byGroup = type(path) == "string" and obpByPath[path]
   if byGroup then
@@ -58,7 +113,12 @@ local function getObpImage(path, colors, group)
   local key = path .. "#obp" .. group
   if not obpCache[key] then
     local img
-    if love.image and love.image.newImageData then
+    if gpuBakeAvailable() then
+      local ok, baked = pcall(gpuBake, path, colors)
+      img = ok and baked or nil
+    end
+    if img then -- luacheck: ignore 542 (baked on the GPU; nothing to do)
+    elseif love.image and love.image.newImageData then
       local id = Assets.imageData(path)
       id:mapPixel(function(_, _, r, g, b, a)
         if a == 0 then return r, g, b, a end

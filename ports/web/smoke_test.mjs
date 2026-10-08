@@ -230,13 +230,18 @@ try {
           await press("z", 30, 350);
           await press("Enter", 1, 1500);
           await press("z", 68, 350);
-          await press("x", 4, 600);
-          await press("ArrowDown", 1, 800);
-          await press("x", 2, 500);
           await screenshot("play-bedroom");
-          await press("F1", 1, 3000);
+          // F1 only saves once the overworld is idle, and how many presses the
+          // closing text needs depends on the frame rate: keep closing text
+          // with B (which also advances it) and retrying F1 until a save lands.
           const saveFile = `${saveDir}/save_${game}.lua`;
-          const saved = await fsCall(`try { return FS.stat("${saveFile}").size; } catch (e) { return 0; }`);
+          const saveSize = () => fsCall(`try { return FS.stat("${saveFile}").size; } catch (e) { return 0; }`);
+          let saved = 0;
+          for (let attempt = 0; attempt < 25 && !saved; attempt++) {
+            await press("x", 3, 500);
+            await press("F1", 1, 1500);
+            saved = await saveSize();
+          }
           await checkCrash("during play");
           if (!saved) fail("F1 in the bedroom did not write a save");
           else note(`F1 wrote save_${game}.lua (${saved} bytes)`);
