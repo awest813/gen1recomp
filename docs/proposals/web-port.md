@@ -246,7 +246,7 @@ desktop immediately and benefit every platform.
 
 **Exit:** Blue playable from import to first gym in desktop Chrome and Firefox; measurements recorded in this doc.
 
-### Phase 3: performance and audio -- in progress
+### Phase 3: performance and audio -- done (open items listed below)
 
 Done so far (measured with `smoke_test.mjs --play` and a slow-frame profiler
 build, Blue, headless Chromium):
@@ -320,7 +320,11 @@ Still open:
 
 - **The game-start transition** (title menu to overworld, ~120-130 ms once):
   creating the overworld controller and loading the map scripts. This is a
-  one-time load at a menu transition.
+  one-time load at a menu transition. I tried shipping precompiled bytecode,
+  built by Lua 5.1.5 compiled with emscripten so it matches wasm32's 4-byte
+  `size_t`. Launcher boot only went from 1.3 s to 1.2 s, while `game.love`
+  grew from 16 to 20.5 MB because bytecode with debug info compresses worse.
+  Compilation isn't the bottleneck, so the build ships source.
 - **Texture and canvas creation under software GL** (~40-60 ms each for the
   title's images, ~18 ms even for the launcher logo). This isn't Lua (heap
   size doesn't change) and isn't GC (a full collect of the ~18 MB heap takes

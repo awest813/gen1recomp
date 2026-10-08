@@ -106,8 +106,10 @@
       border-radius: 6px;
       cursor: pointer;
       opacity: 0.5;
+      transition: opacity 0.4s;
     }
     #fullscreen:hover { opacity: 1; }
+    #fullscreen.idle { opacity: 0; pointer-events: none; }
     #drop {
       position: fixed;
       inset: 0;
@@ -165,7 +167,9 @@
       <h1>G1R Deluxe</h1>
       <p>Pokemon Red, Blue and Yellow, rebuilt natively. Bring your own ROM.</p>
       <p>The ROM you pick is read in this browser and never uploaded. Your
-        imported game data and saves stay in this browser's storage.</p>
+        imported game data and saves stay in this browser's storage. Clearing
+        site data deletes them, so use <em>Export save</em> in the launcher to
+        keep a copy.</p>
       <p class="keys">Arrows move &middot; <kbd>Z</kbd>/<kbd>Enter</kbd> A &middot;
         <kbd>X</kbd>/<kbd>Backspace</kbd> B &middot; <kbd>Esc</kbd> Start &middot;
         <kbd>Tab</kbd> Select &middot; <kbd>F1</kbd> save. Gamepads work; on a
@@ -190,6 +194,37 @@
     </div>
   </div>
   <input id="fileinput" type="file">
+
+  <!--
+    Web Audio unlock.  love.js creates its AudioContext after async startup,
+    outside the Start click, and stricter browsers (iOS Safari) leave such a
+    context suspended until a later gesture resumes it.  Track every context
+    the page creates and resume suspended ones on any tap or key press.
+  -->
+  <script>
+    (function () {
+      var Native = window.AudioContext || window.webkitAudioContext;
+      if (!Native) return;
+      var contexts = [];
+      function Tracked(options) {
+        var ctx = options === undefined ? new Native() : new Native(options);
+        contexts.push(ctx);
+        return ctx;
+      }
+      Tracked.prototype = Native.prototype;
+      window.AudioContext = Tracked;
+      if (window.webkitAudioContext) window.webkitAudioContext = Tracked;
+      function resumeAll() {
+        contexts.forEach(function (ctx) {
+          if (ctx.state === "suspended" && ctx.resume) ctx.resume().catch(function () {});
+        });
+      }
+      ["pointerdown", "keydown", "touchend"].forEach(function (name) {
+        window.addEventListener(name, resumeAll, true);
+      });
+      window.g1rAudioContexts = contexts;
+    })();
+  </script>
 
   <!-- game.js (the data package) and love.js both read this global -->
   <script>var Module = {};</script>
@@ -338,6 +373,18 @@
 
       // ---------------------------------------------------------------
       // Fullscreen needs a user gesture, so it is a page button.
+      // shown on pointer/touch activity, faded out after a few idle seconds so
+      // it never sits over the game or the launcher logo
+      var idleTimer = null;
+      function wakeFullscreenButton() {
+        fullscreenButton.classList.remove("idle");
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(function () { fullscreenButton.classList.add("idle"); }, 2500);
+      }
+      ["pointermove", "pointerdown", "touchstart"].forEach(function (name) {
+        window.addEventListener(name, wakeFullscreenButton, { passive: true });
+      });
+
       fullscreenButton.addEventListener("click", function () {
         var el = document.documentElement;
         if (document.fullscreenElement) {
@@ -383,6 +430,7 @@
         startPanel.style.display = "none";
         canvas.style.visibility = "visible";
         fullscreenButton.style.display = "block";
+        wakeFullscreenButton();
         canvas.focus();
         // nudge SDL to pick up the CSS-sized canvas
         setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);

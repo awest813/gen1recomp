@@ -72,6 +72,50 @@ const browser = await chromium.launch({
     "--autoplay-policy=no-user-gesture-required"],
 });
 const context = await browser.newContext({ viewport: { width: 960, height: 720 } });
+// Audio probe: emscripten's OpenAL plays each queued buffer through an
+// AudioBufferSourceNode.  Recording every start() (when it plays, how long,
+// how loud) shows whether the game produces sound at all and, because the
+// music stream is continuous, whether playback ever ran dry (gaps).
+await context.addInitScript(() => {
+  const log = (window.g1rAudioLog = []);
+  const start = AudioBufferSourceNode.prototype.start;
+  AudioBufferSourceNode.prototype.start = function (when, ...rest) {
+    try {
+      const buf = this.buffer;
+      if (buf) {
+        const data = buf.getChannelData(0);
+        let sum = 0, n = 0;
+        for (let i = 0; i < data.length; i += 8) { sum += data[i] * data[i]; n++; }
+        const at = typeof when === "number" && when > 0 ? when : this.context.currentTime;
+        log.push({ at, dur: buf.duration, rms: Math.sqrt(sum / Math.max(1, n)) });
+        if (log.length > 20000) log.splice(0, 10000);
+      }
+    } catch (e) { /* never break playback */ }
+    return start.call(this, when, ...rest);
+  };
+});
+
+async function audioReport(sinceCtxTime) {
+  return page.evaluate((since) => {
+    const ctx = (window.g1rAudioContexts || [])[0];
+    const now = ctx ? ctx.currentTime : 0;
+    const spans = (window.g1rAudioLog || []).filter((e) => e.at + e.dur > since)
+      .map((e) => [Math.max(e.at, since), e.at + e.dur, e.rms])
+      .sort((a, b) => a[0] - b[0]);
+    let covered = 0, edge = since, gaps = 0, worstGap = 0, loud = 0;
+    const gapList = [];
+    for (const [a, b, rms] of spans) {
+      if (a > edge) {
+        const g = a - edge;
+        if (g > 0.05) { gaps++; worstGap = Math.max(worstGap, g); gapList.push([+(edge - since).toFixed(2), +(g * 1000).toFixed(0)]); }
+      }
+      if (b > edge) { covered += b - Math.max(a, edge); edge = b; }
+      if (rms > 0.001) loud++;
+    }
+    return { window: now - since, covered, gaps, worstGap, buffers: spans.length, loud, now, gapList };
+  }, sinceCtxTime);
+}
+
 let page = null;
 async function openPage() {
   const p = await context.newPage();
@@ -114,6 +158,11 @@ async function boot(label, query = "") {
     page.evaluate(() => !!(window.Module && window.Module.g1rFS)), 30000);
   if (!bridge) return false;
   note(`${label}: runtime up, bridge installed`);
+  // audio can't be heard headless, but the engine must have opened a Web
+  // Audio context (tracked by the page shell's unlock shim) and it must run
+  const audio = await page.evaluate(() => (window.g1rAudioContexts || []).map((c) => c.state));
+  if (!audio.length) fail(`${label}: no Web Audio context was created`);
+  else note(`${label}: audio contexts ${audio.join(", ")}`);
   await page.waitForTimeout(4000);
   await screenshot(`${label}-launcher`);
   return true;
@@ -217,6 +266,11 @@ try {
           });
           await page.click("#canvas");
           await page.waitForTimeout(6000);
+          // start the audio window once the title music is under way
+          const playAudioStart = await page.evaluate(() => {
+            const ctx = (window.g1rAudioContexts || [])[0];
+            return ctx ? ctx.currentTime : 0;
+          });
           await screenshot("play-title");
           // title -> main menu -> NEW GAME -> Oak's intro -> name the player
           // and rival (NEW NAME + "AAA..." + START) -> the bedroom.  Timings
@@ -266,6 +320,14 @@ try {
             requestAnimationFrame(tick);
           }));
           note(`page frame rate over 3 s: ${fps.toFixed(1)} fps (headless SwiftShader)`);
+          // music runs continuously from the title to the bedroom: report how
+          // much of that window had audio scheduled, and any silent gaps
+          const audio = await audioReport(playAudioStart);
+          note(`audio during play: ${audio.buffers} buffers (${audio.loud} non-silent), `
+            + `${audio.covered.toFixed(1)} s of ${audio.window.toFixed(1)} s covered, `
+            + `${audio.gaps} gaps >50 ms (worst ${(audio.worstGap * 1000).toFixed(0)} ms)`
+            + (audio.gapList.length ? ` at [${audio.gapList.map((g) => `${g[0]}s:${g[1]}ms`).join(", ")}]` : ""));
+          if (!audio.loud) fail("no audible audio was scheduled during play");
           const stalls = await page.evaluate(() => window.g1rLongTasks || []);
           const worst = stalls.length ? Math.max(...stalls) : 0;
           note(`main-thread stalls >50 ms during play: ${stalls.length}, worst ${worst} ms`
