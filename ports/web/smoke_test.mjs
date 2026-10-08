@@ -124,6 +124,14 @@ async function openPage() {
   const p = await context.newPage();
   p.on("console", (m) => note(`[console.${m.type()}] ${m.text()}`));
   p.on("pageerror", (e) => fail(`page error: ${e.message}`));
+  // the page asks before unloading mid-sync ("Leave site?"); Playwright's
+  // default dismiss would cancel the navigation, so leave.  Any other dialog
+  // is a bug: headless dismisses it silently, a real browser blocks the game
+  // behind it (love.js's per-exception alert, LÖVE's version warning).
+  p.on("dialog", (d) => {
+    if (d.type() !== "beforeunload") fail(`page ${d.type()}: ${d.message().replace(/\n/g, " / ").slice(0, 200)}`);
+    d.accept().catch(() => {});
+  });
   page = p;
   return p;
 }

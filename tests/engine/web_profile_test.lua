@@ -70,6 +70,25 @@ eq(Platform.canFetchRemote(), false, "no curl fetch on web")
 eq(Platform.pickedFilesAreTemporary(), true, "picked files are scratch copies")
 eq(Platform.romImportMode(), "native-picker", "bridge puts web on the native-picker path")
 
+-- ---------------------------------------------------------------- conf.lua
+-- love.js is LÖVE 11.4: declaring 11.5 there makes LÖVE alert() a
+-- "Compatibility Warning" on every page load
+do
+  local savedConf, savedOs, savedFs = love.conf, love._os, love.filesystem
+  love._os = "Web"
+  -- conf.lua's own setup calls (setSymlinksEnabled, ...) are no-ops here
+  love.filesystem = setmetatable({}, { __index = function(_, k)
+    return savedFs and savedFs[k] or function() end
+  end })
+  local chunk = assert(loadfile("conf.lua"))
+  local okLoad = pcall(chunk)
+  local t = { window = {}, modules = {}, audio = {} }
+  local okConf = okLoad and love.conf and pcall(love.conf, t)
+  check(okConf, "conf.lua runs on Web")
+  eq(t.version, "11.4", "conf.lua declares love.js's LÖVE version on Web")
+  love.conf, love._os, love.filesystem = savedConf, savedOs, savedFs
+end
+
 -- ---------------------------------------------------------------- storage sync
 do
   -- /tmp is MEMFS on the web: scratch writes there need no IndexedDB sync

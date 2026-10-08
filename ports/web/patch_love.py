@@ -20,6 +20,15 @@ What it does:
      never reports that name, so every Canvas -- the 160x144 game canvas
      included -- silently became RGBA4 (16 levels per channel).
 
+  5. Stops love.js alerting on every love::Exception (common/Exception.cpp).
+     Its constructor ran alert("An error occurred before the game window
+     could be initialised...") and printed the message for *every*
+     exception, including the ones luax_catchexcept turns straight into a
+     caught Lua error -- so each probe for a file that may not exist (the
+     launcher checks every version's rom-cache.complete at boot) popped a
+     blocking dialog.  Real failures still reach Lua and the game's error
+     screen.
+
 Usage: patch_love.py <path/to/love>
 """
 
@@ -73,6 +82,17 @@ OPENGL_RGBA8 = """#ifdef LOVE_EMSCRIPTEN
 """
 
 
+EXCEPTION_ALERT = """	#if LOVE_EMSCRIPTEN
+		// TODO: replace with a nice console.error call (ie figure out how to pass multi-line string to it properly)
+		std::cout << message << std::endl;
+		emscripten_run_script("alert('An error occurred before the game window could be initialised. Please check the console!')");
+	#endif
+"""
+EXCEPTION_QUIET = """	// %s: no alert/print per exception -- most are caught and
+	// become Lua errors (ports/web/patch_love.py, item 5)
+"""
+
+
 def pristine(path: Path):
     """Text of the untouched file, normalized to \n, plus its newline style
     (love's CMakeLists.txt is CRLF; keep it that way so the diff stays small)."""
@@ -102,7 +122,8 @@ def main() -> None:
     cmake = love / "CMakeLists.txt"
     love_cpp = love / "src" / "modules" / "love" / "love.cpp"
     opengl_cpp = love / "src" / "modules" / "graphics" / "opengl" / "OpenGL.cpp"
-    for path in (cmake, love_cpp, opengl_cpp):
+    exception_cpp = love / "src" / "common" / "Exception.cpp"
+    for path in (cmake, love_cpp, opengl_cpp, exception_cpp):
         if not path.exists():
             sys.exit("patch_love.py: not a LÖVE tree (missing %s)" % path)
 
@@ -129,6 +150,10 @@ def main() -> None:
     text = replace_once(text, OPENGL_RGBA8_ANCHOR,
                         OPENGL_RGBA8 % (MARKER, OPENGL_RGBA8_ANCHOR), "RGBA8 render target")
     write(opengl_cpp, text, newline)
+
+    text, newline = pristine(exception_cpp)
+    text = replace_once(text, EXCEPTION_ALERT, EXCEPTION_QUIET % MARKER, "Exception alert")
+    write(exception_cpp, text, newline)
 
     print("patch_love.py: patched %s" % love)
 

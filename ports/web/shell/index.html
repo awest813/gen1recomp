@@ -421,6 +421,15 @@
         if (document.visibilityState === "hidden") flushStorage();
       });
       window.addEventListener("pagehide", flushStorage);
+      // A big import (Emerald: thousands of files) takes a while to reach
+      // IndexedDB after the game shows it as done; closing the tab mid-sync
+      // keeps only part of it.  Ask first, only while a sync is in flight.
+      window.addEventListener("beforeunload", function (e) {
+        if (typeof Module.g1rSyncBusy === "function" && Module.g1rSyncBusy()) {
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      });
 
       // ---------------------------------------------------------------
       // Fullscreen needs a user gesture, so it is a page button.

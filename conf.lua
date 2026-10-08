@@ -66,7 +66,9 @@ function love.conf(t)
     t.window.minwidth = 480
     t.window.minheight = 360
   end
-  t.version = love._os == "iOS" and "12.0" or "11.5"
+  -- love.js (Web) is LÖVE 11.4; declaring 11.5 there made LÖVE put up a
+  -- blocking "Compatibility Warning" alert on every page load
+  t.version = love._os == "iOS" and "12.0" or love._os == "Web" and "11.4" or "11.5"
   -- Driver vsync stays on everywhere (including KMSDRM handhelds) so
   -- PresentSync can probe cadence and pace via the panel.  Turning it off
   -- here bypassed that stack and forced the FrameCap 1 ms polling loop.

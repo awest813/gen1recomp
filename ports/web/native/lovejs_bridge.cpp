@@ -63,6 +63,8 @@ EM_JS(void, g1r_init, (), {
 		// later sync would queue behind it forever and nothing would persist
 		try { FS.syncfs(false, done); } catch (e) { done(e); }
 	};
+	// true while a sync is running or queued: the page asks before closing
+	Module["g1rSyncBusy"] = function () { return syncing || again || waiters.length > 0; };
 	if (typeof Module["g1rOnBridgeReady"] === "function") Module["g1rOnBridgeReady"]();
 });
 

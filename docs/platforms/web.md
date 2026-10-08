@@ -2,10 +2,13 @@
 
 The browser build runs the same engine as the desktop app, compiled to
 WebAssembly with love.js. Pokemon Red, Blue and Yellow are supported. Gold,
-Silver, Crystal and Emerald import and boot in the browser but are still being
-tested (beta). Imports take about 5 s for Gen 1, 20 s for Gen 2 and 3 minutes
-for Emerald, which extracts on the page's one thread instead of a desktop's
-worker threads.
+Silver and Crystal import and play in the browser (beta). Emerald imports and
+plays its intro, but some Gen 3 screens (Pokédex and Pokéblock graphics,
+contests) still depend on LuaJIT's FFI and do not work in the browser yet.
+Imports take about 5 s for Gen 1, 20 s for Gen 2 and 3 minutes for Emerald,
+which extracts on the page's one thread instead of a desktop's worker
+threads. Keep the tab open until the import finishes saving; the page asks
+before closing while it is still writing.
 
 ## Playing
 
