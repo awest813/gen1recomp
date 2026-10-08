@@ -119,6 +119,7 @@ tests/engine/game3_cutscene_push_2764.lua
 tests/engine/game3_disguise_order_2763.lua
 tests/engine/game3_em_bike_doors_2637.lua
 tests/engine/game3_em_catch_prompt_2637.lua
+tests/engine/game3_foot_bump_bug2787.lua
 tests/engine/game3_frontier_obedience_2638.lua
 tests/engine/game3_post_dex_background_2637.lua
 tests/engine/game3_rs_anim_names_test.lua
@@ -232,7 +233,9 @@ tests/engine/game3_virtual_objects_test.lua
 tests/engine/gate_gen2_mod_facade.lua
 tests/engine/gate_gen3_mod_api.lua
 tests/engine/gate_gen3_mod_facade.lua
+tests/engine/gen1_credits_mon_lag_bug2786.lua
 tests/engine/gen1_field_fx_palette_h13.lua
+tests/engine/gen1_hof_no_skip_bug2785.lua
 tests/engine/gen2_always_hit_bug1272.lua
 tests/engine/gen2_anim_bake_scissor_bug1895.lua
 tests/engine/gen2_anim_param_feed_sweep.lua

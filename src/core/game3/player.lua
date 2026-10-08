@@ -624,16 +624,21 @@ function Player.tryMove(dir, game, run)
         and Collision.tryConnection(game, Player.cellX, Player.cellY, dir, run) then
       return "connection"
     end
+    Player.notOnBikeCollide(dir)
     return "blocked", why
   end
   local RG = package.loaded["src.core.game3.rotating_gate"]
   if RG and RG.active() and RG.checkCollision(dir, tx, ty) then
-    -- pokeemerald/src/field_player_avatar.c:709
+    -- pokeemerald/src/field_player_avatar.c:709; a gate that cannot turn is
+    -- COLLISION_ROTATING_GATE, which PlayerNotOnBikeMoving leaves out of the
+    -- bump (the pret-documented oversight), so no sound and no walk here
     return "blocked", "rotating_gate"
   end
   local BikeRse = rseBike()
   if BikeRse and BikeRse.acroCollision(Collision.behavior(tx, ty)) ~= 0 then
-    -- pokeemerald/src/field_player_avatar.c:711
+    -- pokeemerald/src/field_player_avatar.c:711: the rail collisions are
+    -- ordinary collisions on foot, so they bump like a wall
+    Player.notOnBikeCollide(dir)
     return "blocked", "acro"
   end
   local isDismount = Player.surfing and not Player.underwater
@@ -650,6 +655,39 @@ function Player.tryMove(dir, game, run)
     Player.stepFrames, Player.running = Player.ordinaryStepFrames(run)
   end
   return "step"
+end
+
+-- pokeemerald/src/field_player_avatar.c:1115 PlayCollisionSoundIfNotFacingWarp:
+-- SE_WALL_HIT unless the player stands on an arrow warp pointing the way
+-- they pushed, or is pushing up into a warp door.
+function Player.playCollisionSoundIfNotFacingWarp(dir)
+  local here = Collision.behavior and Collision.behavior(Player.cellX, Player.cellY)
+  if Collision.arrowWarpDir and Collision.arrowWarpDir(here) == dir then return end
+  if dir == "up" and Collision.isWarpDoor
+      and Collision.isWarpDoor(Collision.behavior(Player.cellX, Player.cellY - 1)) then
+    return
+  end
+  pcall(function()
+    local Audio = lazyReq("src.core.game3.audio")
+    local SE = lazyReq("src.core.game3.se_ids")
+    if Audio.playSe and SE.SE_WALL_HIT then Audio.playSe(SE.SE_WALL_HIT) end
+  end)
+end
+
+-- pokeemerald/src/field_player_avatar.c:1011 PlayerNotOnBikeCollide: every
+-- on-foot refusal that is not a ledge hop, a surf dismount, a boulder push or
+-- a stuck rotating gate plays the wall bump and walks in place for the
+-- 32-frame MOVEMENT_ACTION_WALK_IN_PLACE_SLOW (event_object_movement.c
+-- MovementAction_WalkInPlaceSlow_Step0).  Player.update polls no input while
+-- the action runs, so holding into the wall repeats the bump every 32 frames
+-- the way PlayerNotOnBikeMoving re-collides once the action ends.  Gen 3 had
+-- no bump at all on foot: the player just stood there silently (#2787).
+local IN_PLACE_SLOW_FRAMES = 32
+function Player.notOnBikeCollide(dir)
+  Player.playCollisionSoundIfNotFacingWarp(dir)
+  if not Player.facingLocked then Player.facing = dir end
+  Player.moveDir = dir
+  Player.startAction({ frames = IN_PLACE_SLOW_FRAMES, walk = "normal" })
 end
 
 -- pokeemerald/src/field_player_avatar.c:651

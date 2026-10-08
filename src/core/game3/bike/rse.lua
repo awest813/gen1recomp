@@ -257,11 +257,9 @@ local function playerTurnInPlace(dir)
 end
 
 -- pokeemerald/src/field_player_avatar.c:1115 PlayCollisionSoundIfNotFacingWarp
+-- (shared with the on-foot bump, Player.notOnBikeCollide, #2787)
 local function playCollisionSoundIfNotFacingWarp(dir)
-  local P = player()
-  if Collision.arrowWarpDir(currentBehavior()) == dir then return end
-  if dir == "up" and Collision.isWarpDoor(Collision.behavior(P.cellX, P.cellY - 1)) then return end
-  playSe("SE_WALL_HIT")
+  player().playCollisionSoundIfNotFacingWarp(dir)
 end
 
 -- pokeemerald/src/field_player_avatar.c:1000 PlayerOnBikeCollide
