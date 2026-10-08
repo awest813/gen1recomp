@@ -48,8 +48,10 @@ const MIME = {
 };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
-  let file = path.join(site, decodeURIComponent(url.pathname));
-  if (!file.startsWith(site)) { res.writeHead(403).end(); return; }
+  let rel;
+  try { rel = decodeURIComponent(url.pathname); } catch { res.writeHead(400).end(); return; }
+  let file = path.join(site, rel);
+  if (file !== site && !file.startsWith(site + path.sep)) { res.writeHead(403).end(); return; }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, "index.html");
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404).end(); return; }

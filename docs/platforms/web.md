@@ -31,7 +31,8 @@ copy of the ROM itself is never stored.
 
 On a phone, the on-screen buttons appear the first time you touch the game.
 The **Fullscreen** button in the top-left corner appears when you move the
-mouse or touch the screen.
+mouse or touch the screen (Esc leaves fullscreen). iPhone browsers have no
+fullscreen mode for pages, so the button is hidden there.
 
 ### Saves
 
@@ -41,7 +42,8 @@ save** on the launcher's save panel, which downloads a `.sav` file. **Import
 save** brings one back, in this browser or in the desktop app.
 
 The game runs in one tab at a time. A second tab shows "Already open" instead
-of starting, because two copies would overwrite each other's saves.
+of starting, because two copies would overwrite each other's saves. It starts
+by itself once the other tab closes.
 
 ### Links
 

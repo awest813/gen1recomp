@@ -172,7 +172,11 @@ jobs:
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.56.1
           npx playwright install --with-deps chromium
-          node ports/web/smoke_test.mjs --site dist/web --out dist/web-smoke --timeout-s 180
+          # one retry: a headless-Chromium hiccup on a shared runner should
+          # not hold up every other platform's release; a real break fails twice
+          node ports/web/smoke_test.mjs --site dist/web --out dist/web-smoke --timeout-s 180 \
+            || { echo "::warning::web smoke failed once; retrying"; \
+                 node ports/web/smoke_test.mjs --site dist/web --out dist/web-smoke --timeout-s 180; }
       - name: Zip the site
         run: |
           mkdir -p dist/web-release

@@ -5844,8 +5844,11 @@ local function obpEmoteImage(path)
   end
   -- browser build: the same bake as a shader (src/render/GpuBake.lua)
   if GpuBake.available() then
-    local baked = GpuBake.recolor(love.graphics.newImage(Assets.resolve(path)),
-      GRAY_BUCKETS, { keepZero = false })
+    local ok, source = pcall(love.graphics.newImage, Assets.resolve(path))
+    local baked = ok and GpuBake.recolor(source, GRAY_BUCKETS, { keepZero = false })
+    -- the bake has drawn by now (popping the canvas flushes); free the
+    -- throwaway source instead of leaving its texture to the GC
+    if ok and source.release then source:release() end
     if baked then return baked end
   end
   local id = Assets.imageData(path)

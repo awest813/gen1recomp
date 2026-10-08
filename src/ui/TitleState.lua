@@ -464,8 +464,12 @@ function TitleState:currentSprite()
     self.sprites[species] = cached
     -- this mon cries if the player leaves the title now: synthesize the cry
     -- while it is on screen instead of on the press (a no-op if cached, and
-    -- a worker or main-thread prewarm never delays the play itself)
-    pcall(require("src.core.Sound").prewarmCry, self.game.data, species)
+    -- a main-thread prewarm never delays the play itself).  Browser only:
+    -- a desktop worker renders on the press in time, and prewarming every
+    -- cycled mon would park unplayed cries in the effect cache.
+    if not require("src.core.Platform").hasThreads() then
+      pcall(require("src.core.Sound").prewarmCry, self.game.data, species)
+    end
   end
   return cached and cached.image or nil, cached and cached.trueColor or false
 end

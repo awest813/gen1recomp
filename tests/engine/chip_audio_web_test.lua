@@ -166,6 +166,37 @@ do
   ChipAudio.stopMusic()
 end
 
+-- a mix change drops in-flight main-thread jobs: they read the live mix and
+-- would finish as mixed PCM under the old key
+do
+  check(ChipAudio.prewarmSfx(data, "TEST", 9, nil, sfx), "queue a variant")
+  eq(ChipAudio._effectStateForTest().mainJobs, 1, "queued")
+  ChipAudio.setChannelVolume(2, 0.5)
+  eq(ChipAudio._effectStateForTest().mainJobs, 0, "a channel-mix change drops it")
+  ChipAudio.setChannelVolume(2, 1)
+end
+
+-- beginFrame (love.run, every Web frame) pumps the prewarm queue with no
+-- music playing; last, since it switches ranThisFrame to frame counting
+do
+  love.timer = { getTime = function() now = now + 0.0001; return now end }
+  check(ChipAudio.prewarmSfx(data, "TEST", 11, nil, sfx), "queue a variant with no music")
+  local before = ChipAudio._effectStateForTest().ready
+  local frames = 0
+  repeat
+    ChipAudio.beginFrame()
+    frames = frames + 1
+  until ChipAudio._effectStateForTest().mainJobs == 0 or frames > 500
+  eq(ChipAudio._effectStateForTest().ready, before + 1, "beginFrame alone finished the prewarm")
+  -- catch-up ticks after beginFrame in the same frame do not pump again
+  check(ChipAudio.prewarmSfx(data, "TEST", 13, nil, sfx), "queue one more")
+  ChipAudio.beginFrame()
+  local jobState = ChipAudio._effectStateForTest()
+  for _ = 1, 10 do ChipAudio.update() end
+  eq(ChipAudio._effectStateForTest().ready, jobState.ready,
+    "update() in the same frame leaves the budget spent")
+end
+
 if ChipSynth._setBulkWritesForTest then ChipSynth._setBulkWritesForTest(true) end
 love.audio, love.timer = savedAudio, savedTimer
 love.system.getOS = savedGetOS

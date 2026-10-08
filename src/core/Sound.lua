@@ -885,6 +885,7 @@ local COMMON_SFX = {
 -- per tick in the background, so the first menu press or door is already
 -- synthesized.  Unknown names are skipped; it is a no-op where a worker
 -- exists (desktop renders fast enough on first play, and prewarms battles).
+local commonPumped = false
 function Sound.prewarmCommon(data)
   if not love.audio or deviceSuspended() then return 0 end
   if require("src.core.Platform").hasThreads() then return 0 end
@@ -892,12 +893,14 @@ function Sound.prewarmCommon(data)
   for _, name in ipairs(COMMON_SFX) do
     if Sound.prewarmSfx(data, name) then queued = queued + 1 end
   end
-  -- This runs during game load, a pause the player already sees; spend up
-  -- to 120 ms of it so the intro's opening effects (queued first) are ready
-  -- before the intro plays them.  Later calls find everything cached, unless
-  -- a sample-rate or channel-mix change invalidated it (an options screen,
-  -- where a short pause is fine).
-  pcall(require("src.core.ChipAudio").pumpPrewarm, 0.12)
+  -- The first call runs during game load, a pause the player already sees;
+  -- spend up to 120 ms of it so the intro's opening effects (queued first)
+  -- are ready before the intro plays them.  Later calls (every options
+  -- change) leave the queue to the per-frame budget.
+  if not commonPumped then
+    commonPumped = true
+    pcall(require("src.core.ChipAudio").pumpPrewarm, 0.12)
+  end
   return queued
 end
 

@@ -53,12 +53,15 @@ EM_JS(void, g1r_init, (), {
 		if (syncing) { again = true; return; }
 		syncing = true;
 		var mine = waiters; waiters = [];
-		FS.syncfs(false, function (err) {
+		function done(err) {
 			syncing = false;
 			if (err && Module["printErr"]) Module["printErr"]("[g1r] storage sync failed: " + err);
 			mine.forEach(function (f) { try { f(err || null); } catch (e) {} });
 			if (again || waiters.length) { again = false; Module["g1rSync"](); }
-		});
+		}
+		// a synchronous throw must not leave `syncing` stuck at true: every
+		// later sync would queue behind it forever and nothing would persist
+		try { FS.syncfs(false, done); } catch (e) { done(e); }
 	};
 	if (typeof Module["g1rOnBridgeReady"] === "function") Module["g1rOnBridgeReady"]();
 });
@@ -102,7 +105,9 @@ EM_JS(int, g1r_download_file, (const char *path, const char *name), {
 		a.style.display = "none";
 		document.body.appendChild(a);
 		a.click();
-		setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+		// generous: some browsers (Safari, slow disks) read the blob well
+		// after the click returns
+		setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 40000);
 		return 1;
 	} catch (e) {
 		if (Module["printErr"]) Module["printErr"]("[g1r] download failed: " + e);

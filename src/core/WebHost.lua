@@ -209,9 +209,12 @@ function WebHost.update(dt)
     local path = bridge.getDroppedFile()
     if path and love.handlers and love.handlers.filedropped then
       local file = droppedFile(path)
-      love.handlers.filedropped(file)
+      -- the /tmp copy goes away even when the handler throws; the error
+      -- itself still reaches the game's crash handling
+      local ok, err = pcall(love.handlers.filedropped, file)
       file:close()
       rawRemove(path)
+      if not ok then error(err, 0) end
     end
   end
   if dirty then

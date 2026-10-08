@@ -33,8 +33,11 @@ on:
       - "main.lua"
       - "conf.lua"
       - "src/**"
+      - "data/**"
+      - "assets/**"
       - "ports/web/**"
       - "scripts/build_web.sh"
+      - "scripts/pack_love.sh"
       - ".github/workflows/web.yml"
   workflow_dispatch:
     inputs:
@@ -45,7 +48,8 @@ on:
 
 concurrency:
   group: web-${{ github.ref }}
-  cancel-in-progress: true
+  # a hand-started run (possibly a deploy) is never cancelled by a push
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read

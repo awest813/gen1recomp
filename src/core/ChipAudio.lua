@@ -205,11 +205,19 @@ end
 
 -- Game:update runs up to 15 catch-up audio ticks back to back after a long
 -- frame.  ranThisFrame(slot) is true when `slot` already ran within this real
--- frame: rAF frames are >= ~6.9 ms apart even at 144 Hz, catch-up ticks land
--- microseconds apart.  Used on Web to keep per-frame work per frame.
+-- frame.  On Web love.run calls ChipAudio.beginFrame() every frame and the
+-- check is an exact frame count.  Without it (tests, a host that never calls
+-- it) it falls back to timing: rAF frames are >= ~6.9 ms apart even at
+-- 144 Hz, catch-up ticks land microseconds apart.
 local SAME_FRAME = 0.004
 local lastRun = {}
+local frameNo = 0
 local function ranThisFrame(slot)
+  if frameNo > 0 then
+    if lastRun[slot] == frameNo then return true end
+    lastRun[slot] = frameNo
+    return false
+  end
   local clock = love.timer and love.timer.getTime
   if not clock then return false end
   local now = clock()
@@ -357,7 +365,14 @@ function ChipAudio.playMusic(data, header, allowLoops)
   return source
 end
 
+-- A main-thread prewarm job reads ChipSynth's live rate and mix as it goes:
+-- one straddling a change would finish as mixed PCM under the old key.
+local function dropMainJobs()
+  if mainJobs and #mainJobs > 0 then mainJobs, mainJobByKey = {}, {} end
+end
+
 local function pushChannelMix()
+  dropMainJobs()
   if workerReady and cmdCh then
     cmdCh:push({ cmd = "channelMix",
                  volumes = ChipSynth.getChannelVolumes(),
@@ -476,6 +491,15 @@ function ChipAudio.stats()
   return stats
 end
 
+-- Once per real frame, before love.update (main.lua love.run, Web only):
+-- pins ranThisFrame to frames and advances the main-thread prewarm queue
+-- even while no chip music is playing (title/Oak cries, common SFX).
+function ChipAudio.beginFrame()
+  frameNo = frameNo + 1
+  if suspended then return end
+  if #mainJobs > 0 and not ranThisFrame("prewarm") then pumpMainEffects() end
+end
+
 function ChipAudio.update()
   if suspended then return end
   if fxCh then drainEffects() end
@@ -510,7 +534,7 @@ function ChipAudio.ensureMusicPlaying()
     if not m.engine or m.engine:finished() then return end
     local ok, playing = pcall(m.source.isPlaying, m.source)
     if ok and not playing then
-      fillSync(MUSIC_FILL_INITIAL)
+      fillSync(fillInitial())
       pcall(m.source.play, m.source)
       statRestarts = statRestarts + 1
     end
@@ -609,7 +633,7 @@ function ChipAudio.rebuildPlayback()
   m.started = false
   if old then pcall(old.stop, old) end
   if not m.threaded then
-    fillSync(MUSIC_FILL_INITIAL)
+    fillSync(fillInitial())
     if not musicHeld then pcall(source.play, source) end
     m.started = true
   end
@@ -620,6 +644,7 @@ function ChipAudio.setStereo(enabled)
   enabled = not not enabled
   if ChipSynth.getStereo() == enabled then return end
   ChipSynth.setStereo(enabled)
+  dropMainJobs()
   stereoEpoch = stereoEpoch + 1
   local m = currentMusic
   if m and m.engine then
@@ -649,7 +674,7 @@ function ChipAudio.setStereo(enabled)
   m.started = false
   if old then pcall(old.stop, old) end
   if not m.threaded then
-    fillSync(MUSIC_FILL_INITIAL)
+    fillSync(fillInitial())
     if not musicHeld then pcall(source.play, source) end
     m.started = true
   end
@@ -683,6 +708,8 @@ function ChipAudio.setSampleRate(rate)
   local before = sampleRate()
   if ChipSynth.setSampleRate(rate) == before then return false end
   ChipAudio.stopMusic()
+  -- every cached effect and in-flight render is at the old rate
+  dropEffects()
   return true
 end
 

@@ -87,8 +87,13 @@ clone_at() {
   fi
   if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ]; then
     git -C "$dir" fetch -q --depth 50 origin "$commit" 2>/dev/null || true
-    git -C "$dir" checkout -q "$commit" \
+    # -f and clean: a restored CI cache (restore-keys) or an earlier run left
+    # the tree patched by patch_love.py, with its .orig copies and added
+    # files; a pin bump must start from the pristine new commit.  Single -f
+    # clean leaves nested repos (megasource/libs/love) alone.
+    git -C "$dir" checkout -qf "$commit" \
       || fail "$dir: cannot check out pinned commit $commit"
+    git -C "$dir" clean -qfdx
   fi
   [ "$(git -C "$dir" rev-parse HEAD)" = "$commit" ] \
     || fail "$dir is not at pinned commit $commit"
@@ -109,6 +114,9 @@ build_native() {
     "$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION" >/dev/null
   fi
   [ -f "$EMSDK_DIR/emsdk_env.sh" ] || fail "no emsdk at $EMSDK_DIR"
+  # emsdk_env.sh puts emsdk's own (old) node and python first on PATH; keep
+  # that to the native build so packaging below uses the system node/npm
+  local saved_path="$PATH"
   # shellcheck disable=SC1091
   source "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
   command -v emcc >/dev/null || fail "emcc not on PATH after sourcing emsdk_env.sh"
@@ -140,10 +148,15 @@ build_native() {
       -DSERROR_ON_UNDEFINED_SYMBOLS=0 \
       "-DCMAKE_C_FLAGS=-s DISABLE_EXCEPTION_CATCHING=0" \
       "-DCMAKE_CXX_FLAGS=-s DISABLE_EXCEPTION_CATCHING=0" >/dev/null
-    emmake make -j"$(nproc 2>/dev/null || echo 4)"
+    # megasource builds zlib's shared and static targets into the same
+    # libz.a, which races under -j; a serial pass finishes what is left
+    emmake make -j"$(nproc 2>/dev/null || echo 4)" \
+      || { echo "parallel make failed; retrying serially" >&2; emmake make -j1; }
   )
   mkdir -p "$NATIVE_OUT"
   cp "$build/love/love.js" "$build/love/love.wasm" "$NATIVE_OUT/"
+  export PATH="$saved_path"
+  unset EMSDK EMSDK_NODE EMSDK_PYTHON EM_CONFIG EM_CACHE EMCC_LOCAL_PORTS
 }
 
 if [ "$SKIP_NATIVE" -eq 0 ]; then

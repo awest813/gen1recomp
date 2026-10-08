@@ -84,6 +84,21 @@
     }
     .card button:disabled { opacity: 0.6; cursor: progress; }
     #status { min-height: 1.45em; font-size: 13px; }
+    /* after Start the card (and #status) is gone; problems show here */
+    #error {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 12px;
+      transform: translateX(-50%);
+      max-width: calc(100% - 32px);
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #fff;
+      background: #a1262b;
+      border-radius: 8px;
+      z-index: 30;
+    }
     .card .keys { font-size: 13px; }
     kbd {
       padding: 0 4px;
@@ -165,7 +180,7 @@
   <div id="start">
     <div class="card">
       <h1>G1R Deluxe</h1>
-      <p>Pokemon Red, Blue and Yellow, rebuilt natively. Bring your own ROM.</p>
+      <p>Pok&eacute;mon Red, Blue and Yellow, rebuilt natively. Bring your own ROM.</p>
       <p>The ROM you pick is read in this browser and never uploaded. Your
         imported game data and saves stay in this browser's storage. Clearing
         site data deletes them, so use <em>Export save</em> in the launcher to
@@ -174,15 +189,16 @@
         <kbd>X</kbd>/<kbd>Backspace</kbd> B &middot; <kbd>Esc</kbd> Start &middot;
         <kbd>Tab</kbd> Select &middot; <kbd>F1</kbd> save. Gamepads work; on a
         phone, touch the screen for on-screen buttons.</p>
-      <button id="go" type="button" disabled>Loading...</button>
+      <button id="go" type="button" disabled aria-busy="true">Loading...</button>
       <p id="status" role="status"></p>
     </div>
   </div>
 
   <button id="fullscreen" type="button">Fullscreen</button>
   <div id="drop">Drop a ROM or save file</div>
-  <div id="pickprompt" role="dialog" aria-live="polite">
-    <span id="pickprompt-text">Choose a file</span>
+  <div id="error" role="alert"></div>
+  <div id="pickprompt" role="dialog" aria-labelledby="pickprompt-text">
+    <span id="pickprompt-text" aria-live="polite">Choose a file</span>
     <button id="pickprompt-go" type="button">Browse...</button>
     <button id="pickprompt-cancel" type="button">Cancel</button>
   </div>
@@ -190,7 +206,8 @@
     <div class="card">
       <h1>Already open</h1>
       <p>G1R Deluxe is running in another tab or window. Two copies would
-        overwrite each other's saves, so close the other one and reload.</p>
+        overwrite each other's saves. Close the other one and this page starts
+        over by itself.</p>
     </div>
   </div>
   <input id="fileinput" type="file">
@@ -255,6 +272,16 @@
 
       function setStatus(text) { statusLine.textContent = text || ""; }
 
+      // the start card is hidden once the game runs; show problems on a banner
+      var errorBanner = document.getElementById("error");
+      function showError(text) {
+        if (startPanel.style.display === "none") {
+          errorBanner.textContent = text;
+          errorBanner.style.display = "block";
+        }
+        setStatus(text);
+      }
+
       window.addEventListener("keydown", function (e) {
         // keep the page from scrolling / navigating on game keys
         var keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ",
@@ -298,12 +325,23 @@
         canvas.focus();
       }
 
+      // keys typed on the prompt bar belong to it: SDL listens on window and
+      // cancels Tab/Enter/Space, which would make its buttons unreachable
+      // from the keyboard.  Escape cancels.
+      ["keydown", "keyup", "keypress"].forEach(function (name) {
+        pickPrompt.addEventListener(name, function (e) {
+          e.stopPropagation();
+          if (name === "keydown" && e.key === "Escape") { e.preventDefault(); cancelPick(); }
+        });
+      });
+
       Module.g1rPickFile = function (kind) {
         fileInput.value = "";
         fileInput.accept = ACCEPT[kind] || "";
         pickPromptText.textContent = KIND_LABEL[kind] || "Choose a file";
         pickPrompt.style.display = "flex";
         pickOpen = true;
+        document.getElementById("pickprompt-go").focus();
         try { fileInput.click(); } catch (e) { /* the prompt bar covers it */ }
         return true;
       };
@@ -317,12 +355,9 @@
         (Module.g1rPickErrors || []).push("No file was selected.");
       }
       document.getElementById("pickprompt-cancel").addEventListener("click", cancelPick);
-      fileInput.addEventListener("cancel", function () {
-        // leave the bar up when the automatic open was refused (no gesture);
-        // a cancel from a dialog the player actually saw closes it
-        if (navigator.userActivation && !navigator.userActivation.isActive) return;
-        cancelPick();
-      });
+      // fires only for a dialog that actually opened (a refused automatic
+      // open fires nothing, so the bar stays up for its Browse button)
+      fileInput.addEventListener("cancel", cancelPick);
 
       fileInput.addEventListener("change", function () {
         var file = fileInput.files && fileInput.files[0];
@@ -340,14 +375,19 @@
         dragDepth++;
         dropHint.style.display = "flex";
       });
-      window.addEventListener("dragover", function (e) { if (started) e.preventDefault(); });
+      // always cancel the browser default: a file dropped on the page before
+      // Start would otherwise navigate away from it
+      window.addEventListener("dragover", function (e) { e.preventDefault(); });
       window.addEventListener("dragleave", function () {
         dragDepth = Math.max(0, dragDepth - 1);
         if (dragDepth === 0) dropHint.style.display = "none";
       });
       window.addEventListener("drop", function (e) {
-        if (!started) return;
         e.preventDefault();
+        if (!started || !Module.g1rFS) {
+          setStatus("Press Start first, then drop the file again.");
+          return;
+        }
         dragDepth = 0;
         dropHint.style.display = "none";
         var files = e.dataTransfer && e.dataTransfer.files;
@@ -355,6 +395,7 @@
         for (var i = 0; i < files.length; i++) {
           stage(DROP_DIR, files[i], "g1rDrops").catch(function (err) {
             console.error("[g1r] drop failed:", err);
+            showError("Could not read the dropped file: " + err.message);
           });
         }
       });
@@ -385,12 +426,18 @@
         window.addEventListener(name, wakeFullscreenButton, { passive: true });
       });
 
+      // iPhone Safari has no element fullscreen at all; older Safari only
+      // the webkit-prefixed API.  No support: no button.
+      var fullscreenSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+      fullscreenButton.title = "Fullscreen (Esc leaves it)";
       fullscreenButton.addEventListener("click", function () {
         var el = document.documentElement;
-        if (document.fullscreenElement) {
-          document.exitFullscreen();
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+          (document.exitFullscreen || document.webkitExitFullscreen).call(document);
         } else if (el.requestFullscreen) {
           el.requestFullscreen().catch(function () {});
+        } else if (el.webkitRequestFullscreen) {
+          el.webkitRequestFullscreen();
         }
         canvas.focus();
       });
@@ -429,18 +476,20 @@
       Module.onRuntimeInitialized = function () {
         startPanel.style.display = "none";
         canvas.style.visibility = "visible";
-        fullscreenButton.style.display = "block";
-        wakeFullscreenButton();
+        if (fullscreenSupported) {
+          fullscreenButton.style.display = "block";
+          wakeFullscreenButton();
+        }
         canvas.focus();
         // nudge SDL to pick up the CSS-sized canvas
         setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
       };
       canvas.addEventListener("webglcontextlost", function (e) {
         e.preventDefault();
-        alert("The graphics context was lost. Reload the page to continue.");
+        showError("The graphics context was lost. Reload the page to continue (saves on disk are kept).");
       }, false);
       window.addEventListener("error", function (e) {
-        setStatus("Something went wrong: " + (e.message || "see the browser console"));
+        showError("Something went wrong: " + (e.message || "see the browser console"));
       });
 
       // IDBFS makes IndexedDB mirror this tab's filesystem on every sync, so a
@@ -452,6 +501,8 @@
           if (!lock) {
             startPanel.style.display = "none";
             document.getElementById("blocked").style.display = "flex";
+            // reload by itself once the other copy closes and frees the lock
+            navigator.locks.request("g1r-instance", function () { location.reload(); });
             return;
           }
           run();
@@ -475,15 +526,22 @@
       }
       goButton.addEventListener("click", start);
 
+      window.g1rLoveFailed = function () {
+        goButton.textContent = "Unavailable";
+        setStatus("The game engine (love.js) failed to download. Check the connection and reload.");
+      };
+
       window.g1rLoveLoaded = function () {
         loveReady = true;
         goButton.disabled = false;
         goButton.textContent = "Start";
+        goButton.removeAttribute("aria-busy");
+        goButton.focus();
         if (/[?&]autostart=1\b/.test(location.search)) start();
       };
     })();
   </script>
   <script src="game.js"></script>
-  <script async src="love.js" onload="g1rLoveLoaded()"></script>
+  <script async src="love.js" onload="g1rLoveLoaded()" onerror="g1rLoveFailed()"></script>
 </body>
 </html>

@@ -403,6 +403,33 @@ Original list:
   - ROM-free, so no ROM in CI;
   - a ROM-backed run stays local or uses a private cache, like the existing T3 tier.
 
+### Post-phase-5 audit -- done
+
+Two review passes (web/CI layer, Lua changes) after phase 5. Fixed:
+
+- **Build/CI:** a pin bump over a restored cache now force-checks-out and
+  cleans the patched tree; emsdk's PATH no longer leaks into packaging; a
+  serial `make` retry covers megasource's parallel `libz.a` race; PR builds
+  also trigger on `data/`, `assets/` and `pack_love.sh`; a push no longer
+  cancels a hand-started (deploy) run; the release smoke retries once.
+- **Page:** the picker bar is keyboard-reachable (SDL ate Tab/Enter/Space)
+  and Escape cancels it; a dialog cancel always closes it; a file dropped
+  before Start no longer navigates away; errors after Start show on a banner
+  (no more `alert()` on context loss); the Fullscreen button is hidden where
+  fullscreen doesn't exist and uses the webkit API on older Safari; the
+  "Already open" tab starts by itself once the other closes; love.js
+  download failure is reported.
+- **Bridge:** a synchronous `FS.syncfs` throw can't wedge the sync
+  coalescer; download blob URLs live 40 s.
+- **Audio:** `ranThisFrame` counts real frames (`ChipAudio.beginFrame` from
+  `love.run`) instead of a 4 ms window a slow tick could outlast; the
+  prewarm queue advances with no music playing; rate/stereo/mix changes drop
+  in-flight main-thread renders (no mixed-rate PCM under a stale key); the
+  restart/rebuild paths prefill one buffer on Web; title/Oak cry prewarms
+  and the 120 ms common-SFX pump are browser-only and first-load-only.
+- **Misc:** throwaway GPU-bake source images are released; a throwing drop
+  handler still cleans up its `/tmp` copy; the version rail's lerp fraction.
+
 ### Later (not in the first release)
 
 - **Online play:** `Client.configure{ connect = fn }` (`src/online/Client.lua:1174`) already accepts an injected transport. Implement send/poll over a browser WebSocket (one JSON line per text frame), and put a WebSocket endpoint or a websockify-style proxy in front of the relay. Alternatively, Emscripten's socket emulation turns LuaSocket TCP into WebSocket connections automatically, which may need no Lua change at all once the relay speaks WS.

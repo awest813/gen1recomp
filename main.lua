@@ -1754,6 +1754,12 @@ function love.run()
     checkEmergencyQuit(dt)
 
     -- call update and draw
+    if web then
+      -- per-frame audio bookkeeping (src/core/ChipAudio.lua beginFrame);
+      -- only once the game has loaded the module
+      local chip = package.loaded["src.core.ChipAudio"]
+      if chip and chip.beginFrame then chip.beginFrame() end
+    end
     if love.update then love.update(dt) end
     WebHost.update(dt)
 

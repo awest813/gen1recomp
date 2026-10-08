@@ -77,7 +77,6 @@ local function namePresets(game, who, fallback)
   return fallback
 end
 
--- SGB: generic whole-screen palette (SET_PAL_GENERIC)
 -- The species whose cry the show-off plays.  Red/Blue show NIDORINO but voice
 -- NIDORINA (pokered's quirk); a data-configured demoSpecies cries as itself.
 function OakSpeech:demoCrySpecies()
@@ -89,6 +88,7 @@ function OakSpeech:demoCrySpecies()
   return species
 end
 
+-- SGB: generic whole-screen palette (SET_PAL_GENERIC)
 function OakSpeech:sgbPalettes(game)
   return require("src.render.PaletteFX").wholeNamed(game.data, "MEWMON")
 end
@@ -322,8 +322,11 @@ function OakSpeech.new(game, onDone)
     game.data, self.demoSpecies, "front", { kind = "oak" })
   self.demoPic = tryImage(demoPath)
   -- the show-off cry plays ~50 s from now; synthesize it in the background
-  -- meanwhile rather than on that frame (a no-op when already cached)
-  pcall(Sound.prewarmCry, game.data, self:demoCrySpecies())
+  -- meanwhile rather than on that frame (a no-op when already cached;
+  -- browser only, as in TitleState:currentSprite)
+  if not require("src.core.Platform").hasThreads() then
+    pcall(Sound.prewarmCry, game.data, self:demoCrySpecies())
+  end
   self.demoTrueColor = self.demoPic and demoTrueColor or false
   local constants = game.data.constants or {}
   self.nameLen = constants.playerNameLength or 7
