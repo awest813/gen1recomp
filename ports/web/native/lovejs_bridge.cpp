@@ -117,6 +117,91 @@ EM_JS(int, g1r_download_file, (const char *path, const char *name), {
 	}
 });
 
+// HTTP through the browser's fetch(), for src/net/Fetch.lua's Web transport
+// (the desktop ports use curl on a worker thread; the page has neither).
+// Asynchronous: start returns at once, the body streams into the virtual
+// filesystem at `dest`, and Lua polls.  Cross-origin hosts must send CORS
+// headers -- GitHub Pages, raw.githubusercontent.com and api.github.com do.
+EM_JS(int, g1r_fetch_start, (int id, const char *method, const char *url,
+		const char *headers, const char *body, int bodyLen, const char *dest), {
+	var jobs = Module["g1rFetches"] = Module["g1rFetches"] || {};
+	var job = jobs[id] = { state: 0, code: 0, progress: 0, err: "" };
+	var m = UTF8ToString(method) || "GET";
+	var path = UTF8ToString(dest);
+	var init = { method: m, headers: {}, redirect: "follow" };
+	UTF8ToString(headers).split("\n").forEach(function (line) {
+		var i = line.indexOf(":");
+		if (i > 0) init.headers[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+	});
+	if (body && m !== "GET" && m !== "HEAD") init.body = HEAPU8.slice(body, body + bodyLen);
+	function fail(why) { job.state = 2; job.err = String(why); }
+	try {
+		fetch(UTF8ToString(url), init).then(function (res) {
+			job.code = res.status;
+			if (!res.ok) { fail("HTTP " + res.status); return; }
+			var total = Number(res.headers.get("content-length")) || 0;
+			var chunks = [], got = 0;
+			function finish() {
+				var data = new Uint8Array(got), at = 0;
+				chunks.forEach(function (c) { data.set(c, at); at += c.length; });
+				var dir = path.substring(0, path.lastIndexOf("/"));
+				if (dir) { try { FS.mkdirTree(dir); } catch (e) {} }
+				FS.writeFile(path, data);
+				job.progress = 1;
+				job.state = 1;
+			}
+			if (!res.body || !res.body.getReader) {
+				return res.arrayBuffer().then(function (buf) {
+					chunks.push(new Uint8Array(buf)); got = buf.byteLength; finish();
+				});
+			}
+			var reader = res.body.getReader();
+			function pump() {
+				return reader.read().then(function (r) {
+					if (r.done) { finish(); return; }
+					chunks.push(r.value);
+					got += r.value.length;
+					if (total > 0) job.progress = Math.min(0.99, got / total);
+					return pump();
+				});
+			}
+			return pump();
+		}).catch(function (e) {
+			// a CORS refusal and an offline network look the same from here
+			fail("network error (offline, or the host does not allow browser requests): " + (e && e.message || e));
+		});
+	} catch (e) {
+		fail(e && e.message || e);
+		return 0;
+	}
+	return 1;
+});
+
+// 0 pending, 1 ok, 2 error, -1 unknown id
+EM_JS(int, g1r_fetch_state, (int id), {
+	var job = (Module["g1rFetches"] || {})[id];
+	return job ? job.state : -1;
+});
+EM_JS(int, g1r_fetch_code, (int id), {
+	var job = (Module["g1rFetches"] || {})[id];
+	return job ? job.code : 0;
+});
+EM_JS(double, g1r_fetch_progress, (int id), {
+	var job = (Module["g1rFetches"] || {})[id];
+	return job ? job.progress : 0;
+});
+EM_JS(int, g1r_fetch_err_len, (int id), {
+	var job = (Module["g1rFetches"] || {})[id];
+	return job ? lengthBytesUTF8(job.err) + 1 : 1;
+});
+EM_JS(void, g1r_fetch_err_into, (int id, char *buf, int len), {
+	var job = (Module["g1rFetches"] || {})[id];
+	stringToUTF8(job ? job.err : "", buf, len);
+});
+EM_JS(void, g1r_fetch_forget, (int id), {
+	if (Module["g1rFetches"]) delete Module["g1rFetches"][id];
+});
+
 static int shiftQueue(lua_State *L, int which)
 {
 	int len = g1r_peek_len(which);
@@ -163,7 +248,50 @@ static int w_downloadFile(lua_State *L)
 	return 1;
 }
 
+// fetchStart(id, method, url, headers ("Name: value" lines), body|nil, dest)
+static int w_fetchStart(lua_State *L)
+{
+	int id = (int) luaL_checkinteger(L, 1);
+	const char *method = luaL_optstring(L, 2, "GET");
+	const char *url = luaL_checkstring(L, 3);
+	const char *headers = luaL_optstring(L, 4, "");
+	size_t bodyLen = 0;
+	const char *body = lua_isstring(L, 5) ? lua_tolstring(L, 5, &bodyLen) : nullptr;
+	const char *dest = luaL_checkstring(L, 6);
+	lua_pushboolean(L, g1r_fetch_start(id, method, url, headers, body, (int) bodyLen, dest) != 0);
+	return 1;
+}
+
+// fetchPoll(id) -> "pending"|"ok"|"error"|"unknown", httpCode, progress, err
+static int w_fetchPoll(lua_State *L)
+{
+	int id = (int) luaL_checkinteger(L, 1);
+	int state = g1r_fetch_state(id);
+	lua_pushstring(L, state == 0 ? "pending" : state == 1 ? "ok" : state == 2 ? "error" : "unknown");
+	lua_pushinteger(L, g1r_fetch_code(id));
+	lua_pushnumber(L, g1r_fetch_progress(id));
+	if (state == 2)
+	{
+		int len = g1r_fetch_err_len(id);
+		std::vector<char> buf((size_t) len);
+		g1r_fetch_err_into(id, buf.data(), len);
+		lua_pushstring(L, buf.data());
+	}
+	else
+		lua_pushnil(L);
+	return 4;
+}
+
+static int w_fetchForget(lua_State *L)
+{
+	g1r_fetch_forget((int) luaL_checkinteger(L, 1));
+	return 0;
+}
+
 static const luaL_Reg functions[] = {
+	{ "fetchStart", w_fetchStart },
+	{ "fetchPoll", w_fetchPoll },
+	{ "fetchForget", w_fetchForget },
 	{ "pickFile", w_pickFile },
 	{ "getPickedFile", w_getPickedFile },
 	{ "getPickError", w_getPickError },

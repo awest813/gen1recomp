@@ -69,8 +69,13 @@ URL parameters:
 
 ## What is different from desktop
 
-- **No self-updater, mod catalog or online play.** The browser can't run the
-  curl and TCP transports those use. Locally installed mods still load.
+- **Mods work; the catalog downloads through your browser.** MODS > Import
+  mod .zip (or dropping a .zip on the page) installs a mod, and FIND lists
+  the mod catalog. GitHub doesn't let pages download release files directly,
+  so Install opens the mod's .zip in a new tab; drop it on the page when it
+  finishes.
+- **No self-updater, save sync or online play.** The browser can't open the
+  network connections those use; the ONLINE tab says so.
 - **No SHADER FX** (librashader is a native library). Performance defaults to
   LOW, which also turns off TILT and survey zoom; audio is synthesized at
   22.05 kHz.

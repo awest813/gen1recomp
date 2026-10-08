@@ -20,6 +20,11 @@ local function compute()
     and type(love.system.pickFile) == "function"
   local nativeHttp = love and love.system
     and type(love.system.httpDownload) == "function"
+  -- the browser fetches through the page (src/net/Fetch.lua's web transport)
+  if web and not nativeHttp then
+    local okW, WebHost = pcall(require, "src.core.WebHost")
+    nativeHttp = okW and WebHost.fetchBridge() ~= nil or false
+  end
   return {
     os = osName,
     nx = nx,

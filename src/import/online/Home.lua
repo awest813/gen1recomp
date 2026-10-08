@@ -30,6 +30,12 @@ function Home.identity(imp, x, y, w, m)
   local verified = type(you) == "table" and you.verified == true
   local offline = state == "offline" or state == "error"
   local upgrade = Connect.upgradeText()
+  -- The browser build cannot open the relay's TCP connection (no sockets in
+  -- a page), so it says so instead of offering a Connect that cannot work.
+  if not upgrade and require("src.core.Platform").isWeb() then
+    upgrade = Strings("Online play needs the desktop or mobile app: a browser"
+      .. " cannot open the game's network connection.")
+  end
   local statusLine = upgrade or st.status
   if not statusLine then
     if state == "error" then

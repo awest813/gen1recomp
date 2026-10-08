@@ -2133,8 +2133,17 @@ function OnlinePanel.connectOptions(imp)
   }
 end
 
+-- No sockets in a browser page: the relay connection cannot be opened there.
+local WEB_NO_ONLINE = "Online play needs the desktop or mobile app."
+local function webBlocked(st)
+  if not require("src.core.Platform").isWeb() then return false end
+  st.status, st.statusOk = WEB_NO_ONLINE, false
+  return true
+end
+
 function OnlinePanel.doConnect(imp)
   local st = OnlinePanel.state(imp)
+  if webBlocked(st) then return false end
   OnlinePanel.ensureName(imp)
   local ok, err = Connect.doConnect(OnlinePanel.connectOptions(imp))
   if not ok then
@@ -2148,6 +2157,7 @@ end
 
 function OnlinePanel.connect(imp)
   local st = OnlinePanel.state(imp)
+  if webBlocked(st) then return false end
   ensureHooks()
   OnlinePanel.ensureName(imp)
   OnlinePanel.armDiscord()

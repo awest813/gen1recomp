@@ -7261,9 +7261,11 @@ function RomImporter:_beginModInstall(spec)
     "v" .. tostring(release.version or "?"))
 end
 
-function RomImporter:_modInstallFailed(spec, msg)
+function RomImporter:_modInstallFailed(spec, msg, neutral)
   if not spec.quiet then
-    local notice = { ok = false, text = tostring(msg) }
+    -- neutral: not a failure, a next step (the browser downloading a GitHub
+    -- release itself -- ModUpdate.browserMustDownload)
+    local notice = { ok = neutral == true, text = tostring(msg) }
     if spec.notice == "find" then self.findNotice = notice
     elseif spec.notice ~= "cart" then self.modNotice = notice end
   end
@@ -7318,7 +7320,8 @@ function RomImporter:_pumpModInstall()
     return
   end
   if not path then
-    self:_modInstallFailed(spec, err or "download failed")
+    self:_modInstallFailed(spec, err or "download failed",
+      job.h and job.h.browserDownload)
     return
   end
   -- Hash gate before the unzip: a pinned archive that does not match the cart

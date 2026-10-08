@@ -6435,8 +6435,10 @@ end
 
 local function buildSyncModal(imp, m)
   if not imp:_syncSupported() then
-    Sync.unavailable(imp, m, Strings(
-      "Save sync cannot run on this build: it has no way to send the signed requests it needs. Update to the latest app build, or use a desktop build."))
+    local web = require("src.core.Platform").isWeb()
+    Sync.unavailable(imp, m, Strings(web
+      and "Save sync is not available in the browser. Use Export save and Import save on the save panel to move saves between devices."
+      or "Save sync cannot run on this build: it has no way to send the signed requests it needs. Update to the latest app build, or use a desktop build."))
     return
   end
   local eng = imp._sync

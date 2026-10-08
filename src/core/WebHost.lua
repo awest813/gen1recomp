@@ -152,6 +152,16 @@ function WebHost.hasBridge()
   return bridge ~= nil
 end
 
+-- The bridge's browser fetch() transport (fetchStart/fetchPoll/fetchForget),
+-- or nil.  src/net/Fetch.lua routes its jobs here on the web.
+function WebHost.fetchBridge()
+  if bridge and type(bridge.fetchStart) == "function"
+      and type(bridge.fetchPoll) == "function" then
+    return bridge
+  end
+  return nil
+end
+
 function WebHost.syncNow()
   dirty = false
   quietFor, dirtyFor = 0, 0
