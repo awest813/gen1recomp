@@ -234,8 +234,18 @@ try {
           // F1 only saves once the overworld is idle, and how many presses the
           // closing text needs depends on the frame rate: keep closing text
           // with B (which also advances it) and retrying F1 until a save lands.
-          const saveFile = `${saveDir}/save_${game}.lua`;
-          const saveSize = () => fsCall(`try { return FS.stat("${saveFile}").size; } catch (e) { return 0; }`);
+          // Red's flat save is save.lua, the others save_<version>.lua; a
+          // migrated install keeps slots under saves/<version>/
+          const saveFile = `${saveDir}/${game === "red" ? "save.lua" : `save_${game}.lua`}`;
+          const saveSize = () => fsCall(`
+            var best = 0;
+            try { best = FS.stat("${saveFile}").size; } catch (e) {}
+            try {
+              FS.readdir("${saveDir}/saves/${game}").forEach(function (n) {
+                if (/\.lua$/.test(n)) best = Math.max(best, FS.stat("${saveDir}/saves/${game}/" + n).size);
+              });
+            } catch (e) {}
+            return best;`);
           let saved = 0;
           for (let attempt = 0; attempt < 25 && !saved; attempt++) {
             await press("x", 3, 500);
@@ -244,7 +254,7 @@ try {
           }
           await checkCrash("during play");
           if (!saved) fail("F1 in the bedroom did not write a save");
-          else note(`F1 wrote save_${game}.lua (${saved} bytes)`);
+          else note(`F1 wrote a ${game} save (${saved} bytes)`);
           const fps = await page.evaluate(() => new Promise((resolve) => {
             let frames = 0;
             const t = performance.now();
@@ -269,7 +279,7 @@ try {
             await page.close({ runBeforeUnload: false });
             await openPage();
             if (await boot("continue", `&game=${game}`)) {
-              const again = await fsCall(`try { return FS.stat("${saveFile}").size; } catch (e) { return 0; }`);
+              const again = await saveSize();
               if (!again) fail("the save did not reach IndexedDB (a new tab cannot see it)");
               else note("new tab: save is in IndexedDB");
               await page.click("#canvas");

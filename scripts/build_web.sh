@@ -155,8 +155,10 @@ LOVE_FILE="$WORK/game.love"
 #   * the launcher videos (no Theora worker thread in the compat build;
 #     LauncherSplash/LauncherThemeVideo skip them on Web)
 #   * the cart-label Photoshop sources (~14 MB; only the .png exports load)
+#   * the store/app-icon cover art (packaging scripts read it; the game never)
 zip -q -d "$LOVE_FILE" 'assets/launcher/*.ogv' >/dev/null 2>&1 || true
 zip -q -d "$LOVE_FILE" 'assets/labels/*.psd' >/dev/null 2>&1 || true
+zip -q -d "$LOVE_FILE" 'assets/logo/gen1recomp_cover.png' >/dev/null 2>&1 || true
 say "game.love: $(du -h "$LOVE_FILE" | cut -f1)"
 
 # --- page -----------------------------------------------------------------
