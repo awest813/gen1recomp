@@ -66,13 +66,25 @@ local function dirtying(fn, pred)
   end
 end
 
+-- /tmp is MEMFS (picks, drops, scratch), never persisted: touching it needs
+-- no IndexedDB sync, and every sync walks the whole persisted store
+local function persistent(path)
+  return type(path) ~= "string" or path:sub(1, 5) ~= "/tmp/"
+end
+
 local function wrapWrites()
   if io and io.open then
-    io.open = dirtying(io.open, function(_, mode) return writesMode(mode) end)
+    io.open = dirtying(io.open, function(path, mode)
+      return writesMode(mode) and persistent(path)
+    end)
   end
   if os then
-    if os.remove then os.remove = dirtying(os.remove) end
-    if os.rename then os.rename = dirtying(os.rename) end
+    if os.remove then os.remove = dirtying(os.remove, persistent) end
+    if os.rename then
+      os.rename = dirtying(os.rename, function(from, to)
+        return persistent(from) or persistent(to)
+      end)
+    end
   end
   local fs = love.filesystem
   if fs then

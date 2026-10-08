@@ -9,7 +9,8 @@
 -- with replace/premultiplied blending so the stored texels are exactly the
 -- colours the CPU path writes.
 --
--- Web only: desktop keeps its CPU bakes byte for byte.  Every caller keeps
+-- Web only: desktop keeps its CPU bakes byte for byte (obp3100 below holds
+-- both paths for the two OBP0 callers).  Every caller keeps
 -- the CPU path as the fallback, used whenever available() is false or a bake
 -- fails.  Extracted art has alpha 0 or 1 only, so drawing the Canvas later
 -- is indistinguishable from drawing the baked Image.
@@ -90,6 +91,40 @@ function GpuBake.recolor(source, colors, opts)
   local ok, canvas = pcall(bake, source, colors, opts or {})
   if ok then return canvas end
   return nil
+end
+
+-- OBP0 at "3100" (GBPalNormal): OBJ colors 0/1 -> shade 0 (white), color 2
+-- -> shade 1 (170 grey), color 3 -> shade 3 (black).  Alpha passes through
+-- (colour 0's tRNS keys sprite corners out).
+local OBP_3100 = { { 255, 255, 255 }, { 255, 255, 255 }, { 170, 170, 170 }, { 0, 0, 0 } }
+
+-- The "3100" lift baked into an asset (PartyMenu icons, overworld emotes):
+-- a GPU bake in the browser, otherwise the CPU mapPixel bake.  Resolves
+-- through Assets so a mod's override still wins.
+function GpuBake.obp3100(path)
+  local Assets = require("src.render.Assets")
+  if not (love.image and love.image.newImageData) then
+    return love.graphics.newImage(Assets.resolve(path)) -- headless stub
+  end
+  if GpuBake.available() then
+    local ok, source = pcall(love.graphics.newImage, Assets.resolve(path))
+    local baked = ok and GpuBake.recolor(source, OBP_3100, { keepZero = false })
+    -- the bake has drawn by now (popping the canvas flushes); free the
+    -- throwaway source instead of leaving its texture to the GC
+    if ok and source.release then source:release() end
+    if baked then return baked end
+  end
+  local id = Assets.imageData(path)
+  id:mapPixel(function(_, _, r, _, _, a)
+    -- the extracted art is the four DMG grays, keyed off the red channel
+    -- exactly the way PaletteFX's shade-remap shader keys them
+    local v = 0
+    if r > 0.5 then v = 1               -- OBJ colors 0 and 1 -> shade 0
+    elseif r > 0.17 then v = 170 / 255  -- OBJ color 2 -> shade 1
+    end                                 -- OBJ color 3 -> shade 3
+    return v, v, v, a
+  end)
+  return love.graphics.newImage(id)
 end
 
 -- Tests only.

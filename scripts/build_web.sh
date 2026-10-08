@@ -39,6 +39,10 @@ EMSDK_DIR="${EMSDK:-}"
 
 # --- pins -------------------------------------------------------------------
 EMSDK_VERSION="2.0.0"   # love.js needs 2.0.x (newer drop getMemory)
+# the emsdk installer itself (not the SDK it installs): pinned so a future
+# emsdk that drops old SDK downloads can't break a cold build
+EMSDK_REPO="https://github.com/emscripten-core/emsdk"
+EMSDK_COMMIT="b44154299bdefe75ba287874bb63fc9806243771"
 LOVEJS_REPO="https://github.com/Davidobot/love.js"
 LOVEJS_COMMIT="c4f04e185033a7c9fbefa9be3bec88c41a90421b"
 MEGASOURCE_REPO="https://github.com/Davidobot/megasource"
@@ -108,8 +112,9 @@ build_native() {
     EMSDK_DIR="$WORK/emsdk"
     if [ ! -x "$EMSDK_DIR/emsdk" ]; then
       say "installing emsdk $EMSDK_VERSION into $EMSDK_DIR"
-      git clone -q --depth 1 https://github.com/emscripten-core/emsdk "$EMSDK_DIR"
+      git clone -q --depth 50 "$EMSDK_REPO" "$EMSDK_DIR"
     fi
+    clone_at "$EMSDK_DIR" "$EMSDK_REPO" "$EMSDK_COMMIT"
     "$EMSDK_DIR/emsdk" install "$EMSDK_VERSION" >/dev/null
     "$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION" >/dev/null
   fi
@@ -198,13 +203,14 @@ mkdir -p "$OUT"
 node "$WORK/lovejs/index.js" -c -t "G1R Deluxe" -m "$MEMORY" "$LOVE_FILE" "$OUT" >/dev/null
 rm -rf "$OUT/theme"
 sed "s/__G1R_MEMORY__/$MEMORY/" "$ROOT/ports/web/shell/index.html" > "$OUT/index.html"
+cp "$ROOT/ports/web/shell/manifest.webmanifest" "$ROOT/ports/web/shell/"*.png "$OUT/"
 
 if [ "$SPLIT_MB" -gt 0 ]; then
   python3 "$ROOT/scripts/split_web_build.py" "$OUT" --chunk-size-mb "$SPLIT_MB"
 fi
 
 # --- verify ---------------------------------------------------------------
-for f in index.html game.js love.js love.wasm; do
+for f in index.html game.js love.js love.wasm manifest.webmanifest icon-192.png; do
   [ -f "$OUT/$f" ] || fail "site is missing $f"
 done
 grep -q "__G1R_MEMORY__" "$OUT/index.html" && fail "index.html memory placeholder not rendered"

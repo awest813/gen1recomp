@@ -32,7 +32,12 @@ copy of the ROM itself is never stored.
 On a phone, the on-screen buttons appear the first time you touch the game.
 The **Fullscreen** button in the top-left corner appears when you move the
 mouse or touch the screen (Esc leaves fullscreen). iPhone browsers have no
-fullscreen mode for pages, so the button is hidden there.
+fullscreen mode for pages, so the button is hidden there. Use **Share > Add
+to Home Screen** instead: the icon opens the game full screen.
+
+On iPhone and iPad, the Home Screen icon keeps its own storage, separate from
+Safari's. Import the ROM again from the icon, and move saves between the two
+with Export save and Import save.
 
 ### Saves
 

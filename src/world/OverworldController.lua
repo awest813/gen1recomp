@@ -5823,11 +5823,6 @@ function OverworldState:draw()
   self:drawUI()
 end
 
--- The CPU bake below as GpuBake buckets: OBJ colors 0/1 -> shade 0 (white),
--- color 2 -> shade 1 (170 grey), color 3 -> shade 3 (black).
-local GRAY_BUCKETS = { { 255, 255, 255 }, { 255, 255, 255 }, { 170, 170, 170 }, { 0, 0, 0 } }
-local GpuBake = require("src.render.GpuBake")
-
 -- The emote sheet is OBJ art (engine/overworld/emotion_bubbles.asm builds the
 -- bubble out of shadow OAM), so it renders through OBP0, and GBPalNormal
 -- (home/palettes.asm:20-26 `ld a, %11010000 ; 3100 / ldh [rOBP0], a`) holds
@@ -5839,27 +5834,7 @@ local GpuBake = require("src.render.GpuBake")
 -- Color 0's alpha (a tRNS entry on the extracted png) is what keys the
 -- bubble's corners out, so carry it through untouched.
 local function obpEmoteImage(path)
-  if not (love.image and love.image.newImageData) then
-    return love.graphics.newImage(Assets.resolve(path)) -- headless stub
-  end
-  -- browser build: the same bake as a shader (src/render/GpuBake.lua)
-  if GpuBake.available() then
-    local ok, source = pcall(love.graphics.newImage, Assets.resolve(path))
-    local baked = ok and GpuBake.recolor(source, GRAY_BUCKETS, { keepZero = false })
-    -- the bake has drawn by now (popping the canvas flushes); free the
-    -- throwaway source instead of leaving its texture to the GC
-    if ok and source.release then source:release() end
-    if baked then return baked end
-  end
-  local id = Assets.imageData(path)
-  id:mapPixel(function(_, _, r, _, _, a)
-    local v = 0
-    if r > 0.5 then v = 1               -- OBJ colors 0 and 1 -> shade 0
-    elseif r > 0.17 then v = 170 / 255  -- OBJ color 2 -> shade 1
-    end                                 -- OBJ color 3 -> shade 3
-    return v, v, v, a
-  end)
-  return love.graphics.newImage(id)
+  return require("src.render.GpuBake").obp3100(path)
 end
 
 -- The SGB palette a tilt-mode billboard at flat foot (fx, fy) sits under.

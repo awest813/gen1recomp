@@ -45,6 +45,7 @@ fs.mkdirSync(out, { recursive: true });
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".data": "application/octet-stream", ".css": "text/css", ".png": "image/png",
+  ".webmanifest": "application/manifest+json",
 };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
@@ -206,6 +207,17 @@ try {
     else note("second tab refused to start (single instance)");
     await second.close();
     page = firstTab;
+
+    // installable: the manifest parses and its icons are served
+    const manifest = await page.evaluate(async () => {
+      try {
+        const m = await (await fetch("manifest.webmanifest")).json();
+        const icons = await Promise.all((m.icons || []).map((i) => fetch(i.src).then((r) => r.ok)));
+        return { ok: icons.length > 0 && icons.every(Boolean), display: m.display };
+      } catch (e) { return { ok: false, error: String(e) }; }
+    });
+    if (!manifest.ok) fail(`web app manifest or icons missing: ${JSON.stringify(manifest)}`);
+    else note(`web app manifest ok (display: ${manifest.display})`);
   }
 
   if (rom && !failures.length) {

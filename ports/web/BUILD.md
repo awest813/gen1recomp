@@ -20,6 +20,12 @@ Open <http://localhost:8000>. The wasm will not load from `file://`. The
 compatibility (no-pthreads) build needs no COOP/COEP headers, so any static
 host works.
 
+Turn on gzip or brotli for `.wasm` and `.js` if the host doesn't by default:
+`love.wasm` drops from about 5.1 MB to 1.7 MB and `love.js` from 360 KB to
+75 KB. `game.data` is the zipped `game.love` and barely compresses. Serve
+`.wasm` as `application/wasm`; browsers otherwise fall back to a slower
+compile path.
+
 Requirements: `git`, `cmake`, `make`, `python3`, `node`/`npm`, `zip`. The first
 native build takes several minutes. Later runs can reuse it:
 
@@ -111,6 +117,8 @@ All pins live at the top of `scripts/build_web.sh`. The script refuses a
 checkout that is not at its pin.
 
 - **emsdk 2.0.0.** love.js needs 2.0.x; newer releases dropped `getMemory`.
+  The emsdk installer is pinned too (`EMSDK_COMMIT`). It logs a 404 for a
+  `.tar.xz` download on 2.0.0, then falls back to the `.tbz2` that exists.
 - **Davidobot/love.js, Davidobot/megasource and Davidobot/love** (`emscripten`
   branches). Note that this LÖVE reports itself as **11.4**, so `conf.lua`'s
   `t.version = "11.5"` only prints a compatibility notice.

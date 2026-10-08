@@ -8,7 +8,7 @@
 #   1. every shipped Lua file must compile under luac5.1 (no goto, no 5.2+
 #      syntax).  A file that fails here is reported by require() in the
 #      browser as "module not found", which hides the real cause.
-#   2. no \xHH or \u{...} string escapes outside comments: PUC 5.1 reads
+#   2. no \xHH or \u{...} escapes in quoted strings: PUC 5.1 reads
 #      "\xc3" as the literal text "xc3" with no error.  Use decimal escapes
 #      ("\195"), which every Lua reads the same way.
 #   3. the LuaCompat shim suite passes under lua5.1, where it actually patches
@@ -55,15 +55,14 @@ echo "   $total files, $bad new failures (${#ALLOW_GOTO[@]} allowlisted)"
 [ "$bad" = 0 ] || fail=1
 
 echo "-- \\x / \\u{} string escapes"
-# an odd run of backslashes before x/u{ is a real escape; skip comment lines
-hits=$(grep -rnE --include='*.lua' '(^|[^\\])(\\\\)*\\(x[0-9a-fA-F]{2}|u\{)' "${SHIPPED[@]}" \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*--' || true)
-if [ -n "$hits" ]; then
-  echo "$hits" | sed 's/^/  /'
+# a small lexer: only quoted strings count (comments and [[long strings]]
+# take backslashes literally)
+if find "${SHIPPED[@]}" -name '*.lua' -print0 | sort -z \
+    | xargs -0 "$LUA" scripts/ci/lua_escape_scan.lua; then
+  echo "   none"
+else
   echo "   use decimal escapes instead (\"\\xc3\" -> \"\\195\")"
   fail=1
-else
-  echo "   none"
 fi
 
 echo "-- suites under lua5.1"

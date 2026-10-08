@@ -72,7 +72,15 @@ eq(Platform.romImportMode(), "native-picker", "bridge puts web on the native-pic
 
 -- ---------------------------------------------------------------- storage sync
 do
-  local tmp = os.tmpname()
+  -- /tmp is MEMFS on the web: scratch writes there need no IndexedDB sync
+  local scratch = os.tmpname()
+  check(scratch:sub(1, 5) ~= "/tmp/" or (function()
+    local h = io.open(scratch, "wb"); h:write("x"); h:close()
+    os.remove(scratch)
+    return not WebHost.isDirty()
+  end)(), "writes under /tmp do not dirty the store")
+  -- a path outside /tmp stands in for the persisted save directory
+  local tmp = "web_profile_test.scratch"
   local f = io.open(tmp, "rb")
   if f then f:close() end
   check(not WebHost.isDirty(), "reads do not dirty the store")
