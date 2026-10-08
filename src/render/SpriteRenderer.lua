@@ -7,6 +7,7 @@
 local Assets = require("src.render.Assets")
 local GbcPalette = require("src.render.GbcPalette")
 local PaletteFX = require("src.render.PaletteFX")
+local GpuBake = require("src.render.GpuBake")
 
 local SpriteRenderer = {}
 SpriteRenderer.__index = SpriteRenderer
@@ -57,8 +58,12 @@ local function getObpImage(path, colors, group)
   end
   local key = path .. "#obp" .. group
   if not obpCache[key] then
-    local img
-    if love.image and love.image.newImageData then
+    -- browser build: the same bake as a shader (src/render/GpuBake.lua);
+    -- nil everywhere else, or if it fails, and the CPU path below runs
+    local img = GpuBake.available()
+      and GpuBake.recolor(getImage(path), colors, { clear1 = true }) or nil
+    if img then -- luacheck: ignore 542 (baked on the GPU; nothing to do)
+    elseif love.image and love.image.newImageData then
       local id = Assets.imageData(path)
       id:mapPixel(function(_, _, r, g, b, a)
         if a == 0 then return r, g, b, a end

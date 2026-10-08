@@ -1105,7 +1105,7 @@ function PackMenu:drawList(listX, listY)
       Chrome.printThrough((entry.tmhmLabel and entry.teaches) or entry.name,
         listX, ty, Chrome.DEFAULT_BOX_PALETTE)
       if entry.showCount then
-        Chrome.printThrough("\xc3\x97" .. Chrome.number(entry.count, 2),
+        Chrome.printThrough("\195\151" .. Chrome.number(entry.count, 2),
           listX + 9, ty + 1, Chrome.DEFAULT_BOX_PALETTE)
       end
     elseif i == self:total() then
@@ -1170,7 +1170,7 @@ end
 -- engine/items/buy_sell_toss.asm:133 BuySellToss_UpdateQuantityDisplay
 function PackMenu:drawQuantity()
   Chrome.box(15, 9, 5, 3)
-  Chrome.printThrough("\xc3\x97" .. Chrome.number(self.qtyState.qty, 2, true), 16, 10,
+  Chrome.printThrough("\195\151" .. Chrome.number(self.qtyState.qty, 2, true), 16, 10,
     Chrome.DEFAULT_BOX_PALETTE)
 end
 

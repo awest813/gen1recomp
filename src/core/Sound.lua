@@ -866,6 +866,65 @@ function Sound.prewarmSfx(data, name)
   return ok and queued or false
 end
 
+-- The effects nearly every play session hits in its first minutes, in the
+-- order they first play: the Game Freak/title intro (it starts within a
+-- second or two of boot), Oak's speech, then menus, saves, items, doors, the
+-- PC and battle basics.  Names a version lacks are skipped.
+local COMMON_SFX = {
+  "Shooting_Star", "Intro_Hip", "Intro_Hop", "Intro_Raise", "Intro_Crash",
+  "Intro_Lunge", "Intro_Whoosh", "Press_AB", "Shrink",
+  "Start_Menu", "Collision", "Save", "Get_Item1", "Go_Inside",
+  "Go_Outside", "Swap", "Tink", "Heal_HP", "Enter_PC", "Turn_On_PC",
+  "Turn_Off_PC", "Denied", "Purchase", "Switch", "Run", "Ledge",
+  "Ball_Toss", "Ball_Poof", "Faint_Fall", "Faint_Thud", "Withdraw_Deposit",
+}
+
+-- Gold/Silver/Crystal's equivalent (pokecrystal's SFX_* constants, CamelCased
+-- the way the Gen 2 extractor keys them): the Game Freak / Ditto / Unown /
+-- Suicune intro, then menus, text, doors and warps, saves, items, the PC and
+-- battle basics.
+Sound.COMMON_SFX_GEN2 = {
+  "Sfx_GameFreakLogoGs", "Sfx_GameFreakPresents", "Sfx_DittoPopUp",
+  "Sfx_DittoTransform", "Sfx_DittoBounce", "Sfx_IntroUnown1",
+  "Sfx_IntroUnown2", "Sfx_IntroUnown3", "Sfx_IntroWhoosh",
+  "Sfx_IntroSuicune1", "Sfx_IntroSuicune2", "Sfx_IntroSuicune3",
+  "Sfx_IntroSuicune4", "Sfx_IntroPichu", "Sfx_TitleScreenEntrance",
+  "Sfx_ReadText2", "Sfx_Menu", "Sfx_Wrong", "Sfx_Save", "Sfx_Bump",
+  "Sfx_EnterDoor", "Sfx_ExitBuilding", "Sfx_WarpTo", "Sfx_WarpFrom",
+  "Sfx_JumpOverLedge", "Sfx_PushButton", "Sfx_Item", "Sfx_Potion",
+  "Sfx_FullHeal", "Sfx_Transaction", "Sfx_BootPc",
+  "Sfx_ShutDownPc", "Sfx_ChoosePcOption", "Sfx_SwitchPokemon",
+  "Sfx_BallPoof", "Sfx_Run", "Sfx_Call", "Sfx_HangUp",
+}
+
+-- Hosts without a chip-audio worker (the browser build) render each effect's
+-- first play on the calling frame -- up to ~150 ms there.  This queues the
+-- common set on ChipAudio's main-thread prewarm, which renders them a few ms
+-- per tick in the background, so the first menu press or door is already
+-- synthesized.  Unknown names are skipped; it is a no-op where a worker
+-- exists (desktop renders fast enough on first play, and prewarms battles).
+local commonPumped = {}
+function Sound.prewarmCommon(data, list)
+  if not love.audio or deviceSuspended() then return 0 end
+  if require("src.core.Platform").hasThreads() then return 0 end
+  list = list or COMMON_SFX
+  local queued = 0
+  for _, name in ipairs(list) do
+    if Sound.prewarmSfx(data, name) then queued = queued + 1 end
+  end
+  -- The first call runs during game load, a pause the player already sees;
+  -- spend up to 120 ms of it so the intro's opening effects (queued first)
+  -- are ready before the intro plays them.  Later calls (every options
+  -- change) leave the queue to the per-frame budget.
+  -- (only once something was queued: a call before the cart's audio data
+  -- has loaded must not spend the one-time pump on an empty queue)
+  if queued > 0 and not commonPumped[list] then
+    commonPumped[list] = true
+    pcall(require("src.core.ChipAudio").pumpPrewarm, 0.12)
+  end
+  return queued
+end
+
 -- GROWL/ROAR are the only two moves that play a cry (IsCryMove checks
 -- wAnimationID); GetMoveSound still adds their own MoveSoundTable pitch/
 -- tempo bytes on top of the cry's species modifiers before the tempo

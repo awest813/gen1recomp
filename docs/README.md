@@ -20,6 +20,8 @@ editor, and developer setup live on the
 - [Xbox Dev Mode](platforms/xbox.md)
 - [Handhelds](platforms/handhelds.md)
 - [Nintendo Switch](platforms/switch.md)
+- [Web browser (beta)](platforms/web.md)
+  - Plans: [web port](proposals/web-port.md), [online play in the browser](proposals/web-online.md), [mods in the browser](proposals/web-mods.md)
 
 ## Modding
 

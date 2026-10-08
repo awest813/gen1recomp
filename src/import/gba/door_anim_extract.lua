@@ -456,6 +456,7 @@ function DoorAnimExtract.run(rom, cache, opts)
     local ptr_tiles = rom:u32(base + 4)
     local ptr_pal   = rom:u32(base + 8)
     if ptr_tiles == 0 then break end
+    repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
 
     local mid       = band(mid_flags, 0xFFFF)
     local sound_id  = band(rshift(mid_flags, 16), 0xFF)
@@ -467,7 +468,7 @@ function DoorAnimExtract.run(rom, cache, opts)
     local pal_off   = rom:ptrOffset(ptr_pal)
     if not (tiles_off and pal_off) then
       print(string.format("[door_extract] bad ptr for entry %d (%s); skipping", i, name))
-      goto continue
+      do break end
     end
 
     local pal_nums = {}
@@ -502,7 +503,7 @@ function DoorAnimExtract.run(rom, cache, opts)
     manifest_by_mid[mid] = entry
     manifest_entries[#manifest_entries + 1] = entry
 
-    ::continue::
+    until true
   end
 
   rom:clearCache()

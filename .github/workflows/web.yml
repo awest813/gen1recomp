@@ -1,0 +1,122 @@
+name: web
+
+# Browser build (love.js): docs/proposals/web-port.md, ports/web/BUILD.md.
+#
+# Every run builds dist/web with scripts/build_web.sh and runs the ROM-free
+# browser smoke test (headless Chromium: the page boots to the launcher with
+# no Lua error and the lovejs bridge installed).  The site is uploaded as an
+# artifact, so a run is playable locally with
+#   python3 -m http.server -d <unzipped artifact> 8000
+#
+# Deploying to GitHub Pages is opt-in: run this workflow by hand
+# (Actions > web > Run workflow) with "deploy" ticked, after setting
+# Settings > Pages > Source to "GitHub Actions".  The site ships engine code
+# only -- no ROM, no generated game data; players import their own ROM in
+# the browser.
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "main.lua"
+      - "conf.lua"
+      - "src/**"
+      - "data/**"
+      - "assets/**"
+      - "ports/web/**"
+      - "scripts/build_web.sh"
+      - "scripts/pack_love.sh"
+      - ".github/workflows/web.yml"
+  pull_request:
+    branches: [dev]
+    paths:
+      - "main.lua"
+      - "conf.lua"
+      - "src/**"
+      - "data/**"
+      - "assets/**"
+      - "ports/web/**"
+      - "scripts/build_web.sh"
+      - "scripts/pack_love.sh"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy the build to GitHub Pages"
+        type: boolean
+        default: false
+
+concurrency:
+  group: web-${{ github.ref }}
+  # a hand-started run (possibly a deploy) is never cancelled by a push
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build + browser smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # emsdk 2.0.0 and the love.js build tree are the slow part (~10 min
+      # cold); key on everything that changes the native output
+      - name: cache emsdk and love.js build
+        uses: actions/cache@v6
+        with:
+          path: |
+            .bazinga/work/web/emsdk
+            .bazinga/work/web/megasource
+            .bazinga/work/web/SDL2
+            .bazinga/work/web/build
+            .bazinga/work/web/native-out
+          key: web-native-${{ hashFiles('scripts/build_web.sh', 'ports/web/patch_love.py', 'ports/web/patch_lua.py', 'ports/web/native/**') }}
+          restore-keys: web-native-
+
+      - name: build the site
+        run: ./scripts/build_web.sh
+
+      - name: install Playwright Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: browser smoke (ROM-free)
+        run: node ports/web/smoke_test.mjs --site dist/web --out dist/web-smoke --timeout-s 180
+
+      - name: upload smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gen1recomp-web-smoke
+          path: dist/web-smoke
+          if-no-files-found: ignore
+
+      - name: upload the site
+        uses: actions/upload-artifact@v7
+        with:
+          name: gen1recomp-web
+          path: dist/web
+
+      - name: upload the Pages artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/web
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

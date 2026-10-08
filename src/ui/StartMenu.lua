@@ -224,7 +224,7 @@ function StartMenu.new(game)
       -- engine/overworld/player_state.asm:236-249, home/print_num.asm:205-217
       local digits = tostring(math.max(0, math.floor(safari.balls or 0)))
       local bx = (7 - #digits) * 8
-      Font.draw("\xc3\x97", bx, 24)
+      Font.draw("\195\151", bx, 24)
       Font.draw(digits, bx + 8, 24)
       love.graphics.setColor(1, 1, 1, 1)
     end

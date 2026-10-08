@@ -869,7 +869,7 @@ local cartShaderError = nil
 local function cartShaderIsEs()
   if not (love.system and love.system.getOS) then return false end
   local osName = love.system.getOS()
-  return osName == "Android" or osName == "iOS"
+  return osName == "Android" or osName == "iOS" or osName == "Web"
 end
 
 local function cartHoverShader(imp)
@@ -3711,12 +3711,17 @@ local function buildFooter(imp, m, y)
   Theme.fill(m.x, y, m.w, 1, PAL.line, Theme.A.hairline)
   local cy = y + math.floor(8 * m.s)
   -- The BCG mark is dark ink; invert it for the black field.
-  imp.invertShader = imp.invertShader or love.graphics.newShader([[
-    vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
-      vec4 p = Texel(tex, tc);
-      return vec4((vec3(1.0) - p.rgb) * color.rgb, p.a * color.a);
-    }
-  ]])
+  -- false (not nil) once a compile has failed, so a driver that rejects it
+  -- (a strict GLSL ES / WebGL one) costs one attempt and the mark draws plain
+  if imp.invertShader == nil then
+    local ok, shader = pcall(love.graphics.newShader, [[
+      vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+        vec4 p = Texel(tex, tc);
+        return vec4((vec3(1.0) - p.rgb) * color.rgb, p.a * color.a);
+      }
+    ]])
+    imp.invertShader = ok and shader or false
+  end
   local bw, bh = imp.bcg:getDimensions()
   local scale = math.min((130 * m.s) / bw, (22 * m.s) / bh)
   local dw, dh = bw * scale, bh * scale
@@ -3738,7 +3743,7 @@ local function buildFooter(imp, m, y)
     Theme.strokeRounded(bx - 3, my - 3, dw + 6, dh + 6, PAL.ink, 0.35 + 0.25 * glowPulse, 2.5, 4)
     Theme.strokeRounded(bx, my, dw, dh, PAL.ink, 0.95 + 0.05 * glowPulse, 2, 2)
   end
-  love.graphics.setShader(imp.invertShader)
+  love.graphics.setShader(imp.invertShader or nil)
   love.graphics.setColor(1, 1, 1, (hot or isFocused) and 1 or 0.85)
   love.graphics.draw(imp.bcg, Theme.snap(bx), Theme.snap(my), 0, scale, scale)
   love.graphics.setShader()
@@ -6430,8 +6435,10 @@ end
 
 local function buildSyncModal(imp, m)
   if not imp:_syncSupported() then
-    Sync.unavailable(imp, m, Strings(
-      "Save sync cannot run on this build: it has no way to send the signed requests it needs. Update to the latest app build, or use a desktop build."))
+    local web = require("src.core.Platform").isWeb()
+    Sync.unavailable(imp, m, Strings(web
+      and "Save sync is not available in the browser. Use Export save and Import save on the save panel to move saves between devices."
+      or "Save sync cannot run on this build: it has no way to send the signed requests it needs. Update to the latest app build, or use a desktop build."))
     return
   end
   local eng = imp._sync

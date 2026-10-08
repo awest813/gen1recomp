@@ -1,0 +1,134 @@
+-- src/core/LuaCompat: the 5.2-style load() shim for PUC Lua 5.1 (love.js).
+-- Runs under both interpreters: LuaJIT (CI's headless tier) exercises the
+-- shim through makeLoad/install on a fake global table, and
+-- scripts/ci/lua51_compat.sh runs it again under lua5.1, where install()
+-- patches the real _G.
+--   luajit tests/engine/lua_compat_test.lua
+--   lua5.1 tests/engine/lua_compat_test.lua
+package.path = "./?.lua;./?/init.lua;" .. package.path
+
+local T = require("tests.harness")
+local check, eq = T.check, T.eq
+
+local LuaCompat = require("src.core.LuaCompat")
+
+-- a 5.1-style load: functions only, like PUC Lua 5.1's
+local function load51(chunk, name)
+  if type(chunk) ~= "function" then
+    error("bad argument #1 to 'load' (function expected, got " .. type(chunk) .. ")", 2)
+  end
+  return load(chunk, name)
+end
+
+local fake = { load = load51, loadstring = loadstring, setfenv = setfenv }
+check(not LuaCompat.loadAcceptsStrings(fake), "the fake 5.1 load rejects strings")
+check(LuaCompat.install(fake), "install patches a 5.1 load")
+check(LuaCompat.loadAcceptsStrings(fake), "patched load accepts strings")
+check(not LuaCompat.install(fake), "install is idempotent")
+
+local shimLoad = fake.load
+
+do
+  local env = { x = 41 }
+  local fn = shimLoad("y = x + 1; return y", "@test", "t", env)
+  check(type(fn) == "function", "string chunk compiles")
+  eq(fn(), 42, "chunk runs inside the supplied env")
+  eq(env.y, 42, "globals land in the env table")
+  eq(rawget(_G, "y"), nil, "the real globals stay untouched")
+end
+
+do
+  local fn = shimLoad("return os", "@sandbox", "t", {})
+  eq(fn(), nil, "an empty env hides the standard library")
+end
+
+do
+  local fn, err = shimLoad("return (", "@broken", "t", {})
+  eq(fn, nil, "syntax error returns nil")
+  check(type(err) == "string" and err:find("broken", 1, true) ~= nil,
+    "syntax error message names the chunk")
+end
+
+do
+  local binary = string.dump(function() return 7 end)
+  local fn, err = shimLoad(binary, "@bin", "t", {})
+  eq(fn, nil, "mode 't' refuses a binary chunk")
+  check(type(err) == "string" and err:find("binary", 1, true) ~= nil,
+    "binary refusal says why")
+  local fn2, err2 = shimLoad("return 1", "@txt", "b")
+  eq(fn2, nil, "mode 'b' refuses a text chunk")
+  check(type(err2) == "string" and err2:find("text", 1, true) ~= nil,
+    "text refusal says why")
+  local fn3 = shimLoad(binary, "@bin", "bt")
+  eq(fn3 and fn3(), 7, "mode 'bt' accepts a binary chunk")
+end
+
+do
+  local parts = { "return ", "a", " * 2" }
+  local i = 0
+  local fn = shimLoad(function() i = i + 1; return parts[i] end, "@reader", nil, { a = 21 })
+  eq(fn and fn(), 42, "reader functions still work and honour env")
+end
+
+do
+  local fn = shimLoad("return 5")
+  eq(fn and fn(), 5, "no env keeps the caller's globals (5.1 default)")
+end
+
+-- On the interpreter running this file: after install(), the real load
+-- must take strings (true on LuaJIT already, and on lua5.1 via the shim).
+LuaCompat.install()
+check(LuaCompat.loadAcceptsStrings(), "real load accepts strings after install (" .. _VERSION .. ")")
+do
+  local fn = load("return z", "@real", "t", { z = "ok" })
+  eq(fn and fn(), "ok", "real load sandboxes with env after install")
+end
+
+-- yieldablePcall: pcall whose callee may yield to the enclosing coroutine
+do
+  local ypcall = LuaCompat.yieldablePcall
+  eq(select("#", ypcall(function() return 1, nil, 3 end)), 4, "returns true plus every result, nils included")
+  local ok, err = ypcall(function() error("boom", 0) end)
+  check(ok == false and err == "boom", "errors come back as false, message")
+  local co = coroutine.create(function()
+    local okInner, got = ypcall(function()
+      local reply = coroutine.yield("tick", nil)
+      return reply * 2
+    end)
+    return okInner, got
+  end)
+  local r1, a, b = coroutine.resume(co)
+  check(r1 and a == "tick" and b == nil, "a yield inside it reaches the outer resumer")
+  local r2, okInner, got = coroutine.resume(co, 21)
+  check(r2 and okInner == true and got == 42, "the resume value flows back in and the call completes")
+  local jit = rawget(_G, "jit") ~= nil
+  eq(LuaCompat.pcallYields(), jit, "pcallYields: true on LuaJIT, false on PUC 5.1 (" .. _VERSION .. ")")
+end
+
+-- coPcall / coXpcall: LuaJIT semantics for mod code
+do
+  local co = coroutine.create(function()
+    local ok, v = LuaCompat.coPcall(function() return coroutine.yield("y") + 1 end)
+    return ok, v
+  end)
+  local _, y = coroutine.resume(co)
+  eq(y, "y", "coPcall: a yield inside it reaches the resumer")
+  local _, ok, v = coroutine.resume(co, 41)
+  check(ok == true and v == 42, "coPcall: and the call completes with the resumed value")
+  local okMain, errMain = LuaCompat.coPcall(function() error("main", 0) end)
+  check(okMain == false and errMain == "main", "coPcall outside a coroutine is a plain pcall")
+  local okX, sum = LuaCompat.coXpcall(function(a, b) return a + b end, tostring, 2, 3)
+  check(okX == true and sum == 5, "coXpcall forwards its extra arguments")
+  local okE, handled = LuaCompat.coXpcall(function() error("boom", 0) end,
+    function(e) return "handled " .. e end)
+  check(okE == false and handled == "handled boom", "coXpcall runs the handler on error")
+  local co2 = coroutine.create(function()
+    return LuaCompat.coXpcall(function(a) return coroutine.yield(a) * 2 end, tostring, 21)
+  end)
+  local _, a = coroutine.resume(co2)
+  eq(a, 21, "coXpcall inside a coroutine yields through with its argument")
+  local _, ok2, v2 = coroutine.resume(co2, 4)
+  check(ok2 == true and v2 == 8, "and completes")
+end
+
+T.finish()

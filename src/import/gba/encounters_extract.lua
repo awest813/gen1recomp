@@ -153,6 +153,7 @@ local function build_tables(entries)
   local tables = {}
   local prefixes, enginePrefix = map_prefixes()
   for _, e in ipairs(entries) do
+    repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
     local gn = string.format("%d:%d", e.mapGroup, e.mapNum)
     local packed = {
       mapGroup = e.mapGroup,
@@ -169,14 +170,14 @@ local function build_tables(entries)
         land = first.land, water = first.water, rocks = first.rocks, fishing = first.fishing,
       } }
       first.variants[#first.variants + 1] = packed
-      goto continue
+      do break end
     end
     tables[gn] = packed
     local alias = Versions.mapIdFor(e.mapGroup, e.mapNum)
     if alias then
       add_aliases(tables, alias, packed, prefixes, enginePrefix)
     end
-    ::continue::
+    until true
   end
   return tables
 end

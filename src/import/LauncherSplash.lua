@@ -12,6 +12,10 @@ local function smoothstep(value)
 end
 
 function LauncherSplash.new()
+  -- Browser: LÖVE decodes Theora on a worker thread (absent from the love.js
+  -- compat build), and Web Audio cannot start before the player's first
+  -- click anyway.  The web payload leaves the video out entirely.
+  if require("src.core.Platform").isWeb() then return nil end
   local okOpt, options = pcall(require("src.core.SaveData").loadOptions)
   if not okOpt or type(options) ~= "table" then options = {} end
   if options.splashVideo == false then return nil end

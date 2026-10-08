@@ -2119,6 +2119,9 @@ end
 function RomImporter:_startExtractThread(version, prefix, data, displayName)
   if os.getenv("POKEPORT_NO_THREAD") == "1" then return false end
   if not (love.thread and love.thread.newThread) then return false end
+  -- A host whose threads may start but never run (the love.js compat build)
+  -- would leave _pumpExtract waiting forever, so go straight to the coroutine.
+  if not Platform.hasThreads() then return false end
   local ok, thread = pcall(love.thread.newThread, "src/import/ExtractThread.lua")
   if not ok or not thread then return false end
   local progressName = "rom_import_progress"
@@ -2262,7 +2265,10 @@ function RomImporter:_rememberRomSource(version, displayName)
   local prior = RomSources.get(version)
   if source == kept then
     rec.path, rec.kept = kept, true
-  elseif RomSources.isAbsolute(source) and not self.mobileFileBridge then
+  elseif RomSources.isAbsolute(source) and not self.mobileFileBridge
+      and not Platform.pickedFilesAreTemporary() then
+    -- (a temporary pick -- UWP LocalState, the browser's /tmp -- is deleted
+    -- once read, so remembering its path would only store a dead filename)
     rec.path = source
   elseif self.mobileFileBridge then
     if prior and prior.kept and prior.sha1 == rec.sha1
@@ -3268,6 +3274,16 @@ function RomImporter:exportSave(version, format, scope, slotId)
     end
     return
   end
+  if Platform.isWeb() then
+    -- the browser's save directory is invisible to the player: hand the
+    -- file over as a download instead of naming a path
+    local name = tostring(res):match("[^/\\]+$") or "export.sav"
+    if require("src.core.WebHost").download(res, name) then
+      self.saveNotice[noticeScope] = { ok = true,
+        text = "Downloaded " .. name .. (exportNote and ("\n" .. exportNote) or "") }
+      return
+    end
+  end
   local dir = res:match("^(.*)[/\\][^/\\]+$")
   local text = "Exported to " .. res
   if exportNote then text = text .. "\n" .. exportNote end
@@ -3686,30 +3702,30 @@ function RomImporter:update(dt)
         local modId, importId = self.pickerPendingModId, self.pickerPendingImportId
         self.pickerPendingModId, self.pickerPendingImportId = nil, nil
         if modId and importId then self:_importRequiredSource(modId, importId, path) end
-        if Platform.isUWP() then os.remove(path) end
+        if Platform.pickedFilesAreTemporary() then os.remove(path) end
       elseif kind == "mod" then
         self:_installMod(path)
-        if Platform.isUWP() and self.modNotice and self.modNotice.ok then
+        if Platform.pickedFilesAreTemporary() and self.modNotice and self.modNotice.ok then
           os.remove(path)
         end
       elseif kind == "importer" then
         local importerId = self.pickerPendingImporterId
         self.pickerPendingImporterId = nil
         if importerId then self:_runImporter(importerId, path) end
-        if Platform.isUWP() then os.remove(path) end
+        if Platform.pickedFilesAreTemporary() then os.remove(path) end
       elseif kind == "skin" then
         self:_installSkinZip(path)
-        if Platform.isUWP() and self._skinNotice and self._skinNotice.ok then
+        if Platform.pickedFilesAreTemporary() and self._skinNotice and self._skinNotice.ok then
           os.remove(path)
         end
       elseif kind == "sav" then
         local target = version or self:_savedropTarget()
         self:_importSave(target, path)
-        if Platform.isUWP() and self.saveNotice[target] and self.saveNotice[target].ok then
+        if Platform.pickedFilesAreTemporary() and self.saveNotice[target] and self.saveNotice[target].ok then
           os.remove(path)
         end
       elseif kind == "cart" then
-        if Platform.isUWP() then
+        if Platform.pickedFilesAreTemporary() then
           local installed = self:_installCartFile(path, version)
           if installed then os.remove(path) end
         else
@@ -3717,7 +3733,7 @@ function RomImporter:update(dt)
         end
       else
         self:startPath(path)
-        if Platform.isUWP() then os.remove(path) end
+        if Platform.pickedFilesAreTemporary() then os.remove(path) end
       end
     elseif love.system.getPickError then
       local errorText = love.system.getPickError()
@@ -7245,9 +7261,11 @@ function RomImporter:_beginModInstall(spec)
     "v" .. tostring(release.version or "?"))
 end
 
-function RomImporter:_modInstallFailed(spec, msg)
+function RomImporter:_modInstallFailed(spec, msg, neutral)
   if not spec.quiet then
-    local notice = { ok = false, text = tostring(msg) }
+    -- neutral: not a failure, a next step (the browser downloading a GitHub
+    -- release itself -- ModUpdate.browserMustDownload)
+    local notice = { ok = neutral == true, text = tostring(msg) }
     if spec.notice == "find" then self.findNotice = notice
     elseif spec.notice ~= "cart" then self.modNotice = notice end
   end
@@ -7302,7 +7320,8 @@ function RomImporter:_pumpModInstall()
     return
   end
   if not path then
-    self:_modInstallFailed(spec, err or "download failed")
+    self:_modInstallFailed(spec, err or "download failed",
+      job.h and job.h.browserDownload)
     return
   end
   -- Hash gate before the unzip: a pinned archive that does not match the cart
@@ -7387,12 +7406,13 @@ function RomImporter:_beginCartInstall(entry, spec)
     "v" .. tostring(release.version or entry.version or "?"))
 end
 
-function RomImporter:_cartInstallFailed(msg, job)
+function RomImporter:_cartInstallFailed(msg, job, neutral)
   job = job or self._cartInstall
   self._cartInstall = nil
   self:_clearBusy()
   if not (job and job.quiet) then
-    self.findNotice = { ok = false, text = tostring(msg) }
+    -- neutral: the browser downloading a GitHub release itself, a next step
+    self.findNotice = { ok = neutral == true, text = tostring(msg) }
   end
   if job and job.done then job.done(false, tostring(msg)) end
 end
@@ -7412,7 +7432,8 @@ function RomImporter:_pumpCartInstall()
     return self:_cartInstallFailed(name .. ": download failed: " .. tostring(done))
   end
   if not path then
-    return self:_cartInstallFailed(name .. ": " .. tostring(err or "download failed"))
+    return self:_cartInstallFailed(name .. ": " .. tostring(err or "download failed"),
+      nil, job.h and job.h.browserDownload)
   end
   self._cartInstall = nil
   local read, bytes = pcall(love.filesystem.read, path)

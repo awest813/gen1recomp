@@ -333,10 +333,12 @@ function Theme.versionRail(x, y, w, h, colors)
   local phase = (now % 24) / 24
   for px = 0, w - 1 do
     local pos = ((px / w - phase) % 1) * #railColors
-    local index = math.floor(pos)
+    -- x % 1 returns exactly 1.0 for a tiny negative x (1 - 1e-17 rounds up),
+    -- which put index one past the end; wrap it back to the first stop
+    local index = math.floor(pos) % #railColors
     local a = railColors[index + 1]
     local b = railColors[(index + 1) % #railColors + 1]
-    local t = pos - index
+    local t = pos - math.floor(pos)
     G.setColor((a[1] + (b[1] - a[1]) * t) / 255,
       (a[2] + (b[2] - a[2]) * t) / 255,
       (a[3] + (b[3] - a[3]) * t) / 255, 1)

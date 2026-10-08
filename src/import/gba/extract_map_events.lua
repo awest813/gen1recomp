@@ -222,10 +222,11 @@ local function parse_map_scripts(rom, scriptsPtr)
     guard = guard + 1
     local typ = rom:get(i)
     if typ == 0 then break end
+    repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
     local ptr = rom:u32(i + 1)
     i = i + 5
     local poff = gba_off(rom, ptr)
-    if not poff then goto continue end
+    if not poff then do break end end
     if typ == MAP_SCRIPT_ON_TRANSITION or typ == MAP_SCRIPT_ON_LOAD
         or typ == MAP_SCRIPT_ON_RESUME or typ == MAP_SCRIPT_ON_RETURN_TO_FIELD
         or typ == MAP_SCRIPT_ON_DIVE_WARP then
@@ -266,7 +267,7 @@ local function parse_map_scripts(rom, scriptsPtr)
         end
       end
     end
-    ::continue::
+    until true
   end
   return mapScripts, seeds
 end

@@ -116,7 +116,10 @@ function FaithfulRes.fixedDisplay()
   if os.getenv("POKEPORT_FORCE_MOBILE") == "1" then return true end
   if not love or not love.system or not love.system.getOS then return false end
   local osName = love.system.getOS()
+  -- Web: the page owns the canvas size and fullscreen needs a user gesture,
+  -- so the game never resizes or fullscreens its own window there.
   return osName == "Android" or osName == "iOS" or osName == "NX"
+    or osName == "Web"
 end
 
 FaithfulRes.isMobile = FaithfulRes.fixedDisplay

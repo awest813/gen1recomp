@@ -337,7 +337,7 @@ function ListMenu:drawItemBox()
       -- '×' at column 14, PrintNumber's two right-aligned digits after it
       -- (home/list_menu.asm:479-490)
       local count = tostring(item.count)
-      Font.draw("\xc3\x97", ITEM_QTY_X, y + 8)
+      Font.draw("\195\151", ITEM_QTY_X, y + 8)
       Font.draw(count, ITEM_QTY_END - Font.width(count), y + 8)
     elseif item.right then
       Font.draw(item.right, ITEM_QTY_END - Font.width(item.right), y + 8)

@@ -5,6 +5,9 @@ LauncherThemeVideo.__index = LauncherThemeVideo
 local VIDEO_PATH = "assets/launcher/current_theme_vid.ogv"
 
 function LauncherThemeVideo.new()
+  -- Browser: no Theora worker thread in the love.js compat build (see
+  -- LauncherSplash.new); the web payload leaves the video out.
+  if require("src.core.Platform").isWeb() then return nil end
   local self = setmetatable({}, LauncherThemeVideo)
   local ok, err = pcall(function()
     self.video = love.graphics.newVideo(VIDEO_PATH, { audio = false })

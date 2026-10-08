@@ -258,7 +258,7 @@ end
 local function moneyText(amount)
   local digits = ("%06d"):format(math.max(0, math.floor(amount or 0)))
   local first = digits:find("[1-9]") or #digits
-  return (" "):rep(first - 1) .. "\xc2\xa5" .. digits:sub(first)
+  return (" "):rep(first - 1) .. "\194\165" .. digits:sub(first)
 end
 
 function TrainerCard:tile(sheet, id, tx, ty)

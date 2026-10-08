@@ -50,17 +50,17 @@ local NAME_INPUT_LOWER = {
   rowCells("a b c d e f g h i"),
   rowCells("j k l m n o p q r"),
   rowCells("s t u v w x y z  "),
-  { "\xc3\x97", "(", ")", ":", ";", "[", "]", "<PK>", "<MN>" },
+  { "\195\151", "(", ")", ":", ";", "[", "]", "<PK>", "<MN>" },
 }
 -- BOX_NAME gets one extra symbol row in each case (BoxNameInput*).
 local BOX_INPUT_UPPER = {
   NAME_INPUT_UPPER[1], NAME_INPUT_UPPER[2], NAME_INPUT_UPPER[3],
-  { "\xc3\x97", "(", ")", ":", ";", "[", "]", "<PK>", "<MN>" },
-  { "-", "?", "!", "\xe2\x99\x82", "\xe2\x99\x80", "/", ".", ",", "&" },
+  { "\195\151", "(", ")", ":", ";", "[", "]", "<PK>", "<MN>" },
+  { "-", "?", "!", "\226\153\130", "\226\153\128", "/", ".", ",", "&" },
 }
 local BOX_INPUT_LOWER = {
   NAME_INPUT_LOWER[1], NAME_INPUT_LOWER[2], NAME_INPUT_LOWER[3],
-  { "\xc3\xa9", "'d", "'l", "'m", "'r", "'s", "'t", "'v", "0" },
+  { "\195\169", "'d", "'l", "'m", "'r", "'s", "'t", "'v", "0" },
   { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
 }
 

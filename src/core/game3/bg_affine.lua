@@ -1,11 +1,38 @@
-local ffi = require("ffi")
 local bit = require("bit")
 
 local Affine = {}
 
-local function f32(x)
-  return tonumber(ffi.new("float", x))
+-- Round a double to the nearest float32, as the GBA BIOS's float math does.
+-- LuaJIT does it through the FFI; PUC Lua (the browser build, no FFI) uses
+-- the same IEEE round-to-nearest-even in plain Lua, bit-identical.
+local f32
+local okFfi, ffi = pcall(require, "ffi")
+if okFfi and ffi then
+  f32 = function(x) return tonumber(ffi.new("float", x)) end
+else
+  local floor, frexp, ldexp = math.floor, math.frexp, math.ldexp
+  local FLT_MAX = ldexp(2 - ldexp(1, -23), 127)
+  f32 = function(x)
+    if x ~= x or x == 0 or x == math.huge or x == -math.huge then return x end
+    local sign = 1
+    if x < 0 then sign, x = -1, -x end
+    local m, e = frexp(x)              -- x = m * 2^e, 0.5 <= m < 1
+    local bits = 24                    -- float32 significand
+    if e < -125 then bits = 24 - (-125 - e) end   -- subnormal range
+    if bits <= 0 then
+      -- below half the smallest subnormal rounds to zero, above it up
+      return sign * ((bits == 0 and m > 0.5) and ldexp(1, -149) or 0)
+    end
+    local scaled = m * 2 ^ bits
+    local r = floor(scaled)
+    local frac = scaled - r
+    if frac > 0.5 or (frac == 0.5 and r % 2 == 1) then r = r + 1 end
+    local y = ldexp(r, e - bits)
+    if y > FLT_MAX then return sign * math.huge end
+    return sign * y
+  end
 end
+Affine._f32 = f32
 
 local function trunc(x)
   if x >= 0 then return math.floor(x) end

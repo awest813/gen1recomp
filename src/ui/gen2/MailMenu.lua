@@ -48,7 +48,7 @@ local MENU_LABEL_X, MENU_LABEL_Y = MENU_X + 2, MENU_Y + 2
 local TEXT_BOX_X, TEXT_BOX_Y, TEXT_BOX_W, TEXT_BOX_H = 0, 12, 20, 6
 local TEXT_X, TEXT_Y, TEXT_LINE = 1, 14, 2
 local YESNO_X, YESNO_Y, YESNO_W, YESNO_H = 14, 7, 6, 5
-local DOWN_ARROW = "\xe2\x96\xbc"
+local DOWN_ARROW = "\226\150\188"
 local ARROW_X, ARROW_Y = 18, 17
 
 -- .MenuData's three rows, verbatim.

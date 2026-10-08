@@ -529,12 +529,42 @@ function ModUpdate.pumpFetchReleases(h)
   return true, nil, h.err
 end
 
+-- The browser build fetches through the page, and GitHub's release-asset
+-- downloads (github.com/.../releases/download/... and the asset host it
+-- redirects to) send no CORS headers, so a page can never read them.  For
+-- those the browser downloads the file itself instead: opened from the
+-- frame that handles the Install click, it is still inside that click's
+-- user activation, so it is not popup-blocked.  The player then imports the
+-- .zip (Import mod .zip, or drop it on the page).
+local BROWSER_DOWNLOAD_HINT = "Your browser downloads mods from GitHub itself:"
+  .. " it opened in a new tab. Drop the .zip on the page (or use Import mod"
+  .. " .zip) when it finishes."
+
+function ModUpdate.browserMustDownload(url)
+  if type(url) ~= "string" then return false end
+  local okP, Platform = pcall(require, "src.core.Platform")
+  if not (okP and Platform.isWeb()) then return false end
+  return url:match("^https://github%.com/[^/]+/[^/]+/releases/download/") ~= nil
+    or url:match("^https://[%w%-]*%.?githubusercontent%.com/github%-production%-release%-asset") ~= nil
+    or url:match("^https://objects%.githubusercontent%.com/") ~= nil
+end
+
 -- Async download of a mod zip into the save directory.  Returns a handle;
 -- pump it for done, savePath, err.
 function ModUpdate.beginDownloadZip(url, destName, size)
   local h = { stage = "done" }
   if type(url) ~= "string" or url == "" then
     h.err = "missing download url"
+    return h
+  end
+  if ModUpdate.browserMustDownload(url) then
+    -- WebHost.openURL knows when the browser would block the tab (anything
+    -- not started by the click itself, e.g. the later rows of Update all)
+    local okW, WebHost = pcall(require, "src.core.WebHost")
+    local opened = okW and WebHost.openURL and WebHost.openURL(url)
+    h.browserDownload = true
+    h.err = opened and BROWSER_DOWNLOAD_HINT
+      or ("Download it in your browser, then drop the .zip on the page: " .. url)
     return h
   end
   if not (love and love.filesystem) then

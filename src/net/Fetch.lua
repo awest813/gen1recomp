@@ -40,12 +40,117 @@ local workers = {}
 local cmdCh, resCh, quitCh
 local ready          -- nil = untried, true = running, false = unavailable
 local jobs = {}      -- id -> { status, body, err, progress, path }
-local nextId = 0
+-- ids start at a per-boot offset: after love.event.quit("restart") a page
+-- fetch from the previous boot may still land under its old id
+local nextId = (os.time() % 100000) * 1000
 local unavailableReason
+
+-- ---------------------------------------------------------------- browser
+-- The browser build has no threads and no curl, but it has fetch().  The
+-- lovejs bridge (ports/web/native/lovejs_bridge.cpp) runs the request in the
+-- page and streams the body into the virtual filesystem; jobs keep exactly
+-- the contract above and finish inside drain().  Hosts must allow CORS --
+-- GitHub Pages, raw.githubusercontent.com and api.github.com do.
+local WEB_TMP = "/tmp/g1r_fetch/"
+-- The page never kills a stalled fetch on its own; Fetch's contract is that
+-- nothing waits forever, so a job without its own ceiling gets this one.
+local WEB_DEFAULT_SECONDS = 120
+
+local function webBridge()
+  local okW, WebHost = pcall(require, "src.core.WebHost")
+  return okW and WebHost.fetchBridge and WebHost.fetchBridge() or nil
+end
+
+local function headerText(cmd)
+  local lines = {}
+  if cmd.accept then lines[#lines + 1] = "Accept: " .. cmd.accept end
+  if cmd.contentType then lines[#lines + 1] = "Content-Type: " .. cmd.contentType end
+  if type(cmd.headers) == "table" then
+    for k, v in pairs(cmd.headers) do
+      -- browsers refuse to let a page set User-Agent; drop it quietly
+      if type(k) == "string" and k:lower() ~= "user-agent" then
+        lines[#lines + 1] = k .. ": " .. tostring(v)
+      end
+    end
+  end
+  return table.concat(lines, "\n")
+end
+
+local function startWeb(web, id, cmd)
+  local method = cmd.kind == "post" and "POST"
+    or (cmd.kind == "request" and (cmd.method or "GET")) or "GET"
+  local dest
+  if cmd.kind == "download" then
+    dest = love.filesystem.getSaveDirectory() .. "/" .. tostring(cmd.dest)
+  else
+    dest = WEB_TMP .. id
+  end
+  -- request: any HTTP status is a result (the desktop worker returns the
+  -- code and body); download: an empty body is a failure, as on desktop
+  local flags = (cmd.kind == "request" and 1 or 0) + (cmd.kind == "download" and 2 or 0)
+  local timeoutMs = math.floor((tonumber(cmd.maxSeconds) or WEB_DEFAULT_SECONDS) * 1000)
+  local ok, started = pcall(web.fetchStart, id, method, cmd.url, headerText(cmd),
+    cmd.body, dest, flags, timeoutMs)
+  local j = jobs[id]
+  if not (ok and started) then
+    j.status, j.err = "error", ok and "the browser refused the request" or tostring(started)
+    return
+  end
+  j.web = { kind = cmd.kind, dest = dest, rel = cmd.dest }
+end
+
+local function readAndRemove(path)
+  local fh = io.open(path, "rb")
+  if not fh then return nil end
+  local body = fh:read("*a")
+  fh:close()
+  os.remove(path)
+  return body
+end
+
+local function drainWeb()
+  local web
+  for id, j in pairs(jobs) do
+    if j.web then
+      web = web or webBridge()
+      if not web then break end
+      local okP, state, code, progress, err = pcall(web.fetchPoll, id)
+      if not okP then state, err = "error", tostring(state) end
+      if state == "pending" then
+        if j.status == "pending" then j.progress = progress or j.progress end
+      else
+        local w = j.web
+        j.web = nil
+        pcall(web.fetchForget, id)
+        if j.orphan then jobs[id] = nil end
+        if j.status ~= "pending" then
+          -- cancelled while in flight: drop what landed
+          if w.kind ~= "download" then os.remove(w.dest) end
+        elseif state == "ok" then
+          j.code = code
+          if w.kind == "download" then
+            j.path = w.rel
+            local okH, WebHost = pcall(require, "src.core.WebHost")
+            if okH then WebHost.markDirty() end
+          elseif w.kind == "post" then
+            os.remove(w.dest)
+          else
+            j.body = readAndRemove(w.dest) or ""
+          end
+          j.status, j.progress = "ok", 1
+        else
+          if w.kind ~= "download" then os.remove(w.dest) end
+          j.status, j.err, j.code = "error", err or "request failed", code
+        end
+      end
+    end
+  end
+end
 
 local function ensureWorkers()
   if ready ~= nil then return ready end
-  if not (love and love.thread and love.thread.newThread) then
+  if not (love and love.thread and love.thread.newThread)
+      or not require("src.core.Platform").hasThreads() then
     ready, unavailableReason = false, "background threads unavailable"
     return false
   end
@@ -75,6 +180,7 @@ end
 -- Move every finished result off the channel into the job table.  Called by
 -- poll() and pending(), so a caller that polls any job drains all of them.
 local function drain()
+  drainWeb()
   if not resCh then return end
   local msg = resCh:pop()
   while msg do
@@ -114,6 +220,11 @@ local function submit(cmd)
   local id = nextId
   cmd.id = id
   jobs[id] = { status = "pending", progress = 0 }
+  local web = webBridge()
+  if web then
+    startWeb(web, id, cmd)
+    return id
+  end
   if not ensureWorkers() then
     jobs[id].status = "error"
     jobs[id].err = unavailableReason
@@ -185,6 +296,13 @@ end
 -- Forget a finished job.  Callers should do this once they have consumed the
 -- result, or the table grows for the life of the process.
 function Fetch.release(id)
+  local j = jobs[id]
+  if j and j.web then
+    -- still running in the page: keep it until it lands so drainWeb can
+    -- forget the page's job and remove its temp file
+    j.status, j.orphan = "cancelled", true
+    return
+  end
   jobs[id] = nil
 end
 
@@ -207,7 +325,7 @@ function Fetch.busy()
 end
 
 function Fetch.available()
-  return ensureWorkers()
+  return webBridge() ~= nil or ensureWorkers()
 end
 
 -- End every worker.  Their command loops sit in Channel:demand(), which never

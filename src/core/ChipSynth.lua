@@ -1557,7 +1557,62 @@ local function renderEffectData(data, header, options)
   return result
 end
 
+-- renderEffectData, a slice at a time, for hosts with no worker thread to
+-- prewarm on (the browser build): a long jingle is 150-350 ms of synthesis in
+-- one frame there, so ChipAudio spreads the same work over idle frames.  The
+-- samples are exactly renderEffectData's setSample path.  job:step(n) does up
+-- to n more samples of work and returns true once job.result is final (a
+-- stereo SoundData, or nil when the effect is too short to play).
+local function newEffectJob(data, header, options)
+  if not header then return nil end
+  options = options or {}
+  options.sfx = true
+  options.allowLoops = false
+  local job = {
+    engine = Engine.new(data, header, options),
+    values = {},
+    count = 0,
+    written = 0,
+    maximum = SAMPLE_RATE * (options.maxSeconds or 12),
+    minimum = math.floor(SAMPLE_RATE / 100),
+    done = false,
+  }
+  function job:step(n)
+    if self.done then return true end
+    if not self.buffer then
+      local engine, values = self.engine, self.values
+      local count, maximum = self.count, self.maximum
+      local stop = count + n
+      while count < maximum and count < stop and not engine:finished() do
+        count = count + 1
+        values[count] = engine:sample()
+      end
+      self.count = count
+      if count < maximum and not engine:finished() then return false end
+      if count < self.minimum then
+        self.done, self.values = true, nil
+        return true
+      end
+      self.buffer = newBuffer(count, 2)
+      return false
+    end
+    local buffer, values = self.buffer, self.values
+    local last = math.min(self.count, self.written + n)
+    for index = self.written + 1, last do
+      local value = values[index]
+      buffer:setSample(index - 1, 1, value)
+      buffer:setSample(index - 1, 2, value)
+    end
+    self.written = last
+    if last < self.count then return false end
+    self.result, self.values, self.done = buffer, nil, true
+    return true
+  end
+  return job
+end
+
 ChipSynth.newEngine = Engine.new
+ChipSynth.newEffectJob = newEffectJob
 ChipSynth.soundData = soundData
 ChipSynth.renderInto = renderInto
 ChipSynth.newBuffer = newBuffer

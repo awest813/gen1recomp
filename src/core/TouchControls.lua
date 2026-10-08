@@ -730,6 +730,16 @@ end
 function TouchControls:touchpressed(id, x, y)
   -- preview mode is layout-edit only: never press GB buttons
   if self.preview then return end
+  -- A phone browser reports "Web", not Android/iOS, so the overlay starts
+  -- off there; the first real touch turns it on (desktop browsers never send
+  -- touches) and then counts as a normal press.
+  if not self.active and self.enabled ~= false and love.system
+      and love.system.getOS and love.system.getOS() == "Web"
+      and os.getenv("POKEPORT_TOUCH") ~= "0" then
+    self.active = true
+    self:ensureImages()
+    TouchSkin.setOverlayLive(true)
+  end
   if not (self.active and self.enabled ~= false
           and (TouchSkin.active or self.img)) then return end
   -- a controller hid the overlay; the first touch only brings it back

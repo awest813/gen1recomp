@@ -521,7 +521,7 @@ local ShaderSourcePatches = require("src.render.ShaderSourcePatches")
 local function defaultEs()
   if not love or not love.system or not love.system.getOS then return false end
   local osName = love.system.getOS()
-  return osName == "Android" or osName == "iOS"
+  return osName == "Android" or osName == "iOS" or osName == "Web"
 end
 
 local function roundDim(x) return math.max(1, math.floor(x + 0.5)) end
@@ -1115,6 +1115,9 @@ local function escalatePerformanceIfNeeded(opts)
   if opts.performance ~= nil and opts.performance ~= "auto" then return false end
   local Performance = require("src.core.Performance")
   if Performance.caps("auto").shaderfx then return false end
+  -- no tier can run it here (the browser build), so escalating would only
+  -- rewrite the player's performance choice for nothing
+  if not Performance.caps("high").shaderfx then return false end
   opts.performance = "high"
   return true
 end

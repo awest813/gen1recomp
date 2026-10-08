@@ -111,6 +111,11 @@ function Performance.detect()
   if isArm and os == "Linux" then
     return "low"
   end
+  -- Browser (love.js): PUC Lua with no JIT, on one thread.  LOW keeps the
+  -- 60 fps cap, drops the extras, and selects 22.05 kHz audio.
+  if os == "Web" then
+    return "low"
+  end
   -- Phones and tablets: balanced drops the 3D tilt, the heaviest extra.
   if os == "Android" or os == "iOS" then
     return "balanced"
@@ -146,8 +151,24 @@ function Performance.label(value)
 end
 
 -- Concrete caps for a stored option value (resolving auto).
+-- The browser build has no SHADER FX at any tier: presets convert through
+-- the native librashader bridge (ffi), which love.js cannot load.
+local webCaps = {}
+local function capsFor(tier)
+  local caps = Performance.CAPS[tier]
+  if loveOS() ~= "Web" or not caps.shaderfx then return caps end
+  local copy = webCaps[tier]
+  if not copy then
+    copy = {}
+    for k, v in pairs(caps) do copy[k] = v end
+    copy.shaderfx = false
+    webCaps[tier] = copy
+  end
+  return copy
+end
+
 function Performance.caps(value)
-  return Performance.CAPS[Performance.resolve(value)]
+  return capsFor(Performance.resolve(value))
 end
 
 -- Resolve the tier for these options, record it live, and return its caps.
@@ -156,7 +177,7 @@ end
 function Performance.applyOptions(opts)
   local tier = Performance.resolve(opts and opts.performance)
   Performance.tier = tier
-  return Performance.CAPS[tier]
+  return capsFor(tier)
 end
 
 -- Cycle the OPTIONS row: auto -> high -> balanced -> low -> auto (dir -1

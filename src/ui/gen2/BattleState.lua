@@ -97,7 +97,7 @@ local TEXT_ROWS = 2
 local TEXT_ROW_STEP = 2
 
 -- ../pokecrystal/home/text.asm:630
-local DOWN_ARROW = "\xe2\x96\xbc"
+local DOWN_ARROW = "\226\150\188"
 local ARROW_X, ARROW_Y = 18, 17
 
 -- ../pokecrystal/engine/battle/core.asm:9119-9137
@@ -208,7 +208,7 @@ local CONTEST_MENU_BOX_X = 2
 local CONTEST_MENU_COL_SPACING = 12
 
 -- charmap.asm's quantity glyph, spelled the way MartMenu spells it.
-local CONTEST_BALL_LABEL = Strings.source("PARKBALL\xc3\x97%02d")
+local CONTEST_BALL_LABEL = Strings.source("PARKBALL\195\151%02d")
 
 -- data/items/heal_status.asm StatusHealingActions: the four rows whose status
 -- mask is %11111111.  HealStatus's `.not_full_heal` arm is what makes exactly
@@ -4414,8 +4414,8 @@ end
 -- writes a plain space in that case).
 function BattleState:genderSymbol(mon)
   local gender = mon and mon.gender
-  if gender == "male" then return "\xe2\x99\x82" end
-  if gender == "female" then return "\xe2\x99\x80" end
+  if gender == "male" then return "\226\153\130" end
+  if gender == "female" then return "\226\153\128" end
   return nil
 end
 
@@ -4618,7 +4618,7 @@ function BattleState:drawBottom(ox)
       -- hlcoord 5, 13 is the cursor's own gutter, so PlaceMenuCursor covers
       -- the marker on the cursor's row.
       if self.moveSwapIndex == i and i ~= cursorRow then
-        Chrome.printThrough("\u{25B7}", 5, ty, Chrome.DEFAULT_BOX_PALETTE)
+        Chrome.printThrough("\226\150\183", 5, ty, Chrome.DEFAULT_BOX_PALETTE)
       end
       local def = self.game and self.game.data and self.game.data.moves
         and self.game.data.moves[move.id]

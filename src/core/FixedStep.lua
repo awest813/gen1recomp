@@ -72,12 +72,36 @@ end
 
 FixedStep.maxAccum = MAX_ACCUM
 
+-- A frame longer than SMOOTH_MAX normally counts as a one-off hitch: the
+-- catch-up cap stays at two steps so the burst doesn't play out as a slide.
+-- When frames are long *all the time* -- a slow phone or a software-GL
+-- browser holding ~20 fps -- that cap turns into slow motion (two steps per
+-- 50 ms frame is 40 of 60 steps a second).  With sustainedCatchup on (set
+-- for the browser build in main.lua), a moving average of the frame time
+-- tells the two apart: only while it stays above SMOOTH_MAX does a frame
+-- buy its real length in steps, capped at SUSTAINED_MAX_STEPS of frame time
+-- (catchupLimit's usual 1.5x headroom makes that at most six steps).
+FixedStep.sustainedCatchup = false
+local SUSTAINED_MAX_STEPS = 4
+local SUSTAINED_ALPHA = 0.1
+local frameEma = nil
+
 function FixedStep.catchupLimit(speed, dt)
   speed = tonumber(speed) or 1
   if speed < 1 then speed = 1 end
   local step = FixedStep.STEP
   local frame = tonumber(dt) or step
-  if frame ~= frame or frame < step or frame > SMOOTH_MAX then frame = step end
+  local sustained = false
+  if FixedStep.sustainedCatchup and frame == frame and frame > 0 then
+    local sample = math.min(frame, MAX_ACCUM)
+    frameEma = frameEma and (frameEma + (sample - frameEma) * SUSTAINED_ALPHA) or step
+    sustained = frameEma > SMOOTH_MAX
+  end
+  if sustained and frame > SMOOTH_MAX then
+    frame = math.min(frame, step * SUSTAINED_MAX_STEPS)
+  elseif frame ~= frame or frame < step or frame > SMOOTH_MAX then
+    frame = step
+  end
   local target = speed * frame * 1.5
   local floor = step * 2
   if target < floor then target = floor end
@@ -168,6 +192,11 @@ function FixedStep:update(dt, speed)
       break
     end
   end
+end
+
+-- Tests only.
+function FixedStep._resetSustainedForTests()
+  frameEma = nil
 end
 
 function FixedStep:endFrame()

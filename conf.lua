@@ -1,3 +1,8 @@
+-- PUC Lua 5.1 (love.js in the browser) lacks the 5.2 load(string, name,
+-- mode, env) form the engine sandboxes its cache modules with; patch it in
+-- before anything else runs.  A no-op under LuaJIT.
+pcall(function() require("src.core.LuaCompat").install() end)
+
 function love.conf(t)
   -- PhysFS ignores symlinks unless told otherwise, so a mod dev-linked into
   -- mods/ (ln -s, matching the mklink /J workflow on Windows) is invisible
@@ -61,7 +66,9 @@ function love.conf(t)
     t.window.minwidth = 480
     t.window.minheight = 360
   end
-  t.version = love._os == "iOS" and "12.0" or "11.5"
+  -- love.js (Web) is LÖVE 11.4; declaring 11.5 there made LÖVE put up a
+  -- blocking "Compatibility Warning" alert on every page load
+  t.version = love._os == "iOS" and "12.0" or love._os == "Web" and "11.4" or "11.5"
   -- Driver vsync stays on everywhere (including KMSDRM handhelds) so
   -- PresentSync can probe cadence and pace via the panel.  Turning it off
   -- here bypassed that stack and forced the FrameCap 1 ms polling loop.
@@ -130,6 +137,17 @@ function love.conf(t)
     -- player around by tilt.  Nothing in the game reads the accelerometer,
     -- so drop the device entirely (#468).
     t.accelerometerjoystick = false
+  elseif osName == "Web" then
+    -- love.js: the page shell sizes the canvas to the viewport and SDL's
+    -- emscripten backend turns that into resize events for a resizable
+    -- window; the renderer letterboxes the 160x144 game into whatever it
+    -- gets.  highdpi stays off -- device-pixel-ratio canvases cost fill rate
+    -- the non-JIT build cannot spare, and the game is integer-scaled pixels.
+    -- See docs/proposals/web-port.md.
+    t.window.resizable = true
+    t.window.highdpi = false
+    t.window.minwidth = 160
+    t.window.minheight = 144
   else
     t.window.resizable = true
     pcall(function() require("src.core.PadHints").apply(osName) end)

@@ -651,22 +651,23 @@ local function extract_tag_sheets(rom, cache, root, usedTags, tag_dims)
   local pal_base = anim.pal_table
 
   for idx = 0, anim.tag_count - 1 do
+    repeat -- runs once; `do break end` = continue (Lua 5.1 has no goto)
     local name = TAG_NAMES[idx]
-    if not name then goto continue_tag end
+    if not name then do break end end
 
     -- Read pic pointer (8-byte stride: ptr at +0, size at +4)
     local pic_gba = rom:u32(pic_base + idx * 8)
     local pic_off = rom:ptrOffset(pic_gba)
-    if not (pic_off and rom:get(pic_off) == 0x10) then goto continue_tag end
+    if not (pic_off and rom:get(pic_off) == 0x10) then do break end end
 
     -- Read pal pointer
     local pal_gba = rom:u32(pal_base + idx * 8)
     local pal_off = rom:ptrOffset(pal_gba)
-    if not pal_off then goto continue_tag end
+    if not pal_off then do break end end
 
     -- Decompress tile data
     local ok_lz, tile_bytes, _ = pcall(Lz77.decompress, function(j) return rom:get(j) end, pic_off)
-    if not ok_lz or not tile_bytes then goto continue_tag end
+    if not ok_lz or not tile_bytes then do break end end
 
     -- Decode palette (32 bytes uncompressed, or LZ77 compressed)
     local pal_bytes
@@ -677,7 +678,7 @@ local function extract_tag_sheets(rom, cache, root, usedTags, tag_dims)
       pal_bytes = {}
       for pi = 0, 31 do pal_bytes[pi + 1] = rom:get(pal_off + pi) end
     end
-    if not pal_bytes then goto continue_tag end
+    if not pal_bytes then do break end end
 
     local pal = decode_palette(pal_bytes)
     local palInts = pal_ints(pal_bytes)
@@ -686,7 +687,7 @@ local function extract_tag_sheets(rom, cache, root, usedTags, tag_dims)
     -- Tiles are arranged in columns determined by frame width.
     local total_bytes = #tile_bytes
     local tile_count  = math.floor(total_bytes / 32)
-    if tile_count <= 0 then goto continue_tag end
+    if tile_count <= 0 then do break end end
 
     local frame_w = tag_dims and tag_dims[name] and tag_dims[name].w
     local frame_h = tag_dims and tag_dims[name] and tag_dims[name].h
@@ -758,7 +759,7 @@ local function extract_tag_sheets(rom, cache, root, usedTags, tag_dims)
       }
     end
 
-    ::continue_tag::
+    until true
   end
   return tags
 end

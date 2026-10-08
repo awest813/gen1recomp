@@ -74,7 +74,7 @@ local PICKED_UP = Strings.source("%s picked up %s%d!")
 
 -- charmap.asm: the currency glyph, the same one Chrome.money floats in front
 -- of a six-digit field.
-local YEN = "\xc2\xa5"
+local YEN = "\194\165"
 
 --------------------------------------------------------------------------
 -- ComputeTrainerReward

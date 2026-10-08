@@ -704,8 +704,58 @@ function RomExtractorGen3:hasTask(id)
   return false
 end
 
+-- The extract modules resolve the layout family, profile and map tables
+-- through GameVersion.get() (src/import/gba/family.lua).  Each worker thread
+-- sets it to the ROM's version (extract_worker.lua); the sequential fallback
+-- runs right here, where GameVersion is still whatever game the launcher has
+-- active -- so an Emerald import from the Red tab extracted with the FRLG
+-- family and failed in map_catalog.  Hosts without threads (the browser)
+-- always take that path.  Pin the version for the run, then put it back.
+--
+-- The importer drives run() from a coroutine that yields progress, and PUC
+-- Lua 5.1 (the browser) cannot yield across pcall, so the body runs in an
+-- inner coroutine whose yields are passed straight through to the caller.
+-- The extract stages report progress from under their own pcalls too, so on
+-- 5.1 the global pcall is the yield-safe one (LuaCompat.yieldablePcall)
+-- while the body runs -- and only then: it is swapped back across every
+-- yield, so the rest of the frame keeps the real pcall.
+local runBody
+local unpack = unpack or table.unpack
+local function pack(...) return { n = select("#", ...), ... } end
+
 function RomExtractorGen3:run()
   local sha1 = self:ensureSha1()
+  local before = GameVersion.get()
+  -- new() resolved the version from the SHA-1; a bare test fixture has none
+  if self.version then GameVersion.set(self.version) end
+  local LuaCompat = require("src.core.LuaCompat")
+  local realPcall = pcall
+  local stagePcall = (not LuaCompat.pcallYields()) and LuaCompat.yieldablePcall or realPcall
+  local co = coroutine.create(runBody)
+  local args = pack(self, sha1)
+  local pinned = GameVersion.get()
+  while true do
+    -- pin while the body runs, put the launcher's version back across every
+    -- yield (other frames run in between, and a dropped worker never resumes)
+    GameVersion.set(pinned)
+    _G.pcall = stagePcall
+    local res = pack(coroutine.resume(co, unpack(args, 1, args.n)))
+    _G.pcall = realPcall
+    GameVersion.set(before)
+    if not res[1] then
+      -- rethrowing from here loses the failing frame from the importer's
+      -- traceback, so log the inner one first
+      print(debug.traceback(co, tostring(res[2])))
+      error(res[2], 0)
+    end
+    if coroutine.status(co) == "dead" then
+      return res[2]
+    end
+    args = pack(coroutine.yield(unpack(res, 2, res.n)))
+  end
+end
+
+function runBody(self, sha1)
 
   self:report(0.01, "Initializing Markers", 0, 1)
   self:writeRequiredMarkers(sha1)

@@ -132,3 +132,6 @@ src/import/gba/chrome/*.pal
 src/import/gba/chrome/*.rgba
 /os
 /re
+
+# Playwright for ports/web/smoke_test.mjs (npm install --no-save)
+node_modules/

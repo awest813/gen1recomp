@@ -44,8 +44,8 @@ local BALANCE_LABEL_X, BALANCE_LABEL_Y = 1, 12
 local BALANCE_NUM_X = 8
 local POINTS_LABEL = Strings.source("Points")
 
-local UP_ARROW = "\xe2\x96\xb2"
-local DOWN_ARROW = "\xe2\x96\xbc"
+local UP_ARROW = "\226\150\178"
+local DOWN_ARROW = "\226\150\188"
 
 -- opts: mode, and then words/width/onDone(0..2) or prizes/balance/onDone(row)
 function BuenaPassword.new(game, opts)

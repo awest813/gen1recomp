@@ -56,7 +56,7 @@ local DEPOSIT_LABEL = Strings.source("DEPOSIT")
 local WITHDRAW_LABEL = Strings.source("WITHDRAW")
 
 -- charmap.asm: ¥ is the currency glyph, same one MartMenu's moneyText uses.
-local YEN = "\xc2\xa5"
+local YEN = "\194\165"
 
 -- PrintNum with PRINTNUM_MONEY, no PRINTNUM_LEADINGZEROS: the ¥ floats to
 -- just before the first significant digit and the field stays 6 digits wide.

@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>G1R Deluxe</title>
+  <!-- installable: Add to Home Screen opens the game full screen (iPhone
+       browsers have no fullscreen mode for pages) -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="G1R Deluxe">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#101418">
+  <!--
+    gen1recomp browser shell (ports/web/shell/index.html).  Rendered by
+    scripts/build_web.sh: __G1R_MEMORY__ is replaced with the initial wasm
+    heap size.  The page ships engine code only -- no ROM and no game data.
+    The player's ROM is read in this browser, imported, and dropped; the
+    generated cache and saves live in this browser's IndexedDB.
+  -->
+  <style>
+    :root {
+      --bg: #101418;
+      --panel: #1b2229;
+      --text: #e8edf2;
+      --muted: #9aa7b4;
+      --accent: #e3350d;
+      --accent-text: #ffffff;
+      --border: #2c3640;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #eef2f5;
+        --panel: #ffffff;
+        --text: #15191d;
+        --muted: #55616d;
+        --border: #d3dae0;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    /* The canvas must have no border or padding, or mouse coordinates drift. */
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      border: 0;
+      padding: 0;
+      outline: none;
+      visibility: hidden;
+      touch-action: none;
+    }
+    #start {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: var(--bg);
+    }
+    .card {
+      width: min(440px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .card h1 { margin: 0 0 4px; font-size: 22px; }
+    .card p { margin: 8px 0; color: var(--muted); }
+    .card button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--accent-text);
+      background: var(--accent);
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .card button:disabled { opacity: 0.6; cursor: progress; }
+    #status { min-height: 1.45em; font-size: 13px; }
+    /* after Start the card (and #status) is gone; problems show here */
+    #error {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 12px;
+      transform: translateX(-50%);
+      max-width: calc(100% - 32px);
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #fff;
+      background: #a1262b;
+      border-radius: 8px;
+      z-index: 30;
+    }
+    .card .keys { font-size: 13px; }
+    kbd {
+      padding: 0 4px;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    /* top-left: the on-screen controls own the bottom of a phone screen and
+       the touch hotbar sits top-right */
+    #fullscreen {
+      position: fixed;
+      left: calc(8px + env(safe-area-inset-left, 0px));
+      top: calc(8px + env(safe-area-inset-top, 0px));
+      display: none;
+      padding: 6px 10px;
+      font: 12px system-ui, sans-serif;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.4s;
+    }
+    #fullscreen:hover { opacity: 1; }
+    #fullscreen.idle { opacity: 0; pointer-events: none; }
+    /* ?fps=1: frames per second as the page sees them (top centre, clear
+       of the fullscreen button and the touch hotbar) */
+    #fps {
+      position: fixed;
+      left: 50%;
+      top: calc(6px + env(safe-area-inset-top, 0px));
+      transform: translateX(-50%);
+      display: none;
+      padding: 3px 8px;
+      font: 12px ui-monospace, monospace;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    #drop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      font-size: 20px;
+      pointer-events: none;
+    }
+    #fileinput { display: none; }
+    #pickprompt {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: none;
+      gap: 8px;
+      align-items: center;
+      max-width: calc(100% - 32px);
+      padding: 10px 12px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    #pickprompt button {
+      padding: 6px 12px;
+      font: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+    #pickprompt #pickprompt-go { background: var(--accent); color: var(--accent-text); border: 0; }
+    #blocked {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: var(--bg);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+
+  <div id="start">
+    <div class="card">
+      <h1>G1R Deluxe</h1>
+      <p>Pok&eacute;mon Red, Blue and Yellow, rebuilt natively. Bring your own ROM.</p>
+      <p>The ROM you pick is read in this browser and never uploaded. Your
+        imported game data and saves stay in this browser's storage. Clearing
+        site data deletes them, so use <em>Export save</em> in the launcher to
+        keep a copy.</p>
+      <p class="keys">Arrows move &middot; <kbd>Z</kbd>/<kbd>Enter</kbd> A &middot;
+        <kbd>X</kbd>/<kbd>Backspace</kbd> B &middot; <kbd>Esc</kbd> Start &middot;
+        <kbd>Tab</kbd> Select &middot; <kbd>F1</kbd> save. Gamepads work; on a
+        phone, touch the screen for on-screen buttons.</p>
+      <button id="go" type="button" disabled aria-busy="true">Loading...</button>
+      <p id="status" role="status"></p>
+    </div>
+  </div>
+
+  <button id="fullscreen" type="button">Fullscreen</button>
+  <div id="fps" aria-hidden="true"></div>
+  <div id="drop">Drop a ROM or save file</div>
+  <div id="error" role="alert"></div>
+  <div id="pickprompt" role="dialog" aria-labelledby="pickprompt-text">
+    <span id="pickprompt-text" aria-live="polite">Choose a file</span>
+    <button id="pickprompt-go" type="button">Browse...</button>
+    <button id="pickprompt-cancel" type="button">Cancel</button>
+  </div>
+  <div id="blocked">
+    <div class="card">
+      <h1>Already open</h1>
+      <p>G1R Deluxe is running in another tab or window. Two copies would
+        overwrite each other's saves. Close the other one and this page starts
+        over by itself.</p>
+    </div>
+  </div>
+  <input id="fileinput" type="file">
+
+  <!--
+    Web Audio unlock.  love.js creates its AudioContext after async startup,
+    outside the Start click, and stricter browsers (iOS Safari) leave such a
+    context suspended until a later gesture resumes it.  Track every context
+    the page creates and resume suspended ones on any tap or key press.
+  -->
+  <script>
+    (function () {
+      var Native = window.AudioContext || window.webkitAudioContext;
+      if (!Native) return;
+      var contexts = [];
+      function Tracked(options) {
+        var ctx = options === undefined ? new Native() : new Native(options);
+        contexts.push(ctx);
+        return ctx;
+      }
+      Tracked.prototype = Native.prototype;
+      window.AudioContext = Tracked;
+      if (window.webkitAudioContext) window.webkitAudioContext = Tracked;
+      function resumeAll() {
+        contexts.forEach(function (ctx) {
+          if (ctx.state === "suspended" && ctx.resume) ctx.resume().catch(function () {});
+        });
+      }
+      ["pointerdown", "keydown", "touchend"].forEach(function (name) {
+        window.addEventListener(name, resumeAll, true);
+      });
+      window.g1rAudioContexts = contexts;
+    })();
+  </script>
+
+  <!-- game.js (the data package) and love.js both read this global -->
+  <script>var Module = {};</script>
+  <script>
+    (function () {
+      "use strict";
+
+      var canvas = document.getElementById("canvas");
+      var startPanel = document.getElementById("start");
+      var goButton = document.getElementById("go");
+      var statusLine = document.getElementById("status");
+      var fullscreenButton = document.getElementById("fullscreen");
+      var dropHint = document.getElementById("drop");
+      var fileInput = document.getElementById("fileinput");
+
+      var PICK_DIR = "/tmp/g1r_picks";
+      var DROP_DIR = "/tmp/g1r_drops";
+      var ACCEPT = {
+        rom: ".gb,.gbc,.gba",
+        sav: ".sav,.srm,.lua",
+        mod: ".zip",
+        skin: ".zip,.deltaskin",
+        cart: ".g1rcart"
+      };
+
+      var loveReady = false;
+      var started = false;
+
+      function setStatus(text) { statusLine.textContent = text || ""; }
+
+      // the start card is hidden once the game runs; show problems on a banner
+      var errorBanner = document.getElementById("error");
+      function showError(text) {
+        if (startPanel.style.display === "none") {
+          errorBanner.textContent = text;
+          errorBanner.style.display = "block";
+        }
+        setStatus(text);
+      }
+
+      window.addEventListener("keydown", function (e) {
+        // keep the page from scrolling / navigating on game keys
+        var keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ",
+          "Tab", "Backspace", "F1", "F2", "F10"];
+        if (started && keys.indexOf(e.key) !== -1) e.preventDefault();
+      }, false);
+
+      // ---------------------------------------------------------------
+      // Files: picks and drops land under /tmp (MEMFS, never persisted),
+      // then the path is queued for the Lua side (src/core/WebHost.lua).
+      function safeName(name) {
+        return String(name || "file").replace(/[^A-Za-z0-9._ ()-]/g, "_").slice(-120);
+      }
+
+      function stage(dir, file, queueName) {
+        var FS = Module.g1rFS;
+        if (!FS) return Promise.reject(new Error("the game has not started yet"));
+        return file.arrayBuffer().then(function (buf) {
+          try { FS.mkdirTree(dir); } catch (e) { /* exists */ }
+          var path = dir + "/" + Date.now() + "_" + safeName(file.name);
+          FS.writeFile(path, new Uint8Array(buf));
+          Module[queueName].push(path);
+          return path;
+        });
+      }
+
+      // Lua asks for a file from inside a requestAnimationFrame tick.  The
+      // browser opens the dialog only while the click/key that led there still
+      // counts as a user gesture (and a gamepad press never does), so the
+      // dialog may silently not appear.  The prompt bar below is the fallback:
+      // its Browse button is a real click.  It closes on pick or cancel.
+      var pickPrompt = document.getElementById("pickprompt");
+      var pickPromptText = document.getElementById("pickprompt-text");
+      var KIND_LABEL = { rom: "Choose your ROM (.gb / .gbc)", sav: "Choose a save file",
+        mod: "Choose a mod .zip", skin: "Choose a skin", cart: "Choose a cart file" };
+      var pickOpen = false;
+
+      function closePick() {
+        pickOpen = false;
+        pickPrompt.style.display = "none";
+        canvas.focus();
+      }
+
+      // keys typed on the prompt bar belong to it: SDL listens on window and
+      // cancels Tab/Enter/Space, which would make its buttons unreachable
+      // from the keyboard.  Escape cancels.
+      ["keydown", "keyup", "keypress"].forEach(function (name) {
+        pickPrompt.addEventListener(name, function (e) {
+          e.stopPropagation();
+          if (name === "keydown" && e.key === "Escape") { e.preventDefault(); cancelPick(); }
+        });
+      });
+
+      Module.g1rPickFile = function (kind) {
+        fileInput.value = "";
+        fileInput.accept = ACCEPT[kind] || "";
+        pickPromptText.textContent = KIND_LABEL[kind] || "Choose a file";
+        pickPrompt.style.display = "flex";
+        pickOpen = true;
+        document.getElementById("pickprompt-go").focus();
+        try { fileInput.click(); } catch (e) { /* the prompt bar covers it */ }
+        return true;
+      };
+
+      document.getElementById("pickprompt-go").addEventListener("click", function () {
+        fileInput.click();
+      });
+      function cancelPick() {
+        if (!pickOpen) return;
+        closePick();
+        (Module.g1rPickErrors || []).push("No file was selected.");
+      }
+      document.getElementById("pickprompt-cancel").addEventListener("click", cancelPick);
+      // fires only for a dialog that actually opened (a refused automatic
+      // open fires nothing, so the bar stays up for its Browse button)
+      fileInput.addEventListener("cancel", cancelPick);
+
+      fileInput.addEventListener("change", function () {
+        var file = fileInput.files && fileInput.files[0];
+        closePick();
+        if (!file) return;
+        stage(PICK_DIR, file, "g1rPicks").catch(function (err) {
+          (Module.g1rPickErrors || []).push("Could not read the selected file: " + err.message);
+        });
+      });
+
+      var dragDepth = 0;
+      window.addEventListener("dragenter", function (e) {
+        if (!started) return;
+        e.preventDefault();
+        dragDepth++;
+        dropHint.style.display = "flex";
+      });
+      // always cancel the browser default: a file dropped on the page before
+      // Start would otherwise navigate away from it
+      window.addEventListener("dragover", function (e) { e.preventDefault(); });
+      window.addEventListener("dragleave", function () {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) dropHint.style.display = "none";
+      });
+      window.addEventListener("drop", function (e) {
+        e.preventDefault();
+        if (!started || !Module.g1rFS) {
+          setStatus("Press Start first, then drop the file again.");
+          return;
+        }
+        dragDepth = 0;
+        dropHint.style.display = "none";
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files) return;
+        for (var i = 0; i < files.length; i++) {
+          stage(DROP_DIR, files[i], "g1rDrops").catch(function (err) {
+            console.error("[g1r] drop failed:", err);
+            showError("Could not read the dropped file: " + err.message);
+          });
+        }
+      });
+
+      // ---------------------------------------------------------------
+      // Storage: love.js flushes IndexedDB on beforeunload only; the Lua side
+      // syncs after writes, and the page adds the moments a tab can die.
+      function flushStorage() {
+        // the bridge's coalescer (lovejs_bridge.cpp) -- never a second syncfs
+        if (typeof Module.g1rSync === "function") Module.g1rSync();
+      }
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") flushStorage();
+      });
+      window.addEventListener("pagehide", flushStorage);
+      // A big import (Emerald: thousands of files) takes a while to reach
+      // IndexedDB after the game shows it as done; closing the tab mid-sync
+      // keeps only part of it.  Ask first, only while a sync is in flight.
+      window.addEventListener("beforeunload", function (e) {
+        var busy = typeof Module.g1rSyncBusy === "function" && Module.g1rSyncBusy();
+        // g1rDirty: writes still waiting for the game's debounced sync
+        if (Module.g1rDirty || busy) {
+          flushStorage();
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      });
+
+      // ---------------------------------------------------------------
+      // Fullscreen needs a user gesture, so it is a page button.
+      // shown on pointer/touch activity, faded out after a few idle seconds so
+      // it never sits over the game or the launcher logo
+      var idleTimer = null;
+      function wakeFullscreenButton() {
+        fullscreenButton.classList.remove("idle");
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(function () { fullscreenButton.classList.add("idle"); }, 2500);
+      }
+      ["pointermove", "pointerdown", "touchstart"].forEach(function (name) {
+        window.addEventListener(name, wakeFullscreenButton, { passive: true });
+      });
+
+      // iPhone Safari has no element fullscreen at all; older Safari only
+      // the webkit-prefixed API.  No support: no button.
+      var fullscreenSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+      fullscreenButton.title = "Fullscreen (Esc leaves it)";
+      fullscreenButton.addEventListener("click", function () {
+        var el = document.documentElement;
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+          (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else if (el.requestFullscreen) {
+          el.requestFullscreen().catch(function () {});
+        } else if (el.webkitRequestFullscreen) {
+          el.webkitRequestFullscreen();
+        }
+        canvas.focus();
+      });
+
+      // ---------------------------------------------------------------
+      // Module: love.js reads this.  game.js (the data package) is already
+      // downloading; Love(Module) runs on the Start click so the Web Audio
+      // context is created inside a user gesture.
+      // Launch options from the page URL, same names as the desktop flags and
+      // the mobile gen1recomp++://launch links (docs/guides/launch-options.md):
+      // ?game=blue boots Blue directly, &slot=2 picks a save slot, &cart=id an
+      // installed custom cart, &launcher=1 opens the launcher anyway.
+      Module.arguments = ["./game.love"];
+      (function () {
+        var params = new URLSearchParams(location.search);
+        ["game", "cart", "slot"].forEach(function (name) {
+          var value = params.get(name);
+          if (value && /^[A-Za-z0-9_ .-]{1,64}$/.test(value)) {
+            Module.arguments.push("--" + name + "=" + value);
+          }
+        });
+        if (/^(1|true|yes|on)$/i.test(params.get("launcher") || "")) {
+          Module.arguments.push("--launcher");
+        }
+      })();
+      Module.INITIAL_MEMORY = __G1R_MEMORY__;
+      Module.canvas = canvas;
+      Module.printErr = console.error.bind(console);
+      Module.print = console.log.bind(console);
+      Module.setStatus = function (text) {
+        if (text) setStatus(text);
+      };
+      Module.monitorRunDependencies = function (left) {
+        if (left === 0 && started) setStatus("");
+      };
+      Module.onRuntimeInitialized = function () {
+        startPanel.style.display = "none";
+        canvas.style.visibility = "visible";
+        if (fullscreenSupported) {
+          fullscreenButton.style.display = "block";
+          wakeFullscreenButton();
+        }
+        if (/^(1|true|yes|on)$/i.test(new URLSearchParams(location.search).get("fps") || "")) {
+          startFpsMeter();
+        }
+        canvas.focus();
+        // nudge SDL to pick up the CSS-sized canvas
+        setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
+      };
+      // Counts the page's animation frames, which the game's main loop runs
+      // on, so it reads the same with any mod or game; the worst frame is the
+      // longest gap between two of them in the last second.
+      function startFpsMeter() {
+        var box = document.getElementById("fps");
+        var frames = 0, worst = 0, last = performance.now(), windowStart = last;
+        box.style.display = "block";
+        box.textContent = "-- fps";
+        function tick(now) {
+          frames++;
+          worst = Math.max(worst, now - last);
+          last = now;
+          if (now - windowStart >= 1000) {
+            var fps = frames * 1000 / (now - windowStart);
+            box.textContent = fps.toFixed(fps < 10 ? 1 : 0) + " fps \u00b7 worst " + Math.round(worst) + " ms";
+            frames = 0;
+            worst = 0;
+            windowStart = now;
+          }
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }
+      canvas.addEventListener("webglcontextlost", function (e) {
+        e.preventDefault();
+        showError("The graphics context was lost. Reload the page to continue (saves on disk are kept).");
+      }, false);
+      window.addEventListener("error", function (e) {
+        showError("Something went wrong: " + (e.message || "see the browser console"));
+      });
+
+      // IDBFS makes IndexedDB mirror this tab's filesystem on every sync, so a
+      // second running tab would delete the first one's imports and saves.  A
+      // Web Lock held for the page's lifetime keeps it to one instance.
+      function withInstanceLock(run) {
+        if (!(navigator.locks && navigator.locks.request)) { run(); return; }
+        navigator.locks.request("g1r-instance", { ifAvailable: true }, function (lock) {
+          if (!lock) {
+            startPanel.style.display = "none";
+            document.getElementById("blocked").style.display = "flex";
+            // reload by itself once the other copy closes and frees the lock
+            navigator.locks.request("g1r-instance", function () { location.reload(); });
+            return;
+          }
+          run();
+          return new Promise(function () {}); // hold until the page goes away
+        });
+      }
+
+      function start() {
+        if (started || !loveReady) return;
+        started = true;
+        withInstanceLock(boot);
+      }
+
+      function boot() {
+        goButton.disabled = true;
+        goButton.textContent = "Starting...";
+        if (navigator.storage && navigator.storage.persist) {
+          navigator.storage.persist().catch(function () {});
+        }
+        window.Love(Module);
+      }
+      goButton.addEventListener("click", start);
+
+      window.g1rLoveFailed = function () {
+        goButton.textContent = "Unavailable";
+        setStatus("The game engine (love.js) failed to download. Check the connection and reload.");
+      };
+
+      window.g1rLoveLoaded = function () {
+        loveReady = true;
+        goButton.disabled = false;
+        goButton.textContent = "Start";
+        goButton.removeAttribute("aria-busy");
+        goButton.focus();
+        if (/[?&]autostart=1\b/.test(location.search)) start();
+      };
+    })();
+  </script>
+  <script src="game.js"></script>
+  <script async src="love.js" onload="g1rLoveLoaded()" onerror="g1rLoveFailed()"></script>
+</body>
+</html>

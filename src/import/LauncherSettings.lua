@@ -789,6 +789,7 @@ function LauncherSettings.open(hooks, version)
       },
       {
         label = Strings("Splash Video"),
+        videoOnly = true,
         value = function()
           return opts.splashVideo == false and Strings("OFF") or Strings("ON")
         end,
@@ -799,6 +800,7 @@ function LauncherSettings.open(hooks, version)
       },
       {
         label = Strings("Theme Video BG"),
+        videoOnly = true,
         value = function()
           return opts.themeVideoBg == false and Strings("OFF") or Strings("ON")
         end,
@@ -809,6 +811,7 @@ function LauncherSettings.open(hooks, version)
       },
       {
         label = Strings("Splash Sound"),
+        videoOnly = true,
         value = function()
           return opts.splashMute == true and Strings("OFF") or Strings("ON")
         end,
@@ -819,6 +822,16 @@ function LauncherSettings.open(hooks, version)
       },
     },
   }
+  -- The browser build has no launcher splash or theme videos
+  -- (LauncherSplash / LauncherThemeVideo skip them on Web), so their
+  -- switches would do nothing there.
+  if require("src.core.Platform").isWeb() then
+    local kept = {}
+    for _, row in ipairs(launcher.rows) do
+      if not row.videoOnly then kept[#kept + 1] = row end
+    end
+    launcher.rows = kept
+  end
   local Window = require("src.import.LauncherWindow")
   if Window.supported() then
     table.insert(launcher.rows, 1, {

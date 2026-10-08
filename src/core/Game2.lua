@@ -1082,6 +1082,12 @@ function Game2:load(opts)
   self.data.font = loadGenerated("data/generated/font.lua")
   self.fontData = self.data.font
   self.data.audio = loadGenerated("data/generated/audio.lua") or {}
+  -- the applyOptions above ran before the audio data existed; prewarm the
+  -- common effects now so the intro's (queued first) are ready in time
+  do
+    local Sound = require("src.core.Sound")
+    if Sound.prewarmCommon then pcall(Sound.prewarmCommon, self.data, Sound.COMMON_SFX_GEN2) end
+  end
   self.data.pokemon = loadGenerated("data/generated/pokemon.lua") or {}
   self.data.items = loadGenerated("data/generated/items.lua") or {}
   self.data.moves = loadGenerated("data/generated/moves.lua") or {}
@@ -2440,7 +2446,13 @@ function Game2:applyOptions()
   local options = self.options or {}
   require("src.core.FaithfulRes").setNativeSize(160, 144)
   Music.applyOptions(options)
-  require("src.core.Sound").applyOptions(options)
+  local Sound = require("src.core.Sound")
+  Sound.applyOptions(options)
+  -- browser build: synthesize the common Gen 2 effects in the background so
+  -- a first menu press or door does not render on that frame (Sound.lua)
+  if Sound.prewarmCommon and self.data then
+    pcall(Sound.prewarmCommon, self.data, Sound.COMMON_SFX_GEN2)
+  end
   local Zoom = require("src.render.Zoom")
   Zoom.applyOptions(options)
   local caps = require("src.core.Performance").applyOptions(options)

@@ -132,10 +132,10 @@ local YESNO_X, YESNO_Y, YESNO_W, YESNO_H = 14, 7, 6, 5
 
 -- charmap.asm: × is the quantity glyph, ¥ the currency one, and ▲ / ▼ are the
 -- scrolling menu's own arrow tiles (font codes $61 and $ee).
-local TIMES = "\xc3\x97"
-local YEN = "\xc2\xa5"
-local UP_ARROW = "\xe2\x96\xb2"
-local DOWN_ARROW = "\xe2\x96\xbc"
+local TIMES = "\195\151"
+local YEN = "\194\165"
+local UP_ARROW = "\226\150\178"
+local DOWN_ARROW = "\226\150\188"
 
 -- PrintNum with PRINTNUM_MONEY and without PRINTNUM_LEADINGZEROS
 -- (home/print_num.asm .PrintYen): the ¥ is emitted just before the FIRST

@@ -213,20 +213,7 @@ local OAM_XFLIP = { sx = -1 }
 -- ADVANCED pack's MEWMON purple {115,33,165}, i.e. the "weirdly colored"
 -- party sprites of #274.
 local function obpIcon(path)
-  if not (love.image and love.image.newImageData) then
-    return love.graphics.newImage(Assets.resolve(path)) -- headless stub
-  end
-  local id = Assets.imageData(path)
-  id:mapPixel(function(_, _, r, _, _, a)
-    -- the extracted art is the four DMG grays, keyed off the red channel
-    -- exactly the way PaletteFX's shade-remap shader keys them
-    local v = 0
-    if r > 0.5 then v = 1               -- OBJ colors 0 and 1 -> shade 0
-    elseif r > 0.17 then v = 170 / 255  -- OBJ color 2 -> shade 1
-    end                                 -- OBJ color 3 -> shade 3
-    return v, v, v, a
-  end)
-  return love.graphics.newImage(id)
+  return require("src.render.GpuBake").obp3100(path)
 end
 
 -- `forceAlt` picks the second animation frame outright, for callers with no
