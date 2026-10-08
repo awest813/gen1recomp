@@ -21,6 +21,7 @@ editor, and developer setup live on the
 - [Handhelds](platforms/handhelds.md)
 - [Nintendo Switch](platforms/switch.md)
 - [Web browser (beta)](platforms/web.md)
+  - Plans: [web port](proposals/web-port.md), [online play in the browser](proposals/web-online.md)
 
 ## Modding
 
