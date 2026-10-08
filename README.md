@@ -103,8 +103,10 @@ SHA-1 before creating any game data. FireRed, LeafGreen, and Emerald support is 
 
 **Platform notes:** [Linux](docs/platforms/linux.md),
 [iOS](docs/platforms/ios.md), [Xbox Dev Mode](docs/platforms/xbox.md),
-[handhelds](docs/platforms/handhelds.md), and
-[Nintendo Switch](docs/platforms/switch.md) each have their own install steps.
+[handhelds](docs/platforms/handhelds.md),
+[Nintendo Switch](docs/platforms/switch.md), and the
+[web browser](docs/platforms/web.md) (beta, Red/Blue/Yellow) each have their
+own install steps.
 
 **Windows Defender:** it sometimes flags the Windows build with a generic
 detection such as `Trojan:Win32/Wacatac!ml` (#621). This is a known false
