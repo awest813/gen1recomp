@@ -151,6 +151,16 @@ function WebHost.syncNow()
   return false
 end
 
+-- Offer a file in the save directory (an absolute MEMFS path) to the player
+-- as a browser download -- the save directory itself is invisible in a
+-- browser.  Returns false off the web or when the bridge lacks it.
+function WebHost.download(path, name)
+  if not (bridge and type(bridge.downloadFile) == "function") then return false end
+  local ok, started = pcall(bridge.downloadFile, path,
+    name or tostring(path):match("[^/\\]+$") or "download")
+  return ok and started == true
+end
+
 function WebHost.syncCount()
   return syncs
 end

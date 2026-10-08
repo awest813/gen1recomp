@@ -17,7 +17,7 @@ local Platform = require("src.core.Platform")
 local WebHost = require("src.core.WebHost")
 
 -- ---------------------------------------------------------------- bridge
-local picked, pickedKinds, syncCalls, drops = {}, {}, 0, {}
+local picked, pickedKinds, syncCalls, drops, downloads = {}, {}, 0, {}, {}
 local fakeBridge = {
   pickFile = function(kind) pickedKinds[#pickedKinds + 1] = kind or "rom"; return true end,
   getPickedFile = function() return table.remove(picked, 1) end,
@@ -25,6 +25,7 @@ local fakeBridge = {
   pickFileKinds = function() return "rom,sav,mod" end,
   syncStorage = function() syncCalls = syncCalls + 1 end,
   getDroppedFile = function() return table.remove(drops, 1) end,
+  downloadFile = function(path, name) downloads[#downloads + 1] = { path, name }; return true end,
 }
 local savedSystem = {}
 for _, k in ipairs({ "pickFile", "getPickedFile", "getPickError", "pickFileKinds" }) do
@@ -135,6 +136,12 @@ do
   eq(got and got.data, "ROMBYTES", "drop contents")
   eq(savedIoOpen(tmp, "rb"), nil, "the scratch drop is deleted afterwards")
 end
+
+-- ---------------------------------------------------------------- downloads
+check(WebHost.download("/home/web_user/love/x/exports/blue.sav"), "download goes through the bridge")
+eq(downloads[1] and downloads[1][2], "blue.sav", "download names the file after the path")
+check(WebHost.download("/tmp/a", "custom.sav"), "explicit name")
+eq(downloads[2] and downloads[2][2], "custom.sav", "explicit name kept")
 
 -- ---------------------------------------------------------------- presentation gates
 eq(require("src.core.VideoMode").fixedDisplay(), true, "VideoMode leaves the canvas to the page")

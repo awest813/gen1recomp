@@ -3274,6 +3274,16 @@ function RomImporter:exportSave(version, format, scope, slotId)
     end
     return
   end
+  if Platform.isWeb() then
+    -- the browser's save directory is invisible to the player: hand the
+    -- file over as a download instead of naming a path
+    local name = tostring(res):match("[^/\\]+$") or "export.sav"
+    if require("src.core.WebHost").download(res, name) then
+      self.saveNotice[noticeScope] = { ok = true,
+        text = "Downloaded " .. name .. (exportNote and ("\n" .. exportNote) or "") }
+      return
+    end
+  end
   local dir = res:match("^(.*)[/\\][^/\\]+$")
   local text = "Exported to " .. res
   if exportNote then text = text .. "\n" .. exportNote end

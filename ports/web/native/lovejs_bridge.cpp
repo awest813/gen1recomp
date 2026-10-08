@@ -15,6 +15,10 @@
  *
  *   getDroppedFile() -> path|nil  next file dropped on the page, under /tmp
  *   syncStorage()                 flush the IndexedDB-backed save directory
+ *   downloadFile(path, name) -> boolean
+ *                                 hand a file to the browser as a download
+ *                                 (exported saves: the save directory itself
+ *                                 is invisible inside a browser)
  *
  * The queues and the file input live in the page shell
  * (ports/web/shell/index.html); this file only moves strings across.  Paths
@@ -87,6 +91,25 @@ EM_JS(void, g1r_sync_storage, (), {
 	Module["g1rSync"]();
 });
 
+EM_JS(int, g1r_download_file, (const char *path, const char *name), {
+	try {
+		var data = FS.readFile(UTF8ToString(path));
+		var blob = new Blob([data], { type: "application/octet-stream" });
+		var url = URL.createObjectURL(blob);
+		var a = document.createElement("a");
+		a.href = url;
+		a.download = UTF8ToString(name) || "download";
+		a.style.display = "none";
+		document.body.appendChild(a);
+		a.click();
+		setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+		return 1;
+	} catch (e) {
+		if (Module["printErr"]) Module["printErr"]("[g1r] download failed: " + e);
+		return 0;
+	}
+});
+
 static int shiftQueue(lua_State *L, int which)
 {
 	int len = g1r_peek_len(which);
@@ -125,6 +148,14 @@ static int w_syncStorage(lua_State *L)
 	return 0;
 }
 
+static int w_downloadFile(lua_State *L)
+{
+	const char *path = luaL_checkstring(L, 1);
+	const char *name = luaL_optstring(L, 2, "");
+	lua_pushboolean(L, g1r_download_file(path, name) != 0);
+	return 1;
+}
+
 static const luaL_Reg functions[] = {
 	{ "pickFile", w_pickFile },
 	{ "getPickedFile", w_getPickedFile },
@@ -132,6 +163,7 @@ static const luaL_Reg functions[] = {
 	{ "getDroppedFile", w_getDroppedFile },
 	{ "pickFileKinds", w_pickFileKinds },
 	{ "syncStorage", w_syncStorage },
+	{ "downloadFile", w_downloadFile },
 	{ nullptr, nullptr }
 };
 

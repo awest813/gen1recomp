@@ -84,10 +84,19 @@
     }
     .card button:disabled { opacity: 0.6; cursor: progress; }
     #status { min-height: 1.45em; font-size: 13px; }
+    .card .keys { font-size: 13px; }
+    kbd {
+      padding: 0 4px;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    /* top-left: the on-screen controls own the bottom of a phone screen and
+       the touch hotbar sits top-right */
     #fullscreen {
       position: fixed;
-      right: 8px;
-      bottom: 8px;
+      left: calc(8px + env(safe-area-inset-left, 0px));
+      top: calc(8px + env(safe-area-inset-top, 0px));
       display: none;
       padding: 6px 10px;
       font: 12px system-ui, sans-serif;
@@ -157,6 +166,10 @@
       <p>Pokemon Red, Blue and Yellow, rebuilt natively. Bring your own ROM.</p>
       <p>The ROM you pick is read in this browser and never uploaded. Your
         imported game data and saves stay in this browser's storage.</p>
+      <p class="keys">Arrows move &middot; <kbd>Z</kbd>/<kbd>Enter</kbd> A &middot;
+        <kbd>X</kbd>/<kbd>Backspace</kbd> B &middot; <kbd>Esc</kbd> Start &middot;
+        <kbd>Tab</kbd> Select &middot; <kbd>F1</kbd> save. Gamepads work; on a
+        phone, touch the screen for on-screen buttons.</p>
       <button id="go" type="button" disabled>Loading...</button>
       <p id="status" role="status"></p>
     </div>
