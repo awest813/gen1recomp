@@ -14,6 +14,11 @@ What it does:
      liblove, next to love_3p_lua53.
   3. Preloads `bit` (LuaBitOp; LuaJIT builds have it built in, PUC Lua does
      not) and `lovejs` (the picker/storage bridge) in modules/love/love.cpp.
+  4. Lets Canvases be RGBA8 on WebGL (graphics/opengl/OpenGL.cpp).  LÖVE
+     only trusts an RGBA8 render target on GLES2 when OES_rgb8_rgba8 is
+     reported; WebGL 1 guarantees RGBA/UNSIGNED_BYTE is colour-renderable but
+     never reports that name, so every Canvas -- the 160x144 game canvas
+     included -- silently became RGBA4 (16 levels per channel).
 
 Usage: patch_love.py <path/to/love>
 """
@@ -55,6 +60,19 @@ LOVE_CPP_PRELOAD = """
 """ % MARKER
 
 
+OPENGL_RGBA8_ANCHOR = (
+    "\t\t\treturn GLAD_VERSION_1_0 || GLAD_ES_VERSION_3_0 || GLAD_OES_rgb8_rgba8"
+    " || GLAD_ARM_rgba8;\n")
+OPENGL_RGBA8 = """#ifdef LOVE_EMSCRIPTEN
+\t\t\t// %s: WebGL 1 guarantees RGBA/UNSIGNED_BYTE textures are
+\t\t\t// colour-renderable but reports no OES_rgb8_rgba8, so without this
+\t\t\t// every Canvas fell back to RGBA4.
+\t\t\treturn true;
+#else
+%s#endif
+"""
+
+
 def pristine(path: Path):
     """Text of the untouched file, normalized to \n, plus its newline style
     (love's CMakeLists.txt is CRLF; keep it that way so the diff stays small)."""
@@ -83,7 +101,8 @@ def main() -> None:
     love = Path(sys.argv[1]).resolve()
     cmake = love / "CMakeLists.txt"
     love_cpp = love / "src" / "modules" / "love" / "love.cpp"
-    for path in (cmake, love_cpp):
+    opengl_cpp = love / "src" / "modules" / "graphics" / "opengl" / "OpenGL.cpp"
+    for path in (cmake, love_cpp, opengl_cpp):
         if not path.exists():
             sys.exit("patch_love.py: not a LÖVE tree (missing %s)" % path)
 
@@ -105,6 +124,11 @@ def main() -> None:
     anchor = '\tlove::luax_preload(L, luaopen_luautf8, "utf8");\n#endif\n'
     text = replace_once(text, anchor, anchor + LOVE_CPP_PRELOAD, "utf8 preload")
     write(love_cpp, text, newline)
+
+    text, newline = pristine(opengl_cpp)
+    text = replace_once(text, OPENGL_RGBA8_ANCHOR,
+                        OPENGL_RGBA8 % (MARKER, OPENGL_RGBA8_ANCHOR), "RGBA8 render target")
+    write(opengl_cpp, text, newline)
 
     print("patch_love.py: patched %s" % love)
 

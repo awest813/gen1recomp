@@ -295,6 +295,24 @@ built on an instruction-count hook:
   pixel-identical to the CPU bake in the browser for every intro sprite.
   Desktop keeps the CPU path.
 
+Third pass, a scripted playthrough in the browser (persistent profile, so
+each run continues from the last save). It covered the bedroom, the stairs,
+Pallet Town, Oak's cutscene, the lab, choosing SQUIRTLE, the rival battle
+(won, level 6), the party menu, Route 1 and a wild RATTATA battle:
+
+- **Every Canvas was RGBA4 on WebGL.** LÖVE only trusts an RGBA8 render
+  target on GLES2 when `OES_rgb8_rgba8` is reported. WebGL 1 guarantees it
+  but never reports that name, so every Canvas, the 160x144 game canvas
+  included, stored 16 levels per channel and banded the SGB palettes. Found
+  because a GPU battle-picture bake came back quantized to multiples of 1/15.
+  `patch_love.py` now lets RGBA8 render targets through on Emscripten.
+- **`src/render/GpuBake.lua`** generalizes the GPU palette bake to all four
+  per-pixel bakes on the Gen 1 path: overworld sprites (SpriteRenderer),
+  battle pictures and their fade variants (BattleState), party icons
+  (PartyMenu) and emote bubbles (OverworldController). A probe that redoes
+  the CPU formula on the read-back source found 0 mismatched texels on every
+  bake the playthrough hit. Web only; the CPU bakes stay as the fallback.
+
 Still open:
 
 - **The game-start transition** (title menu to overworld, ~120-130 ms once):

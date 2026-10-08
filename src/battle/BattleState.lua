@@ -11,6 +11,7 @@
 -- ported from engine/battle/core.asm; see docs/behavior-porting-notes.md.
 
 local Assets = require("src.render.Assets")
+local GpuBake = require("src.render.GpuBake")
 local Catching = require("src.battle.Catching")
 local Damage = require("src.battle.Damage")
 local EffectRegistry = require("src.battle.EffectRegistry")
@@ -260,6 +261,16 @@ local function mattedPic(path)
       or path:sub(1, 17) == "save/mod-derived/"
 end
 
+-- Remap the 4 DMG grays of an ImageData to `c` (4 {r, g, b}, 0-255) in place.
+local function cpuPaletteBake(id, c)
+  id:mapPixel(function(_, _, r, g, b, a)
+    if a == 0 then return r, g, b, a end
+    local col = r > 0.83 and c[1] or r > 0.5 and c[2]
+                or r > 0.17 and c[3] or c[4]
+    return col[1] / 255, col[2] / 255, col[3] / 255, a
+  end)
+end
+
 -- pal = { name, colors } recolors the 4 GB shades like the Super Game Boy.
 -- trueColor art (14 §the 4-shade contract) opts out of the quantize
 -- entirely, so its palette variant collapses back onto the plain path.
@@ -275,15 +286,11 @@ local function getImage(path, pal, trueColor)
     local img, pad, padL = nil, 0, 0
     if love.image and love.image.newImageData then
       local id = Assets.imageData(path)
-      if pal then
-        local c = pal.colors
-        id:mapPixel(function(_, _, r, g, b, a)
-          if a == 0 then return r, g, b, a end
-          local col = r > 0.83 and c[1] or r > 0.5 and c[2]
-                      or r > 0.17 and c[3] or c[4]
-          return col[1] / 255, col[2] / 255, col[3] / 255, a
-        end)
-      end
+      -- browser build: the palette bake runs as a shader after the padding
+      -- scan below (the recolor never changes alpha, so the scan reads the
+      -- same pixels either way); see src/render/GpuBake.lua
+      local gpuPal = pal and GpuBake.available() and pal or nil
+      if pal and not gpuPal then cpuPaletteBake(id, pal.colors) end
       local w, h = id:getDimensions()
       if mattedPic(Assets.resolve(path)) then
         local bottom = h - 1
@@ -310,6 +317,16 @@ local function getImage(path, pal, trueColor)
         padL = left
       end
       img = love.graphics.newImage(id)
+      if gpuPal then
+        local baked = GpuBake.recolor(img, gpuPal.colors)
+        if baked then
+          img = baked
+        else
+          -- the shader refused after all: the CPU bake, as everywhere else
+          cpuPaletteBake(id, gpuPal.colors)
+          img = love.graphics.newImage(id)
+        end
+      end
     else
       img = Assets.image(path) -- headless stub: no pixel access
     end

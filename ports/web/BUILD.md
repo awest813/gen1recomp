@@ -98,6 +98,9 @@ checkout that is not at its pin.
   converts to Lua errors. Without the compile flag those exceptions unwind
   straight through Lua's `pcall`, so any guarded `love.filesystem.read` of a
   missing file aborts the caller.
+- **RGBA8 canvases** (patched in `patch_love.py`). Upstream LÖVE gives
+  GLES2 an RGBA8 render target only if `OES_rgb8_rgba8` is reported, and
+  WebGL never reports it, so every Canvas was RGBA4.
 - **`LOVEJS_COMPAT=1`** gives the no-pthreads build. Every engine worker has a
   main-thread fallback; `Platform.hasThreads()` is false on Web, so they take
   it.
