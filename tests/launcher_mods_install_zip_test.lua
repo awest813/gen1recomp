@@ -329,6 +329,49 @@ do
     "the staged temp is removed after the install")
   if removed[1] then os.remove(saveDir .. "/" .. removed[1]) end
 
+  -- a big file inside the archive is copied out in chunks on the web
+  local BIG = MOD_ID .. "/assets/big.bin"
+  local bigBody = ("v"):rep(9 * 1024 * 1024 + 7)
+  ARCHIVE[BIG] = bigBody
+  local realGetInfo = vfs.getInfo
+  vfs.getInfo = function(name, kind)
+    local info = realGetInfo(name, kind)
+    if info and info.type == "file" and arch[name] then info.size = #arch[name] end
+    return info
+  end
+  local chunkReads, wholeReads = 0, 0
+  local realRead = vfs.read
+  vfs.read = function(name)
+    if name:find("big.bin", 1, true) then wholeReads = wholeReads + 1 end
+    return realRead(name)
+  end
+  vfs.newFile = function(name)
+    local f, buf, pos = {}, {}, 1
+    function f:open(mode) f.mode = mode return true end
+    function f:read(n)
+      local data = arch[name] or files[name] or ""
+      if pos > #data then return nil end
+      chunkReads = chunkReads + 1
+      local c = data:sub(pos, pos + n - 1)
+      pos = pos + n
+      return c
+    end
+    function f:write(c) buf[#buf + 1] = c return true end
+    function f:close() if f.mode == "w" then files[name] = table.concat(buf) end end
+    return f
+  end
+  resetFs()
+  okW, errW = LauncherMods.installZip(hostZip)
+  check(okW == true, "web install with a big file succeeds (" .. tostring(errW) .. ")")
+  check(files["mods/" .. MOD_ID .. "/assets/big.bin"] == bigBody,
+    "the big file arrives byte-identical")
+  check(chunkReads >= 9, "the big file is read in chunks (" .. chunkReads .. " reads)")
+  eq(wholeReads, 0, "and never read whole")
+  if removed[1] then os.remove(saveDir .. "/" .. removed[1]) end
+  ARCHIVE[BIG] = nil
+  vfs.getInfo, vfs.read, vfs.newFile = realGetInfo, realRead, nil
+  removed = {}
+
   -- a DroppedFile-shaped source goes the same way
   resetFs()
   removed = {}

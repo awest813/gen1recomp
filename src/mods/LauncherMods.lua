@@ -859,6 +859,30 @@ end
 -- in play and in the OS save directory otherwise (#330).  No explicit mkdir:
 -- CacheFs.write creates the parent chain on both paths, which also means an
 -- empty folder inside the .zip is simply not carried over (it holds nothing).
+-- Browser only: a big file is copied in chunks, so the wasm heap never holds
+-- it whole (the heap grows to fit and never shrinks back).
+local COPY_STREAM_BYTES = 8 * 1024 * 1024
+local function streamCopy(fs, s, d)
+  local input = fs.newFile(s)
+  if not (input and input:open("r")) then return nil, "could not read " .. s end
+  local out, err = CacheFs.openWrite(d)
+  if not out then
+    input:close()
+    return nil, err
+  end
+  local ok = true
+  while true do
+    local chunk = input:read(STAGE_CHUNK)
+    if not chunk or #chunk == 0 then break end
+    local wrote, writeErr = out:write(chunk)
+    if not wrote then ok, err = false, writeErr break end
+  end
+  input:close()
+  out:close()
+  if not ok then return nil, err end
+  return true
+end
+
 local function copyTree(src, dst)
   local fs = love.filesystem
   for _, name in ipairs(fs.getDirectoryItems(src)) do
@@ -868,6 +892,10 @@ local function copyTree(src, dst)
     if info and info.type == "directory" then
       local ok, err = copyTree(s, d)
       if not ok then return nil, err end
+    elseif info and (info.size or 0) > COPY_STREAM_BYTES and fs.newFile
+        and require("src.core.WebHost").isWeb() then
+      local ok, err = streamCopy(fs, s, d)
+      if not ok then return nil, "could not write " .. name .. ": " .. tostring(err) end
     else
       local data = fs.read(s)
       if data == nil then return nil, "could not read " .. name end

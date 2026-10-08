@@ -67,6 +67,10 @@ URL parameters:
 | `?game=red&slot=2` | boot Red on save slot 2 |
 | `?game=yellow&launcher=1` | open the launcher on Yellow |
 
+One more, for the browser only: `?fps=1` shows the frame rate and the
+longest frame of the last second at the top of the page. Use it to check
+how a heavy mod (the voxel mods) runs on your device.
+
 ## What is different from desktop
 
 - **Mods work; the catalog downloads through your browser.** MODS > Import
@@ -74,6 +78,9 @@ URL parameters:
   the mod catalog. GitHub doesn't let pages download release files directly,
   so Install opens the mod's .zip in a new tab; drop it on the page when it
   finishes.
+  Mods that use worker threads run without them, and the 3D voxel mods are
+  heavy: how fast they run depends on your GPU (`?fps=1` shows it). See
+  [mods in the browser](../proposals/web-mods.md) for tested mods.
 - **No self-updater, save sync or online play.** The browser can't open the
   network connections those use; the ONLINE tab says so.
 - **No SHADER FX** (librashader is a native library). Performance defaults to

@@ -135,6 +135,21 @@
     }
     #fullscreen:hover { opacity: 1; }
     #fullscreen.idle { opacity: 0; pointer-events: none; }
+    /* ?fps=1: frames per second as the page sees them (top centre, clear
+       of the fullscreen button and the touch hotbar) */
+    #fps {
+      position: fixed;
+      left: 50%;
+      top: calc(6px + env(safe-area-inset-top, 0px));
+      transform: translateX(-50%);
+      display: none;
+      padding: 3px 8px;
+      font: 12px ui-monospace, monospace;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 4px;
+      pointer-events: none;
+    }
     #drop {
       position: fixed;
       inset: 0;
@@ -205,6 +220,7 @@
   </div>
 
   <button id="fullscreen" type="button">Fullscreen</button>
+  <div id="fps" aria-hidden="true"></div>
   <div id="drop">Drop a ROM or save file</div>
   <div id="error" role="alert"></div>
   <div id="pickprompt" role="dialog" aria-labelledby="pickprompt-text">
@@ -502,10 +518,36 @@
           fullscreenButton.style.display = "block";
           wakeFullscreenButton();
         }
+        if (/^(1|true|yes|on)$/i.test(new URLSearchParams(location.search).get("fps") || "")) {
+          startFpsMeter();
+        }
         canvas.focus();
         // nudge SDL to pick up the CSS-sized canvas
         setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
       };
+      // Counts the page's animation frames, which the game's main loop runs
+      // on, so it reads the same with any mod or game; the worst frame is the
+      // longest gap between two of them in the last second.
+      function startFpsMeter() {
+        var box = document.getElementById("fps");
+        var frames = 0, worst = 0, last = performance.now(), windowStart = last;
+        box.style.display = "block";
+        box.textContent = "-- fps";
+        function tick(now) {
+          frames++;
+          worst = Math.max(worst, now - last);
+          last = now;
+          if (now - windowStart >= 1000) {
+            var fps = frames * 1000 / (now - windowStart);
+            box.textContent = fps.toFixed(fps < 10 ? 1 : 0) + " fps \u00b7 worst " + Math.round(worst) + " ms";
+            frames = 0;
+            worst = 0;
+            windowStart = now;
+          }
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }
       canvas.addEventListener("webglcontextlost", function (e) {
         e.preventDefault();
         showError("The graphics context was lost. Reload the page to continue (saves on disk are kept).");
