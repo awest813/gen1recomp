@@ -335,7 +335,11 @@ try {
           }));
           note(`page frame rate over 3 s: ${fps.toFixed(1)} fps (headless SwiftShader)`);
           // music runs continuously from the title to the bedroom: report how
-          // much of that window had audio scheduled, and any silent gaps
+          // much of that window had audio scheduled, and any silent gaps.
+          // Expect exactly one, ~250-400 ms near the end: Oak's speech fades
+          // the music out and stops it, then fades to white for 24 frames
+          // before the map theme starts (oak_speech.asm / fade_audio.asm),
+          // the same pause the original and the desktop build have.
           const audio = await audioReport(playAudioStart);
           note(`audio during play: ${audio.buffers} buffers (${audio.loud} non-silent), `
             + `${audio.covered.toFixed(1)} s of ${audio.window.toFixed(1)} s covered, `

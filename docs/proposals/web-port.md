@@ -430,6 +430,16 @@ Two review passes (web/CI layer, Lua changes) after phase 5. Fixed:
 - **Misc:** throwaway GPU-bake source images are released; a throwing drop
   handler still cleans up its `/tmp` copy; the version rail's lerp fraction.
 
+Follow-up: the emsdk installer is pinned; the page is installable (web app
+manifest, icons, Apple home-screen tags; iPhone has no page fullscreen);
+`/tmp` writes skip the IndexedDB sync; one shared OBP0 bake
+(`GpuBake.obp3100`); the escape gate lexes quoted strings only. The one
+audio gap every play run reports is the intro's own fade-out-then-white
+pause, not a dropout. Left alone on purpose: releasing GPU-bake canvases
+on cache invalidation (a holder could draw a released canvas and crash),
+reading SHADER FX caps through `Performance.caps` in `ShaderFX` (never
+runs on Web), and pinning Python in CI (emscripten 2.0.0 builds on 3.13).
+
 ### Later (not in the first release)
 
 - **Online play:** `Client.configure{ connect = fn }` (`src/online/Client.lua:1174`) already accepts an injected transport. Implement send/poll over a browser WebSocket (one JSON line per text frame), and put a WebSocket endpoint or a websockify-style proxy in front of the relay. Alternatively, Emscripten's socket emulation turns LuaSocket TCP into WebSocket connections automatically, which may need no Lua change at all once the relay speaks WS.
