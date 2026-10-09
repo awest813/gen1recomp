@@ -554,6 +554,15 @@ local unconditionalConflict = LauncherMods.checkDependencies(testTargetManifest,
   nil, nil, { testTargetManifest, installedColorlib })
 check(unconditionalConflict.hasIssues == true,
   "dependency resolver reports an unversioned conflict")
+local installedIdConflict = LauncherMods.checkDependencies({ id = "new_mod" },
+  nil, nil, { testTargetManifest, installedColorlib })
+check(installedIdConflict.hasIssues == true and #installedIdConflict.deps == 1,
+  "id-only install callbacks resolve the installed forward conflicts")
+local disabledIdConflict = LauncherMods.checkDependencies({ id = "new_mod" },
+  { mods = { colorlib = true }, modsByVersion = { blue = { colorlib = false } } }, "blue",
+  { testTargetManifest, installedColorlib })
+check(disabledIdConflict.hasIssues == false,
+  "id-only checks respect disabled conflicting renderers")
 
 local function rangeTarget(version, conflicts)
   return Manifest.validate({

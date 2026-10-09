@@ -9,6 +9,19 @@ metadata, but no ROM and no game data. The player picks a ROM, it is read and
 imported inside the browser, and the generated cache and saves live in that
 browser's IndexedDB.
 
+Fresh web sessions default to 30 FPS. VIDEO options retain 60 FPS and
+UNLOCKED; saved explicit choices take priority. Rendering is capped while
+input, audio and fixed-step game logic continue on browser callbacks.
+Add `?fps=1` to display FPS and log update/draw cost plus completed-frame
+intervals. `late` counts intervals exceeding 125% of the selected frame
+budget (41.7 ms at 30 FPS); use this alongside average FPS when checking
+steadiness. These diagnostics do not promise a mod will meet the budget.
+
+The build patches IDBFS to enumerate local storage in batches of at most 64
+entries, yielding after about 2 ms of traversal. Large voxel packages retain
+their assets while storage scans allow browser frames to run. IndexedDB
+reconciliation and actual writes still use the runtime's existing sync path.
+
 ## Build
 
 ```sh
@@ -35,6 +48,20 @@ scripts/build_web.sh --split-mb 20        # split game.data for per-file host ca
 ```
 
 ## Smoke test
+
+Run the runtime patch, mod compatibility and split-loader regressions before
+packaging changes. Lupa supplies the Lua 5.1 runtime used by the behavior
+probes; Node must be on PATH for the JavaScript loader checks.
+
+```sh
+python3 -m pip install -r ports/web/test-requirements.txt
+python3 -m unittest discover -s tests -p 'test_patch_*.py'
+python3 -m unittest discover -s tests -p 'test_split_web_build.py'
+```
+
+The web and release workflows run these checks in a separate Python virtual
+environment before building the site. They explicitly check for Lua 5.1 so
+missing test dependencies cannot silently skip the mod behavior probes.
 
 ```sh
 node ports/web/smoke_test.mjs --site dist/web              # ROM-free: boots to the launcher
@@ -91,6 +118,10 @@ ready to unzip onto any static host.
 | Piece | What it does |
 |---|---|
 | `scripts/build_web.sh` | Pins and fetches the love.js sources. Patches, builds, packs `game.love` and packages the site. |
+| `scripts/patch_web_openal.py` | Repairs the pinned Emscripten runtime's vector audio-source dispatch after packaging, including cached native builds. |
+| `scripts/patch_web_gl.py` | Preserves status and diagnostic queries for shader programs that fail to link. |
+| `ports/web/patch_terrarium_mod.py` | Makes a separate Terrarium 1.30.1 ZIP with legacy effect, shared shader precision, protected-coroutine build-budget, cached tree-analysis, sliced tree/vertex-upload, roamer PNG cache fixes, shader uniform presence caching, and enemy HUD padding; import the output in MODS. |
+| `ports/web/patch_ascendant_mod.py` | Makes a separate complete Voxel Ascendant 3.0.62 ZIP that caps committed battle presentation on Web while retaining gameplay updates, covered preparation, retirement checks and visual elapsed time. Requires this build's `WebFramePacer`; import the output in MODS. |
 | `ports/web/patch_love.py` | Adds `love_3p_g1rweb` to LÖVE's CMake build. Preloads `bit` and `lovejs` in `love.cpp`. Idempotent. |
 | `ports/web/native/bit.c` | Lua BitOp 1.0.2 (Mike Pall, MIT). LuaJIT has `bit` built in; PUC Lua does not, and 130+ engine files require it. |
 | `ports/web/native/lovejs_bridge.cpp` | The `lovejs` module: picker queue, drop queue and IndexedDB sync, using `EM_JS` calls into the page. |
@@ -110,6 +141,23 @@ Browse/Cancel bar, which is always a real click.
 Picked and dropped files are staged under `/tmp` (MEMFS), which is never
 persisted. The importer reads the ROM once and deletes the copy, so a ROM never
 reaches IndexedDB.
+
+## Build asset versions and frame diagnostics
+
+After packaging and optional data splitting, `stamp_web_assets.py` hashes the
+loader, runtime, WASM and data payload. The page uses that build ID for every
+asset URL, including split data parts, so a changed build gets fresh assets
+without mixing cached versions. Serve the newly generated `index.html` together
+with its assets.
+
+With `?fps=1`, the overlay separates completed render FPS and the selected cap
+from page callback FPS. `Frame max` and `late` describe completed frame intervals;
+`callback max` describes browser callbacks. A late frame exceeds 125% of the
+selected frame budget. Render readings expire after three seconds without a
+new measurement. A 30 FPS average can still contain visible stalls.
+
+The web VIDEO menu keeps MAX FPS and layout controls. Window mode, faithful
+window resolution and VSYNC are omitted because the browser owns those controls.
 
 ## Pinned third-party sources
 

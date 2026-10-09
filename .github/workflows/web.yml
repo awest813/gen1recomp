@@ -25,6 +25,10 @@ on:
       - "assets/**"
       - "ports/web/**"
       - "scripts/build_web.sh"
+      - "scripts/patch_web_*.py"
+      - "scripts/split_web_build.py"
+      - "tests/test_patch_*.py"
+      - "tests/test_split_web_build.py"
       - "scripts/pack_love.sh"
       - ".github/workflows/web.yml"
   pull_request:
@@ -37,6 +41,10 @@ on:
       - "assets/**"
       - "ports/web/**"
       - "scripts/build_web.sh"
+      - "scripts/patch_web_*.py"
+      - "scripts/split_web_build.py"
+      - "tests/test_patch_*.py"
+      - "tests/test_split_web_build.py"
       - "scripts/pack_love.sh"
       - ".github/workflows/web.yml"
   workflow_dispatch:
@@ -60,6 +68,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: web runtime, mod compatibility and loader regressions
+        run: |
+          python3 -m venv .bazinga/web-tests
+          .bazinga/web-tests/bin/python -m pip install --disable-pip-version-check -r ports/web/test-requirements.txt
+          .bazinga/web-tests/bin/python -c 'from lupa.lua51 import LuaRuntime'
+          .bazinga/web-tests/bin/python -m unittest discover -s tests -p 'test_patch_*.py'
+          .bazinga/web-tests/bin/python -m unittest discover -s tests -p 'test_split_web_build.py'
 
       # emsdk 2.0.0 and the love.js build tree are the slow part (~10 min
       # cold); key on everything that changes the native output

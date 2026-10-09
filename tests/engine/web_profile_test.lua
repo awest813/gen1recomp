@@ -189,38 +189,51 @@ check(mainOk, "main.lua loads under the stub: " .. tostring(mainErr))
 check(require("src.core.FixedStep").sustainedCatchup == true,
   "main.lua keeps a low frame rate at real-time speed on Web")
 
-local function runFrames(os, frames)
+local function runFrames(os, frames, hz, cap)
   osName = os
   local sleeps = 0
+  local draws, updates = 0, 0
   local now = 0
   local saved = {
     load = love.load, update = love.update, draw = love.draw,
     timer = love.timer, event = love.event, graphics = love.graphics,
     window = love.window,
   }
-  love.load, love.update, love.draw = nil, function() end, nil
+  love.load = nil
+  love.update = function() updates = updates + 1 end
+  love.draw = function() draws = draws + 1 end
+  if cap ~= nil then require("src.core.FrameCap").apply(cap) end
   love.timer = {
     -- frames finish fast (2 ms), so a desktop pacer has budget to sleep out
-    step = function() now = now + 0.002; return 1 / 60 end,
+    step = function() now = now + (hz and 1 / hz or 0.002); return hz and 1 / hz or 1 / 60 end,
     getTime = function() return now end,
     sleep = function(s) sleeps = sleeps + 1; now = now + (s or 0) end,
     getFPS = function() return 60 end,
   }
   love.event = { pump = function() end, poll = function() return function() end end }
-  local g = setmetatable({ isActive = function() return false end }, { __index = saved.graphics })
+  local g = setmetatable({ isActive = function() return hz ~= nil end,
+    present = function() end, getBackgroundColor = function() return 0, 0, 0, 1 end },
+    { __index = saved.graphics })
   love.graphics = g
   local ok, err = pcall(function()
     local frame = love.run()
     for _ = 1, frames do frame() end
   end)
   for k, v in pairs(saved) do love[k] = v end
-  return ok, err, sleeps
+  return ok, err, sleeps, draws, updates
 end
 
 if mainOk then
   local ok, err, sleeps = runFrames("Web", 30)
   check(ok, "web frames run: " .. tostring(err))
   eq(sleeps, 0, "love.run never sleeps on the web")
+  for _, sample in ipairs({ { 30, 60 }, { 60, 120 }, { 0, 240 } }) do
+    local okW, errW, sleepsW, drawsW, updatesW = runFrames("Web", 240, 120, sample[1])
+    check(okW, "web paced run: " .. tostring(errW))
+    eq(drawsW, sample[2], "render count honors " .. tostring(sample[1]))
+    eq(updatesW, 240, "updates run even on skipped render frames")
+    eq(sleepsW, 0, "numeric web pacing never sleeps")
+  end
   local okD, errD, sleepsD = runFrames("Linux", 30)
   check(okD, "desktop frames run: " .. tostring(errD))
   check(sleepsD > 0, "desktop control run does sleep (the probe works)")

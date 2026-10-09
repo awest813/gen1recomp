@@ -12,6 +12,10 @@
 -- so it stays safe under the headless test stub.
 
 local FrameCap = {}
+local function isWeb()
+  return love and love.system and love.system.getOS and love.system.getOS() == "Web"
+end
+FrameCap.WEB_CYCLE = { 30, 60, 0 }
 
 local function isHandheldEnv()
   return os.getenv("HANDHELD") == "1" or os.getenv("PORTMASTER") == "1"
@@ -44,7 +48,9 @@ end
 FrameCap.STEPS = { 30, 40, 50, 60, 75, 90, 100, 120, 144, 160 }
 FrameCap.MIN = 30
 FrameCap.MAX = 160
-FrameCap.DEFAULT = 60
+-- Start browser sessions with a predictable 33ms rendering budget. The
+-- explicit 60/unlocked choices remain available; native keeps its 60 default.
+FrameCap.DEFAULT = isWeb() and 30 or 60
 
 FrameCap.DISPLAY = 0
 
@@ -62,11 +68,12 @@ function FrameCap.normalize(value)
   value = tonumber(value)
   if not value then return FrameCap.DEFAULT end
   if value <= 0 then
-    if FrameCap.loopSupportsPanelSync() then return FrameCap.DISPLAY end
+    if isWeb() or FrameCap.loopSupportsPanelSync() then return FrameCap.DISPLAY end
     return FrameCap.DEFAULT
   end
   local best, bestDiff = FrameCap.DEFAULT, math.huge
-  for _, step in ipairs(FrameCap.STEPS) do
+  local steps = isWeb() and { 30, 60 } or FrameCap.STEPS
+  for _, step in ipairs(steps) do
     local diff = math.abs(step - value)
     if diff < bestDiff then best, bestDiff = step, diff end
   end
@@ -75,6 +82,7 @@ end
 
 function FrameCap.label(value)
   local cap = FrameCap.normalize(value)
+  if isWeb() then return cap == 0 and "UNLOCKED" or tostring(cap) end
   local text = cap == FrameCap.DISPLAY and "DISPLAY" or tostring(cap)
   local ok, hz = pcall(function()
     return require("src.core.RefreshRate").mismatch()
@@ -84,7 +92,7 @@ function FrameCap.label(value)
 end
 
 function FrameCap.cycle(value, dir)
-  local ring = FrameCap.CYCLE
+  local ring = isWeb() and FrameCap.WEB_CYCLE or FrameCap.CYCLE
   local snapped = FrameCap.normalize(value)
   local cur = 1
   for i, step in ipairs(ring) do
@@ -127,6 +135,8 @@ FrameCap.bootHandheld = FrameCap.bootPanelSync
 -- Performance LOW tier caps extras; do not rewrite DISPLAY to numeric 60 when
 -- the panel is already at or below the ceiling (that bypasses PresentSync).
 function FrameCap.clampToPerformance(fpsMax)
+  -- Web quality tiers govern visuals; the explicit render-rate choice wins.
+  if isWeb() then return FrameCap.current end
   fpsMax = tonumber(fpsMax)
   if not fpsMax then return FrameCap.current end
   if FrameCap.current > fpsMax then

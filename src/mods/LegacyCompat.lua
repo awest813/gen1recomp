@@ -409,6 +409,23 @@ local function ioFile(ctx, path, mode)
   return file
 end
 
+-- FileData / ByteData carry binary content (for example ImageData:encode).
+-- tostring on a LOVE object describes the object instead of its bytes.
+local function fileBytes(data)
+  local kind = type(data)
+  if kind == "string" then return data end
+  if kind == "userdata" or kind == "table" then
+    local ok, getter = pcall(function() return data.getString end)
+    if ok and type(getter) == "function" then
+      local got, bytes = pcall(getter, data)
+      if got and type(bytes) == "string" then return bytes end
+      return nil, "could not read Data bytes"
+    end
+    return nil, "write expects a string or Data object"
+  end
+  return tostring(data)
+end
+
 local function loveFile(ctx, path, mode)
   local state = nil
   local file = {}
@@ -427,7 +444,9 @@ local function loveFile(ctx, path, mode)
   end
   function file:write(data, size)
     if not state and not file:open(mode or "w") then return false end
-    data = tostring(data)
+    local err
+    data, err = fileBytes(data)
+    if not data then return false, err end
     if size then data = data:sub(1, size) end
     local ok, err = bufferWrite(state, data)
     if not ok then return false, err end
@@ -488,7 +507,9 @@ local function filesystemShim(ctx)
   function fsShim.write(path, data, size)
     note(ctx, "love.filesystem.write",
       "writes are rerouted to this mod's private compat storage; migrate to mod.storage")
-    data = tostring(data)
+    local err
+    data, err = fileBytes(data)
+    if not data then return false, err end
     if size then data = data:sub(1, size) end
     local ok, err = writePath(ctx, path, data)
     if not ok then return false, err end
@@ -498,7 +519,9 @@ local function filesystemShim(ctx)
   function fsShim.append(path, data, size)
     note(ctx, "love.filesystem.append",
       "writes are rerouted to this mod's private compat storage; migrate to mod.storage")
-    data = tostring(data)
+    local err
+    data, err = fileBytes(data)
+    if not data then return false, err end
     if size then data = data:sub(1, size) end
     local existing = readPath(ctx, path) or ""
     local ok, err = writePath(ctx, path, existing .. data)

@@ -1232,6 +1232,12 @@ end
 -- always deleted; a USB copy is the player's file, so a failed one is only
 -- skipped for the rest of the session.
 local function consumePick(self, name, safName, ok)
+  if self._modConfirm and self._modConfirm.kind == "importModReplace"
+      and self._modConfirm.source == name then
+    self.pickSkip = self.pickSkip or {}
+    self.pickSkip[name] = true
+    return
+  end
   if ok or name == safName then
     love.filesystem.remove(name)
     return
@@ -2551,12 +2557,14 @@ end
 -- result on the mods panel (switching to it so the notice is visible).  The
 -- source is whatever LauncherMods.installZip accepts: an absolute path string
 -- or a love DroppedFile.
-function RomImporter:_installMod(source)
+function RomImporter:_installMod(source, replaceId)
   if self.workState == "working" then return end
   self.tab = "mods"
   local ok, installed, res, manifest = pcall(function()
     local LauncherMods = require("src.mods.LauncherMods")
-    return LauncherMods.installZip(source)
+    return LauncherMods.installZip(source, replaceId and {
+      replace = true, expectId = replaceId,
+    } or nil)
   end)
   if not ok then
     self.modNotice = { ok = false,
@@ -2572,11 +2580,30 @@ function RomImporter:_installMod(source)
       checkTarget = { id = res }
     end
     if checkTarget and LauncherMods.checkDependencies then
-      local depCheck = LauncherMods.checkDependencies(checkTarget)
+      local depCheck = LauncherMods.checkDependencies(checkTarget,
+        require("src.core.SaveData").loadOptions(), self.modScope)
       if depCheck and depCheck.hasIssues then
         self._modDepResolver = depCheck
       end
     end
+  elseif manifest and not replaceId then
+    self.modNotice = nil
+    self._modConfirm = {
+      kind = "importModReplace", source = source,
+      title = "Replace installed mod", yesLabel = "Replace",
+      lines = {
+        "Replace " .. tostring(manifest.name or manifest.id) .. " with this ZIP?",
+        "ZIP version: " .. tostring(manifest.version),
+        "The mod's enable settings will be kept.",
+      },
+      onYes = function()
+        self:_installMod(source, manifest.id)
+        if type(source) == "string" and self.pickSkip and self.pickSkip[source] then
+          consumePick(self, source, "picked_mod.zip",
+            self.modNotice and self.modNotice.ok)
+        end
+      end,
+    }
   else
     self.modNotice = { ok = false, text = tostring(res) }
   end
@@ -3454,6 +3481,29 @@ end
 -- half-second directory listing on a menu screen is far cheaper than an import
 -- that vanishes, so the poll stays armed until something is actually consumed.
 
+function RomImporter:_handleNativePickError(errorText)
+  local kind = self.pickerPendingKind or "rom"
+  local version = self.pickerPendingVersion or self:_savedropTarget()
+  self.pickerPendingKind, self.pickerPendingVersion = nil, nil
+  self.pickerPendingModId, self.pickerPendingImportId = nil, nil
+  self.pickerPendingImporterId = nil
+  local cancelled = Platform.isWeb() and errorText:find("cancelled:", 1, true) == 1
+  local text = cancelled and Strings("Import cancelled.") or errorText
+  if kind == "required_import" or kind == "mod" or kind == "importer" then
+    self.modNotice = { ok = cancelled, text = text }
+  elseif kind == "skin" then
+    self._skinNotice = { ok = cancelled, text = text }
+  elseif kind == "sav" then
+    self.saveNotice[version] = { ok = cancelled, text = text }
+  elseif kind == "cart" then
+    self._cartNotice = text
+  elseif cancelled then
+    self.notice = { version = version, status = text }
+  else
+    self:setError(text)
+  end
+end
+
 function RomImporter:_pollPickedFiles(dt)
   if not self.pickPending then return end
   if self.workState == "working" then return end
@@ -3738,24 +3788,7 @@ function RomImporter:update(dt)
     elseif love.system.getPickError then
       local errorText = love.system.getPickError()
       if errorText then
-        local kind = self.pickerPendingKind or "rom"
-        local version = self.pickerPendingVersion or self:_savedropTarget()
-        self.pickerPendingKind = nil
-        self.pickerPendingVersion = nil
-        if kind == "required_import" then
-          self.modNotice = { ok = false, text = errorText }
-          self.pickerPendingModId, self.pickerPendingImportId = nil, nil
-        elseif kind == "mod" then
-          self.modNotice = { ok = false, text = errorText }
-        elseif kind == "skin" then
-          self._skinNotice = { ok = false, text = errorText }
-        elseif kind == "sav" then
-          self.saveNotice[version] = { ok = false, text = errorText }
-        elseif kind == "cart" then
-          self._cartNotice = errorText
-        else
-          self:setError(errorText)
-        end
+        self:_handleNativePickError(errorText)
       end
     end
   end
@@ -8680,7 +8713,11 @@ function RomImporter:_findConfirmInstall(entry)
   local lines = { (entry.title or entry.id) .. " v" .. tostring(version) }
   if entry.author then lines[#lines + 1] = "by " .. entry.author end
   local have = installed[entry.id]
-  if have then
+  local browserDownload = require("src.mods.ModUpdate").browserMustDownload(url)
+  if browserDownload then
+    lines[#lines + 1] = "Downloads a .zip in your browser."
+    lines[#lines + 1] = "Then use MODS > Import mod .zip, or drop it on this page."
+  elseif have then
     lines[#lines + 1] = "Replaces installed v" .. tostring(have)
   end
   for _, issue in ipairs(issues) do
@@ -8690,8 +8727,8 @@ function RomImporter:_findConfirmInstall(entry)
   self._modConfirm = {
     kind = (#issues > 0) and "warn" or "update",
     indexEntry = entry,
-    title = have and "Reinstall mod" or "Install mod",
-    yesLabel = have and "Reinstall" or "Install",
+    title = browserDownload and "Download mod" or (have and "Reinstall mod" or "Install mod"),
+    yesLabel = browserDownload and "Download" or (have and "Reinstall" or "Install"),
     lines = lines,
   }
 end

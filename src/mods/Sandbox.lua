@@ -198,6 +198,13 @@ end
 
 -- Bytecode is unreviewable and, on LuaJIT, a way out of any sandbox built out
 -- of environments.  Mods ship source.
+local function sourceWithoutBom(source)
+  if type(source) == "string" and source:sub(1, 3) == "\239\187\191" then
+    return source:sub(4)
+  end
+  return source
+end
+
 local function rejectBytecode(source, what)
   if type(source) == "string" and source:sub(1, 1) == "\27" then
     return nil, (what or "chunk") .. ": mods must ship Lua source, not bytecode"
@@ -220,6 +227,9 @@ local function compile51(source, chunkname)
 end
 
 function Sandbox.compile(source, chunkname, env)
+  -- Some released mods contain UTF-8 source with a BOM. loadstring in PUC
+  -- Lua 5.1 rejects it; normalize before both compilation and bytecode checks.
+  source = sourceWithoutBom(source)
   local ok, err = rejectBytecode(source, chunkname)
   if not ok then return nil, err end
   if setfenv then
@@ -306,8 +316,13 @@ end
 -- only reason fs.read is touched here.
 function Sandbox.loadFile(fs, path, env)
   if fs.read then
-    local ok, err = rejectBytecode(fs.read(path), path)
+    local source = fs.read(path)
+    local normalized = sourceWithoutBom(source)
+    local ok, err = rejectBytecode(normalized, path)
     if not ok then return nil, err end
+    if source ~= normalized then
+      return Sandbox.compile(normalized, "@" .. path, env)
+    end
   end
   if setfenv then
     local chunk, err = fs.load(path)

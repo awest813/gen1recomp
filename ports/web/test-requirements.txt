@@ -1,0 +1,2 @@
+# Runs the mod behavior probes under Lua 5.1, matching the web runtime.
+lupa==2.8

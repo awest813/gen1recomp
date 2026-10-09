@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="g1r-build" content="dev">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>G1R Deluxe</title>
   <!-- installable: Add to Home Screen opens the game full screen (iPhone
@@ -109,6 +110,7 @@
       border-radius: 8px;
       z-index: 30;
     }
+    #error button { margin-left: 8px; padding: 5px 8px; cursor: pointer; }
     .card .keys { font-size: 13px; }
     kbd {
       padding: 0 4px;
@@ -135,13 +137,18 @@
     }
     #fullscreen:hover { opacity: 1; }
     #fullscreen.idle { opacity: 0; pointer-events: none; }
-    /* ?fps=1: frames per second as the page sees them (top centre, clear
+    /* ?fps=1: actual renders and page callbacks (top centre, clear
        of the fullscreen button and the touch hotbar) */
     #fps {
       position: fixed;
       left: 50%;
       top: calc(6px + env(safe-area-inset-top, 0px));
       transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100vw - 16px);
+      box-sizing: border-box;
+      text-align: center;
+      white-space: pre-line;
       display: none;
       padding: 3px 8px;
       font: 12px ui-monospace, monospace;
@@ -221,8 +228,12 @@
 
   <button id="fullscreen" type="button">Fullscreen</button>
   <div id="fps" aria-hidden="true"></div>
-  <div id="drop">Drop a ROM or save file</div>
-  <div id="error" role="alert"></div>
+  <div id="drop">Drop a ROM, save file, or mod .zip</div>
+  <div id="error" role="alert">
+    <span id="error-text"></span>
+    <button id="error-reload" type="button" hidden>Reload</button>
+    <button id="error-dismiss" type="button">Dismiss</button>
+  </div>
   <div id="pickprompt" role="dialog" aria-labelledby="pickprompt-text">
     <span id="pickprompt-text" aria-live="polite">Choose a file</span>
     <button id="pickprompt-go" type="button">Browse...</button>
@@ -295,17 +306,38 @@
 
       var loveReady = false;
       var started = false;
+      var startupFailed = false;
 
       function setStatus(text) { statusLine.textContent = text || ""; }
 
       // the start card is hidden once the game runs; show problems on a banner
       var errorBanner = document.getElementById("error");
-      function showError(text) {
+      function showError(text, fatal) {
         if (startPanel.style.display === "none") {
-          errorBanner.textContent = text;
+          document.getElementById("error-text").textContent = text;
+          document.getElementById("error-reload").hidden = !fatal;
           errorBanner.style.display = "block";
         }
         setStatus(text);
+      }
+      function dismissError() {
+        errorBanner.style.display = "none";
+        canvas.focus();
+      }
+      document.getElementById("error-dismiss").addEventListener("click", dismissError);
+      ["keydown", "keyup", "keypress"].forEach(function (name) {
+        errorBanner.addEventListener(name, function (e) {
+          e.stopPropagation();
+          if (name === "keydown" && e.key === "Escape") { e.preventDefault(); dismissError(); }
+        });
+      });
+      document.getElementById("error-reload").addEventListener("click", function () { location.reload(); });
+      function startupError(text) {
+        startupFailed = true;
+        goButton.disabled = false;
+        goButton.textContent = "Reload";
+        goButton.removeAttribute("aria-busy");
+        showError(text, true);
       }
 
       window.addEventListener("keydown", function (e) {
@@ -322,12 +354,13 @@
         return String(name || "file").replace(/[^A-Za-z0-9._ ()-]/g, "_").slice(-120);
       }
 
+      var stagedFileId = 0;
       function stage(dir, file, queueName) {
         var FS = Module.g1rFS;
         if (!FS) return Promise.reject(new Error("the game has not started yet"));
         return file.arrayBuffer().then(function (buf) {
           try { FS.mkdirTree(dir); } catch (e) { /* exists */ }
-          var path = dir + "/" + Date.now() + "_" + safeName(file.name);
+          var path = dir + "/" + Date.now() + "_" + (++stagedFileId) + "_" + safeName(file.name);
           FS.writeFile(path, new Uint8Array(buf));
           Module[queueName].push(path);
           return path;
@@ -378,7 +411,7 @@
       function cancelPick() {
         if (!pickOpen) return;
         closePick();
-        (Module.g1rPickErrors || []).push("No file was selected.");
+        (Module.g1rPickErrors || []).push("cancelled:No file was selected.");
       }
       document.getElementById("pickprompt-cancel").addEventListener("click", cancelPick);
       // fires only for a dialog that actually opened (a refused automatic
@@ -500,11 +533,33 @@
         if (/^(1|true|yes|on)$/i.test(params.get("launcher") || "")) {
           Module.arguments.push("--launcher");
         }
+        if (/^(1|true|yes|on)$/i.test(params.get("fps") || "")) {
+          Module.arguments.push("--renderstats");
+        }
       })();
       Module.INITIAL_MEMORY = __G1R_MEMORY__;
       Module.canvas = canvas;
+      // Version every runtime/data request, including split data parts.
+      var buildId = document.querySelector('meta[name="g1r-build"]').content;
+      Module.locateFile = function (path, prefix) {
+        return (prefix || "") + path + (path.indexOf("?") < 0 ? "?" : "&")
+          + "g1r-build=" + encodeURIComponent(buildId);
+      };
       Module.printErr = console.error.bind(console);
-      Module.print = console.log.bind(console);
+      Module.onAbort = function () {
+        startupError("The game stopped unexpectedly. Reload to try again. Progress since your last save may be lost.");
+      };
+      var renderRate = "Waiting for rendered frames", frameTiming = "", renderAt = 0;
+      Module.print = function (text) {
+        console.log(text);
+        var sample = /^\[web-render\] ([0-9.]+) fps cap=(\S+)$/.exec(text);
+        if (sample) {
+          renderRate = sample[1] + " FPS · cap " + sample[2];
+          renderAt = performance.now();
+        }
+        var timing = /^\[web-frame-time\] mean ([0-9.]+)ms worst ([0-9.]+)ms; late (\d+)\/(\d+)$/.exec(text);
+        if (timing) frameTiming = "Frame max " + timing[2] + " ms · late " + timing[3] + "/" + timing[4];
+      };
       Module.setStatus = function (text) {
         if (text) setStatus(text);
       };
@@ -525,21 +580,23 @@
         // nudge SDL to pick up the CSS-sized canvas
         setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50);
       };
-      // Counts the page's animation frames, which the game's main loop runs
-      // on, so it reads the same with any mod or game; the worst frame is the
-      // longest gap between two of them in the last second.
+      // Show completed game draws separately from page animation callbacks.
+      // The worst interval is the longest page callback gap in this second.
       function startFpsMeter() {
         var box = document.getElementById("fps");
         var frames = 0, worst = 0, last = performance.now(), windowStart = last;
         box.style.display = "block";
-        box.textContent = "-- fps";
+        box.textContent = renderRate;
         function tick(now) {
           frames++;
           worst = Math.max(worst, now - last);
           last = now;
           if (now - windowStart >= 1000) {
             var fps = frames * 1000 / (now - windowStart);
-            box.textContent = fps.toFixed(fps < 10 ? 1 : 0) + " fps \u00b7 worst " + Math.round(worst) + " ms";
+            var fresh = renderAt && now - renderAt < 3000;
+            box.textContent = (fresh ? renderRate : "Waiting for rendered frames")
+              + (fresh && frameTiming ? "\n" + frameTiming : "")
+              + "\nPage " + fps.toFixed(fps < 10 ? 1 : 0) + " FPS · callback max " + Math.round(worst) + " ms";
             frames = 0;
             worst = 0;
             windowStart = now;
@@ -550,10 +607,12 @@
       }
       canvas.addEventListener("webglcontextlost", function (e) {
         e.preventDefault();
-        showError("The graphics context was lost. Reload the page to continue (saves on disk are kept).");
+        showError("Graphics stopped working. Reload to continue. Progress since your last save may be lost.", true);
       }, false);
       window.addEventListener("error", function (e) {
-        showError("Something went wrong: " + (e.message || "see the browser console"));
+        var text = "Something went wrong: " + (e.message || "Unknown page error.") + " Reload if the game no longer responds.";
+        if (startPanel.style.display === "none") showError(text, true);
+        else startupError(text);
       });
 
       // IDBFS makes IndexedDB mirror this tab's filesystem on every sync, so a
@@ -586,16 +645,26 @@
         if (navigator.storage && navigator.storage.persist) {
           navigator.storage.persist().catch(function () {});
         }
-        window.Love(Module);
+        try { window.Love(Module); }
+        catch (err) {
+          console.error("[g1r] startup failed:", err);
+          startupError("The game could not start. Reload to try again.");
+        }
       }
-      goButton.addEventListener("click", start);
+      goButton.addEventListener("click", function () {
+        if (startupFailed) location.reload();
+        else start();
+      });
 
       window.g1rLoveFailed = function () {
-        goButton.textContent = "Unavailable";
-        setStatus("The game engine (love.js) failed to download. Check the connection and reload.");
+        startupError("The game engine could not download. Check your connection, then reload.");
+      };
+      window.g1rDataFailed = function () {
+        startupError("The game files could not download. Check your connection, then reload.");
       };
 
       window.g1rLoveLoaded = function () {
+        if (startupFailed) return;
         loveReady = true;
         goButton.disabled = false;
         goButton.textContent = "Start";
@@ -605,7 +674,7 @@
       };
     })();
   </script>
-  <script src="game.js"></script>
-  <script async src="love.js" onload="g1rLoveLoaded()" onerror="g1rLoveFailed()"></script>
+  <script src="game.js" onerror="g1rDataFailed()"></script>
+  <script async src="love.js?g1r-runtime=3" onload="g1rLoveLoaded()" onerror="g1rLoveFailed()"></script>
 </body>
 </html>

@@ -149,4 +149,28 @@ end
 T.eq(Marquee.at("SHORT", 16, 2.0), "SHORT",
   "text that fits is never scrolled")
 
+-- Browser-owned window controls must not appear as working game settings.
+local nativeOS = love.system.getOS
+love.system.getOS = function() return "Web" end
+local webGame = stubGame()
+webGame.save.options.fpsCap = 30
+local webMenu = OptionsMenu.new(webGame)
+for _, id in ipairs({ "videoMode", "faithfulRes", "vsync" }) do
+  T.eq(find(webMenu.rows, id), nil, "Web hides browser-owned " .. id)
+end
+find(webMenu.view, "group.video").activate(webGame)
+T.check(find(webGame.stack:top().view, "uiLayout"), "Web keeps layout controls")
+local cap = find(webGame.stack:top().view, "fpsCap")
+T.check(cap, "Web keeps the render cap on VIDEO")
+T.eq(cap.value(webGame), "30", "Web displays its 30 FPS cap")
+cap.step(webGame, 1)
+T.eq(webGame.save.options.fpsCap, 60, "Web can select 60 FPS")
+cap.step(webGame, 1)
+T.eq(webGame.save.options.fpsCap, 0, "Web can select unlocked rendering")
+love.system.getOS = nativeOS
+local nativeMenu = OptionsMenu.new(stubGame())
+for _, id in ipairs({ "videoMode", "faithfulRes", "vsync" }) do
+  T.check(find(nativeMenu.rows, id), "Native keeps " .. id)
+end
+
 T.finish("options submenu + marquee")

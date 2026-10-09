@@ -1,0 +1,63 @@
+-- Nonblocking render deadlines for a requestAnimationFrame-driven host.
+-- Updates and input continue on every callback; only drawing is capped.
+local WebFramePacer = {}
+WebFramePacer.__index = WebFramePacer
+
+function WebFramePacer.new()
+  return setmetatable({}, WebFramePacer)
+end
+
+function WebFramePacer:due(now, cap)
+  if self.cap ~= cap or now < (self.last or now) then
+    self.measureStart, self.frames, self.lastPresent = nil, 0, nil
+    self.maxInterval, self.lateFrames = 0, 0
+  end
+  if cap <= 0 then
+    self.deadline, self.cap, self.last = nil, cap, now
+    return true
+  end
+  local period = 1 / cap
+  if not self.deadline or self.cap ~= cap or now < (self.last or now) then
+    self.cap, self.last, self.deadline = cap, now, now + period
+    return true
+  end
+  self.last = now
+  -- Small browser timestamp jitter must not halve a matching-refresh cap.
+  local tolerance = math.min(0.002, period * 0.1)
+  if now + tolerance < self.deadline then return false end
+  if now - self.deadline >= period then
+    -- A stalled frame renders once; never burst to repay missed presents.
+    self.deadline = now + period
+  else
+    self.deadline = self.deadline + period
+  end
+  return true
+end
+
+-- Diagnostic rate counts completed draws, rather than browser callbacks.
+function WebFramePacer:presented(now)
+  if not self.measureStart then
+    self.measureStart, self.lastPresent, self.frames = now, now, 0
+    self.maxInterval, self.lateFrames = 0, 0
+    return nil
+  end
+  local interval = math.max(0, now - self.lastPresent)
+  self.lastPresent = now
+  self.maxInterval = math.max(self.maxInterval, interval)
+  -- Average FPS can hide alternating short frames and long pauses. Count
+  -- intervals substantially beyond the selected budget, allowing RAF jitter.
+  if self.cap and self.cap > 0 and interval > 1.25 / self.cap then
+    self.lateFrames = self.lateFrames + 1
+  end
+  self.frames = self.frames + 1
+  local elapsed = now - self.measureStart
+  if elapsed < 1 then return nil end
+  local fps = self.frames / elapsed
+  local timing = { meanMs = elapsed * 1000 / self.frames,
+    maxMs = self.maxInterval * 1000, late = self.lateFrames, frames = self.frames }
+  self.measureStart, self.frames = now, 0
+  self.maxInterval, self.lateFrames = 0, 0
+  return fps, timing
+end
+
+return WebFramePacer

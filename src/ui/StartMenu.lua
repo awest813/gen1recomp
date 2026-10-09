@@ -122,7 +122,13 @@ function StartMenu.new(game)
           -- DelayFrames 30.  The write itself is invisible either side of the
           -- "Now saving..." hold, so it stays on that box's onDone.
           game.stack:push(TextBox.new(game, Strings("Now saving..."), function()
-            game:writeSave()
+            local ok, written = pcall(game.writeSave, game)
+            if not ok or not written then
+              if not ok then Logger.error("save failed: %s", tostring(written)) end
+              game.stack:push(TextBox.new(game,
+                Strings("SAVE failed.\nPlease try again."), closePanel))
+              return
+            end
             game.stack:push(TextBox.new(game,
               Strings("%s saved\nthe game!", game.save.player.name or "RED"),
               closePanel, { auto = {

@@ -1681,10 +1681,19 @@ function love.run()
   -- In the browser love.js drives this function from requestAnimationFrame,
   -- which already paces presentation to the display.  love.timer.sleep there
   -- busy-waits the page's only thread, and PresentSync's vsync probing has
-  -- nothing to measure, so the web loop does neither: events, update, draw,
-  -- present, return.  FixedStep keeps game logic at 60 Hz regardless of the
-  -- display rate.
+  -- nothing to measure. Numeric caps skip drawing until their deadline;
+  -- events and updates still run on every callback. FixedStep keeps game
+  -- logic at 60 Hz regardless of the selected render rate.
   local web = WebHost.isWeb()
+  local webPacer = web and require("src.core.WebFramePacer").new()
+  local renderStats = false
+  local profile = { updates = 0, updateMs = 0, worstUpdateMs = 0,
+    draws = 0, drawMs = 0, worstDrawMs = 0 }
+  if web then
+    for _, value in pairs(arg or {}) do
+      if value == "--renderstats" then renderStats = true end
+    end
+  end
   _G.POKEPORT_LOOP_PANEL_SYNC = not web
   if not web then FrameCap.bootPanelSync() end
   local RefreshRate = require("src.core.RefreshRate")
@@ -1766,8 +1775,15 @@ function love.run()
       local chip = package.loaded["src.core.ChipAudio"]
       if chip and chip.beginFrame then chip.beginFrame() end
     end
+    local updateStarted = renderStats and love.timer.getTime()
     if love.update then love.update(dt) end
     WebHost.update(dt)
+    if updateStarted then
+      local ms = (love.timer.getTime() - updateStarted) * 1000
+      profile.updates = profile.updates + 1
+      profile.updateMs = profile.updateMs + ms
+      profile.worstUpdateMs = math.max(profile.worstUpdateMs, ms)
+    end
 
     local visible = not (love.window and love.window.isVisible)
       or love.window.isVisible()
@@ -1782,9 +1798,9 @@ function love.run()
       local idleCap = idlePresentationCap(idleFor)
       if idleCap then cap = idleCap end
     end
-    if cap == FrameCap.DISPLAY and not VSync.isOn() then
+    if not web and cap == FrameCap.DISPLAY and not VSync.isOn() then
       cap = FrameCap.DEFAULT
-    elseif cap == FrameCap.DISPLAY and PresentSync.needsSoftwareCap() then
+    elseif not web and cap == FrameCap.DISPLAY and PresentSync.needsSoftwareCap() then
       -- Fallback cascade: probe failed / wait abandoned / sync non-
       -- deterministic → FrameCap is the live pacing path on every OS.
       -- (During an active probe we intentionally leave DISPLAY uncapped so
@@ -1792,12 +1808,32 @@ function love.run()
       cap = FrameCap.DEFAULT
     end
 
-    if visible and love.graphics and love.graphics.isActive() then
+    local renderDue = not web or webPacer:due(love.timer and love.timer.getTime() or 0, cap)
+    if visible and renderDue and love.graphics and love.graphics.isActive() then
+      local drawStarted = renderStats and love.timer.getTime()
       love.graphics.origin()
       love.graphics.clear(love.graphics.getBackgroundColor())
       if love.draw then love.draw() end
       if not web then PresentSync.waitBeforePresent() end
       love.graphics.present()
+      if web and renderStats then
+        local ms = (love.timer.getTime() - drawStarted) * 1000
+        profile.draws = profile.draws + 1
+        profile.drawMs = profile.drawMs + ms
+        profile.worstDrawMs = math.max(profile.worstDrawMs, ms)
+        local fps, timing = webPacer:presented(love.timer.getTime())
+        if fps then
+          print(string.format("[web-render] %.1f fps cap=%s", fps,
+            cap == 0 and "UNLOCKED" or tostring(cap)))
+          print(string.format("[web-frame-time] mean %.2fms worst %.2fms; late %d/%d",
+            timing.meanMs, timing.maxMs, timing.late, timing.frames))
+          print(string.format("[web-profile] update %.2fms worst %.2fms; draw %.2fms worst %.2fms",
+            profile.updateMs / math.max(1, profile.updates), profile.worstUpdateMs,
+            profile.drawMs / math.max(1, profile.draws), profile.worstDrawMs))
+          profile = { updates = 0, updateMs = 0, worstUpdateMs = 0,
+            draws = 0, drawMs = 0, worstDrawMs = 0 }
+        end
+      end
       if not web then PresentSync.notePresent() end
     end
 
