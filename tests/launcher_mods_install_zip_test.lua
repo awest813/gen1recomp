@@ -280,10 +280,12 @@ check(files["mods/" .. MOD_ID .. "/gfx/a.bin"] == nil,
 resetFs()
 files["mods/" .. MOD_ID .. "/manifest.json"] = ARCHIVE[MOD_ID .. "/manifest.json"]
 files["imports/mods/dup.zip"] = "PK\3\4dup"
-ok, err = LauncherMods.installZip("imports/mods/dup.zip")
+local duplicateManifest
+ok, err, duplicateManifest = LauncherMods.installZip("imports/mods/dup.zip")
 check(not ok, "a listed install still refuses a plain duplicate import")
 check(tostring(err):find("already installed", 1, true),
   "duplicate refusal still names already installed")
+eq(duplicateManifest.id, MOD_ID, "duplicate import returns validated replacement identity")
 
 -- Browser: a picked/dropped zip outside the save dir is streamed into a
 -- save-dir temp in chunks and path-mounted, never read whole into Lua

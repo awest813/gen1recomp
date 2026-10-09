@@ -148,6 +148,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: web runtime, mod compatibility and loader regressions
+        run: |
+          python3 -m venv .bazinga/web-tests
+          .bazinga/web-tests/bin/python -m pip install --disable-pip-version-check -r ports/web/test-requirements.txt
+          .bazinga/web-tests/bin/python -c 'from lupa.lua51 import LuaRuntime'
+          .bazinga/web-tests/bin/python -m unittest discover -s tests -p 'test_patch_*.py'
+          .bazinga/web-tests/bin/python -m unittest discover -s tests -p 'test_split_web_build.py'
       # same cache as .github/workflows/web.yml: emsdk + the love.js tree
       - name: cache emsdk and love.js build
         uses: actions/cache@v6

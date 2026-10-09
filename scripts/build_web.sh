@@ -207,6 +207,9 @@ cp "$NATIVE_OUT/love.js" "$NATIVE_OUT/love.wasm" "$WORK/lovejs/src/compat/"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 node "$WORK/lovejs/index.js" -c -t "G1R Deluxe" -m "$MEMORY" "$LOVE_FILE" "$OUT" >/dev/null
+python3 "$ROOT/scripts/patch_web_openal.py" "$OUT/love.js"
+python3 "$ROOT/scripts/patch_web_gl.py" "$OUT/love.js"
+python3 "$ROOT/scripts/patch_web_idbfs.py" "$OUT/love.js"
 rm -rf "$OUT/theme"
 sed "s/__G1R_MEMORY__/$MEMORY/" "$ROOT/ports/web/shell/index.html" > "$OUT/index.html"
 cp "$ROOT/ports/web/shell/manifest.webmanifest" "$ROOT/ports/web/shell/"*.png "$OUT/"
@@ -214,6 +217,7 @@ cp "$ROOT/ports/web/shell/manifest.webmanifest" "$ROOT/ports/web/shell/"*.png "$
 if [ "$SPLIT_MB" -gt 0 ]; then
   python3 "$ROOT/scripts/split_web_build.py" "$OUT" --chunk-size-mb "$SPLIT_MB"
 fi
+python3 "$ROOT/scripts/stamp_web_assets.py" "$OUT"
 
 # --- verify ---------------------------------------------------------------
 for f in index.html game.js love.js love.wasm manifest.webmanifest icon-192.png; do

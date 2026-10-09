@@ -122,6 +122,7 @@ function Renderer:releaseCanvases()
   releaseCanvas(self.battleHUDCanvas); self.battleHUDCanvas = nil
   releaseCanvas(self.worldCanvas); self.worldCanvas = nil
   releaseCanvas(self.uprightCanvas); self.uprightCanvas = nil
+  releaseCanvas(self.tiltCanvas); self.tiltCanvas = nil
   self.worldActive = false
   self.uprightActive = false
   self.worldOverride = nil

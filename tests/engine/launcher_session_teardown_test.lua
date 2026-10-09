@@ -113,7 +113,11 @@ do
   Renderer.battleHUDCanvas = love.graphics.newCanvas(16, 16)
   Renderer.worldCanvas = love.graphics.newCanvas(16, 16)
   Renderer.uprightCanvas = love.graphics.newCanvas(16, 16)
+  local tilt = love.graphics.newCanvas(16, 16)
+  Renderer.tiltCanvas = tilt
   Renderer:init()
+  check(tilt.released == true and Renderer.tiltCanvas == nil,
+    "Renderer:init releases the previous tilt capture")
   check(first.released == true,
     "Renderer:init Object:release()s the previous primary canvas")
   check(Renderer.canvas ~= nil and Renderer.canvas ~= first,

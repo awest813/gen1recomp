@@ -165,6 +165,9 @@ function LauncherMods.checkDependencies(manifest, options, version, installedMan
   for _, m in ipairs(manifests) do
     installedMap[m.id] = m
   end
+  -- Install/update callbacks often only retain the id. Resolve its validated
+  -- installed manifest so forward dependencies and conflicts are still checked.
+  if not manifest.version then manifest = installedMap[manifest.id] or manifest end
 
   local depsResult = {}
   local hasIssues = false
@@ -1196,7 +1199,7 @@ function LauncherMods._installZipInner(source, opts)
   local existing, installedSomewhere = sameIdTrees(fs, manifest.id)
   if installedSomewhere and not opts.replace then
     cleanup()
-    return nil, "a mod named '" .. manifest.id .. "' is already installed"
+    return nil, "a mod named '" .. manifest.id .. "' is already installed", manifest
   end
   local preservedBaseroms = {}
   -- A previous failed update may have staged the user's files outside mods/ so

@@ -486,7 +486,7 @@ local function buildRows(game)
     { id = "fpsCap", label = Strings("MAX FPS"),
       value = function(g)
         local value = FrameCap.normalize(g.save.options.fpsCap)
-        if value == FrameCap.DISPLAY then
+        if value == FrameCap.DISPLAY and not require("src.core.WebHost").isWeb() then
           local label = FrameCap.label(value)
           local hz = tonumber(label:match("^DISPLAY %((%d+)HZ%)$"))
           return hz and Strings("DISPLAY (%dHZ)", hz) or Strings("DISPLAY")
@@ -653,6 +653,17 @@ local function buildRows(game)
     local filtered = {}
     for _, row in ipairs(rows) do
       if row.id ~= "videoMode" then filtered[#filtered + 1] = row end
+    end
+    rows = filtered
+  end
+  -- The browser owns its window, fullscreen and display synchronization.
+  -- Keep the render cap available, without offering ineffective controls.
+  if require("src.core.WebHost").isWeb() then
+    local filtered = {}
+    for _, row in ipairs(rows) do
+      if row.id ~= "videoMode" and row.id ~= "faithfulRes" and row.id ~= "vsync" then
+        filtered[#filtered + 1] = row
+      end
     end
     rows = filtered
   end
