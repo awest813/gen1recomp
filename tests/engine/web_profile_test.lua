@@ -189,23 +189,31 @@ check(mainOk, "main.lua loads under the stub: " .. tostring(mainErr))
 check(require("src.core.FixedStep").sustainedCatchup == true,
   "main.lua keeps a low frame rate at real-time speed on Web")
 
-local function runFrames(os, frames, hz, cap)
+local function runFrames(os, frames, hz, cap, updateCosts)
   osName = os
   local sleeps = 0
   local draws, updates = 0, 0
   local now = 0
+  local callbacks, drawAt = 0, {}
   local saved = {
     load = love.load, update = love.update, draw = love.draw,
     timer = love.timer, event = love.event, graphics = love.graphics,
     window = love.window,
   }
   love.load = nil
-  love.update = function() updates = updates + 1 end
-  love.draw = function() draws = draws + 1 end
+  love.update = function()
+    updates = updates + 1
+    if updateCosts then now = now + updateCosts[(updates - 1) % #updateCosts + 1] end
+  end
+  love.draw = function() draws = draws + 1; drawAt[#drawAt + 1] = callbacks end
   if cap ~= nil then require("src.core.FrameCap").apply(cap) end
   love.timer = {
     -- frames finish fast (2 ms), so a desktop pacer has budget to sleep out
-    step = function() now = now + (hz and 1 / hz or 0.002); return hz and 1 / hz or 1 / 60 end,
+    step = function()
+      callbacks = callbacks + 1
+      now = hz and callbacks / hz or now + 0.002
+      return hz and 1 / hz or 1 / 60
+    end,
     getTime = function() return now end,
     sleep = function(s) sleeps = sleeps + 1; now = now + (s or 0) end,
     getFPS = function() return 60 end,
@@ -220,7 +228,7 @@ local function runFrames(os, frames, hz, cap)
     for _ = 1, frames do frame() end
   end)
   for k, v in pairs(saved) do love[k] = v end
-  return ok, err, sleeps, draws, updates
+  return ok, err, sleeps, draws, updates, drawAt
 end
 
 if mainOk then
@@ -234,6 +242,17 @@ if mainOk then
     eq(updatesW, 240, "updates run even on skipped render frames")
     eq(sleepsW, 0, "numeric web pacing never sleeps")
   end
+  local okJ, errJ, sleepsJ, drawsJ, updatesJ, drawAt =
+    runFrames("Web", 600, 60, 30, { 0.006, 0.001, 0.002 })
+  check(okJ, "variable update-cost frames run: " .. tostring(errJ))
+  eq(drawsJ, 300, "variable update work preserves the 30 FPS draw count")
+  eq(updatesJ, 600, "variable update work preserves every simulation callback")
+  eq(sleepsJ, 0, "variable update work never introduces blocking sleeps")
+  local evenCadence = #drawAt == 300
+  for i = 2, #drawAt do
+    if drawAt[i] - drawAt[i - 1] ~= 2 then evenCadence = false end
+  end
+  check(evenCadence, "30 FPS draws every other 60 Hz callback despite variable update costs")
   local okD, errD, sleepsD = runFrames("Linux", 30)
   check(okD, "desktop frames run: " .. tostring(errD))
   check(sleepsD > 0, "desktop control run does sleep (the probe works)")

@@ -7448,7 +7448,7 @@ end
 -- Enabling an experimental mod arms a confirmation for that same game.
 function RomImporter:_toggleMod(id, confirmed, version)
   if self.safeMode then
-    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in the Bug tab to change mods." }
+    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in Settings > Troubleshooting to change mods." }
     return
   end
   local cartId, cartReport = self:modCartPlan()
@@ -7555,7 +7555,7 @@ end
 -- rather than becoming a way to add to it or empty it.
 function RomImporter:_setAllMods(want, confirmed)
   if self.safeMode then
-    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in the Bug tab to change mods." }
+    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in Settings > Troubleshooting to change mods." }
     return
   end
   local cartId, cartReport = self:modCartPlan()
@@ -7610,7 +7610,7 @@ end
 
 function RomImporter:_moveMod(id, delta)
   if self.safeMode then
-    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in the Bug tab to change mods." }
+    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in Settings > Troubleshooting to change mods." }
     return false
   end
   local cartId, cartReport = self:modCartPlan()
@@ -7640,7 +7640,7 @@ end
 
 function RomImporter:_resetModOrder()
   if self.safeMode then
-    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in the Bug tab to change mods." }
+    self.modNotice = { ok = false, text = "Safe mode is active. Turn it off in Settings > Troubleshooting to change mods." }
     return false
   end
   local LauncherMods = require("src.mods.LauncherMods")

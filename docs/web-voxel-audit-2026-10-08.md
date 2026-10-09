@@ -832,3 +832,44 @@ The browser launcher-return suite also passes under PUC Lua 5.1.
 These changes address integration stability;
 steady 30/60 FPS and complete Red/Blue/Yellow voxel accuracy still require
 live verification on the merged runtime.
+
+## Live merged runtime and 30 FPS cadence (October 9)
+
+The web artifact from run 37990889251 (commit 57dd93fa, build ID
+c3629c49dd21c49f) passed its browser smoke and was downloaded for live testing
+on the existing localhost origin. The existing imported games, full mod
+library and Blue save were available. Safe mode temporarily disabled mods
+without changing individual selections. Blue's intro, continue confirmation,
+Pallet Town, house entry/exit, Start/Options menus, return to title and EXIT
+GAME were checked. EXIT GAME rebuilt a responsive launcher, and the original
+NICK save still showed 255:39, 8 badges and 151 caught. No gameplay changes
+were saved. Proof: dist/merged-exit-launcher.png.
+
+Live timing exposed a pacing defect despite low draw costs: measuring the
+render deadline after variable update work could alternate short and long
+draw intervals. The earlier runtime showed windows with 7–11 late frames
+per second around a 30 FPS average. Pacing now measures callback arrival
+before updates. A 600-callback regression with alternating 1/2/6 ms updates
+requires exactly 300 draws at an even every-other-callback cadence. The old
+implementation fails this assertion; the revised implementation passes.
+The loop is pinned as shell 5, preserving historical shell 4.
+
+A diagnostic payload based on the CI artifact contains the exact four
+changed source files (main, Version, LauncherView and RomImporter), verified
+byte-for-byte; build ID 987fee2790aadd38. In the stationary, unmodded Pallet
+Town sample at 1280x720, 54 timing windows recorded 1,656 completed frames
+and 10 late intervals, with a 51.8 ms worst interval. Most windows had zero
+late frames. This is progress, not proof of locked 30 FPS: recurring spikes,
+cold transitions, battles, other Gen 1 versions and voxel combinations still
+need verification. Evidence: dist/pacing-pallet-sample.json and
+dist/pacing-pallet-proof.png.
+
+Browser profile checks pass 66/66 under LuaJIT and PUC Lua 5.1; shell matrix
+1625/1625, pacer 45/45, safe-mode report 21/21 and launcher-settings
+persistence 23/23 pass. Changed production files pass blocking lint.
+Safe-mode notices now point to Settings > Troubleshooting, matching the
+actual visible route rather than the obsolete Bug tab name.
+
+The preceding merge's Lua 5.1, lint, full engine and web jobs all passed.
+ARM64 packaging failed twice at the Docker Hub base-image fetch with HTTP
+429, including its targeted retry; this is separate from browser testing.

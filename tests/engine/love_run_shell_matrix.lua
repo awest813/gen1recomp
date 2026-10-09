@@ -23,6 +23,7 @@ local SHELLS = {
   { file = "v0.3.58", last = "v0.3.58", shell = 2, legacy = true },
   { file = "shell3", shell = 3, shipped = { { first = "v0.3.59", last = "v0.3.59", declared = 2 } } },
   { file = "shell4", shell = 4 },
+  { file = "shell5", shell = 5 },
 }
 
 local function readFile(path)

@@ -1843,6 +1843,10 @@ function love.run()
 
     -- update dt
     if love.timer then dt = love.timer.step() end
+    -- Pace Web against callback arrival, before variable update/storage work.
+    -- Sampling after updates can miss an otherwise on-time RAF deadline and
+    -- alternate 16/50 ms presents even when the frame fits its budget.
+    local frameStarted = web and love.timer and love.timer.getTime() or 0
     idleFor = idleFor + dt
     RefreshRate.sample(dt)
 
@@ -1888,7 +1892,7 @@ function love.run()
       cap = FrameCap.DEFAULT
     end
 
-    local renderDue = not web or webPacer:due(love.timer and love.timer.getTime() or 0, cap)
+    local renderDue = not web or webPacer:due(frameStarted, cap)
     if visible and renderDue and love.graphics and love.graphics.isActive() then
       local drawStarted = renderStats and love.timer.getTime()
       love.graphics.origin()

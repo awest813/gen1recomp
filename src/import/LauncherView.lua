@@ -2725,7 +2725,7 @@ local function buildModsPanel(imp, x, y, w, availH, m)
   -- notice line
   local noticeText, noticeCol
   if safeMode then
-    noticeText, noticeCol = "Safe mode is on. All mods are disabled. Turn it off in the Bug tab to change mod toggles.", PAL.yellow
+    noticeText, noticeCol = "Safe mode is on. All mods are disabled. Turn it off in Settings > Troubleshooting to change mod toggles.", PAL.yellow
   elseif imp.modNotice then
     noticeText = imp.modNotice.text
     noticeCol = imp.modNotice.ok and PAL.green or PAL.red
