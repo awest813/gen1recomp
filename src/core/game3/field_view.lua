@@ -418,8 +418,8 @@ local function collectNeighborActors(actors, baseIndex, hostMapId, hostDef, camX
             local p = nb.perm[lid]
             local ox = p and p.x or tonumber(obj.x) or 0
             local oy = p and p.y or tonumber(obj.y) or 0
-            local out = bounds and (ox < 0 or oy < 0
-              or ox >= bounds.w or oy >= bounds.h)
+            local out = bounds and (ox < -16 or oy < -16
+              or ox >= bounds.w + 16 or oy >= bounds.h + 16)
             -- src/event_object_movement.c:8014
             if tonumber(obj.movementType) == 0x4C then out = true end
             local gid = obj.graphicsId or obj.graphics
@@ -513,14 +513,18 @@ local function sortActors(a, b)
   return a.subpriority > b.subpriority
 end
 
+local drawOrderObjects = {}
+
 -- event_object_movement.c:7739-7754, scrcmd.c:1130
 local function applyDrawOrder(actors, underActors, overActors, camY)
   underActors = underActors or {}
   overActors = overActors or {}
   for i = #underActors, 1, -1 do underActors[i] = nil end
   for i = #overActors, 1, -1 do overActors[i] = nil end
+  for obj in pairs(drawOrderObjects) do drawOrderObjects[obj] = nil end
   for _, a in ipairs(actors) do
     local obj = a.eventObject
+    if obj then drawOrderObjects[obj] = a end
     if (obj and obj.fixedPriority) or a.fixedPriority then
       a.fixedPriority = true
       if obj and obj.fixedClass == nil then obj.fixedClass = a.priority or actorPriority(a) end
@@ -542,6 +546,11 @@ local function applyDrawOrder(actors, underActors, overActors, camY)
       underActors[#underActors + 1] = a
     end
   end
+  -- pokeemerald/src/field_effect_helpers.c:1365
+  for _, a in ipairs(actors) do
+    local linked = a.disguiseObject and drawOrderObjects[a.disguiseObject]
+    if linked then a.subpriority = (linked.subpriority - 1) % 256 end
+  end
   table.sort(underActors, sortActors)
   table.sort(overActors, sortActors)
   return underActors, overActors
@@ -549,6 +558,11 @@ end
 FieldView.applyDrawOrder = applyDrawOrder
 
 local owOpts = {}
+
+local function weatherMask()
+  local W = package.loaded["src.core.game3.field_weather_rse"]
+  return W and W.maskActive and W.maskActive() and W or nil
+end
 
 local function drawSingleActor(game, mapDef, a, camX, camY)
   local daytime = daytimeFor(game, mapDef)
@@ -577,6 +591,14 @@ local function drawSingleActor(game, mapDef, a, camX, camY)
     opts.alpha = a.alpha
     drew = OwSprites.draw(
       a.graphicsId, a.x, a.y, camX, camY, a.facing, a.walkPhase, a.stepFlip, opts)
+    local W = drew and weatherMask()
+    if W then
+      local spr = OwSprites.getDraw(a.graphicsId)
+      -- pokeruby/src/field_weather.c:580
+      W.writeActorMask(W.actorMaskCode(spr and spr.paletteSlot), function()
+        OwSprites.draw(a.graphicsId, a.x, a.y, camX, camY, a.facing, a.walkPhase, a.stepFlip, opts)
+      end)
+    end
   end
   if not drew then
     local sr = getSpriteRenderer(
@@ -635,6 +657,7 @@ local function collectGame3Actors(game, mapDef, camX, camY, px, py, facing, walk
       a.sprite = eo.sprite or spriteNameForObj(eo.def or {})
       a.graphicsId = eo.graphicsId or (eo.def and (eo.def.graphicsId or eo.def.graphics))
       a.alpha = Objects.fadeAlpha(eo)
+      a.draw = eo.foreign and eo.draw or nil
       a.priority = nil
       a.subpriority = nil
       actors[#actors + 1] = a
@@ -719,7 +742,8 @@ local function collectGame3Actors(game, mapDef, camX, camY, px, py, facing, walk
     a.fishing = fishFrame ~= nil
     a.fishFrame = fishFrame
     a.running = PlayerMod and PlayerMod.runPose and PlayerMod.runPose() or nil
-    a.frame = PlayerMod and PlayerMod.acroFrame and PlayerMod.acroFrame() or nil
+    a.frame = PlayerMod and (PlayerMod.surfJumpFrame and PlayerMod.surfJumpFrame()
+      or PlayerMod.acroFrame and PlayerMod.acroFrame()) or nil
     a.sprite = playerSpriteName(game)
     a.graphicsId = useOw and OwSprites.playerGraphicsId(game) or nil
     a.priority = nil
@@ -878,6 +902,34 @@ local function nativeAtlas(NativeTileset, pair)
     if ts then nativeAtlasByPair[pair] = ts end
   end
   return ts
+end
+
+function FieldView.trimNative(NativeTileset, Map, pair, visiblePairs)
+  local keep, busy = {}, {}
+  keep[pair] = true
+  for p in pairs(visiblePairs or {}) do keep[p] = true end
+  local x0, y0, x1, y1
+  if Map.warmRect then x0, y0, x1, y1 = Map.warmRect() end
+  for _, entry in ipairs(Map.world or {}) do
+    local def = entry.def
+    local p = def and (def.pair or (def.midLayout and def.midLayout.pair))
+    if p and (not Map.warmNear or Map.warmNear(entry, x0, y0, x1, y1)) then keep[p] = true end
+  end
+  local function mark(store)
+    for _, b in pairs(store or {}) do
+      if b.getTexture then busy[b:getTexture()] = true end
+    end
+  end
+  mark(FieldView._nativeBatches)
+  mark(FieldView._nativeOverBatches)
+  local from = FieldView._voidFrom
+  if from then
+    mark(from.under)
+    mark(from.over)
+  end
+  local evicted = NativeTileset.trim(keep, NativeTileset.RESIDENT_MAX, busy)
+  for _, p in ipairs(evicted) do nativeAtlasByPair[p] = nil end
+  return evicted
 end
 
 -- Physical sprite slots per layer (free-list reuse does not grow them).
@@ -1061,7 +1113,7 @@ local function drawNativeTiles(mapDef, camX, camY, canvasW, canvasH)
   local NativeTileset = modNativeTileset()
   if not (NativeTileset and NativeTileset.ready and NativeTileset.ready(pair)) then
     if not FieldView._loggedNativeFallback then
-      log("native unavailable for " .. tostring(pair) .. " — Gen2 atlas fallback")
+      log("native unavailable for " .. tostring(pair) .. ": Gen2 atlas fallback")
       FieldView._loggedNativeFallback = true
     end
     return false
@@ -1280,6 +1332,12 @@ local function drawNativeTiles(mapDef, camX, camY, canvasW, canvasH)
     pruneNativeStore(underStore)
     pruneNativeStore(overStore)
   end
+  if NativeTileset.trim and (FieldView._nativeTrimGen ~= NativeTileset._gen or FieldView._nativeLayout ~= layout) then
+    FieldView._nativeTrimGen = NativeTileset._gen
+    if NativeTileset.resident() > NativeTileset.RESIDENT_MAX then
+      FieldView.trimNative(NativeTileset, Map, pair, visiblePairs)
+    end
+  end
 
   FieldView._nativeBx, FieldView._nativeBy = cx0, cy0
   FieldView._nativePair = pair
@@ -1319,7 +1377,7 @@ local function drawNativeTiles(mapDef, camX, camY, canvasW, canvasH)
   return true
 end
 
---- BG2 overhead (building eaves, desk tops) — draw after OW sprites.
+--- BG2 overhead (building eaves, desk tops): draw after OW sprites.
 local function drawNativeOverTiles()
   local batches = FieldView._nativeOverBatches
   if not batches then return end
@@ -1598,7 +1656,7 @@ function FieldView.draw(game, canvasW, canvasH, opts)
     if mapId then session.map = mapId end
   end
 
-  -- pret CameraUpdate: always track the player. No map-rect clamp — edges
+  -- pret CameraUpdate: always track the player. No map-rect clamp: edges
   -- show connected neighbors (or border), same as walking mid-town.
   local camX = math.floor(px + CELL / 2 - canvasW / 2)
   local camY = math.floor(py + CELL / 2 - canvasH / 2)
@@ -1739,11 +1797,14 @@ function FieldView.draw(game, canvasW, canvasH, opts)
     for _, a in ipairs(underActors) do
       drawSingleActor(game, mapDef, a, camX, camY)
     end
+    if usedNative and opts.endUnderActors then opts.endUnderActors(drawNativeOverTiles) end
   end
 
   -- pret BG1: metatile top layer covers normal OW sprites (roofs, desk counters, trees).
   if usedNative and not opts.actorsOnly then
     drawNativeOverTiles()
+    local W = weatherMask()
+    if W then W.writeActorMask(0, drawNativeOverTiles) end
   end
 
   -- Draw Game3 actors with elevated priority (over BG1 / overhead layer, e.g. bridges/cliffs/jumping/escalators).
@@ -1758,6 +1819,16 @@ function FieldView.draw(game, canvasW, canvasH, opts)
     local FieldEffects = modFieldEffects()
     if FieldEffects and FieldEffects.drawFront then
       FieldEffects.drawFront(camX, camY, py)
+      local W = weatherMask()
+      if W then W.writeActorMask(0, function() FieldEffects.drawFront(camX, camY, py) end) end
+    end
+  end
+
+  if underActors or overActors then
+    local LinkTags = package.loaded["src.ui.game3.link_tags"]
+    if LinkTags and LinkTags.draw then
+      LinkTags.draw(underActors, overActors, camX, camY, canvasW, canvasH,
+        FieldView._billboard and pushBillboard or nil)
     end
   end
 
@@ -1792,6 +1863,10 @@ function FieldView.draw(game, canvasW, canvasH, opts)
     end
   end
 
+  if not opts.actorsOnly then
+    local crisis = package.loaded["src.core.game3.rse.weather_flash_rs"]
+    if crisis and crisis.drawField then crisis.drawField() end
+  end
   drawFlashMask(canvasW, canvasH)
 
   love.graphics.setColor(1, 1, 1, 1)

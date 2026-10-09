@@ -149,7 +149,7 @@ end
 -- the party ball rows DrawAllPokeballs puts up with the intro text, moved
 -- out to the wide screen's own corners
 local function drawIntroBalls(battle)
-  if not battle.introBalls then return end
+  if battle.introBalls ~= true then return end
   if battle.enemyParty and
       (battle.kind == "trainer" or battle.kind == "link") then
     battle:drawBallRow(battle.enemyParty, 88, 40, -8)
@@ -189,8 +189,10 @@ local function drawMessageBox(battle)
   local ys = { 112, 128 }
   for li, line in ipairs(battle.shown or {}) do
     local y = (ys[li] or 128) + off
+    local pen = 8
     for i = 1, #line do
-      Font.drawCode(line[i], 8 + (i - 1) * 8, y)
+      Font.drawCode(line[i], pen, y)
+      pen = pen + Font.advanceOf(line[i])
     end
   end
   if (battle.msgWaiting or battle.msgPrompt) and battle.frame % 60 < 30 then

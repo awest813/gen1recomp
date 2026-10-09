@@ -982,7 +982,7 @@ function World:load()
     -- Vm:resume hands the one-command lookahead through as the third argument
     -- (Vm:textStays): the next row is `yesorno`, so this text ended in `done`
     -- and the cart never took the box down before YesNoBox went up over it
-    -- (home/text.asm:484 DoneText returns with no PromptButton, unlike
+    -- (../pokecrystal/home/text.asm:566 DoneText returns with no PromptButton, unlike
     -- PromptText).  Dropping the argument here left World:showText's `stay`
     -- branch and World:askYesNo's held arm unreachable, which cost a button
     -- press the cart never asks for and re-printed the question under the
@@ -1065,6 +1065,12 @@ function World:load()
     -- See World:waitForButton.
     waitButton = function(done)
       self:waitForButton(done)
+    end,
+    hasStayedText = function()
+      return self:stayedTextUp()
+    end,
+    holdStayedText = function(kind, done, frames)
+      return self:holdStayedText(kind, done, frames)
     end,
     getMonName = function(speciesIndex)
       local id, def = speciesByIndex(
@@ -1814,7 +1820,7 @@ end
 function World:isCrystal()
   local GameVersion = loaded("src.core.GameVersion")
   -- Rendering follows the loaded ROM column (BorderFill / MapPreview do the
-  -- same), not save.version — a Crystal save under the Gold column still bakes
+  -- same), not save.version: a Crystal save under the Gold column still bakes
   -- and draws with Gold's single-bank tilesets.
   return GameVersion.engine() == "crystal"
 end
@@ -2510,17 +2516,9 @@ function World:bumpSound()
   self:playSfxNamed("Sfx_Bump", SFX.BUMP)
 end
 
--- Script_specialsound (engine/overworld/scripting.asm:476) is not a fixed cue:
--- it farcalls CheckItemPocket (engine/items/items.asm:512), which writes
--- wCurItem's pocket into wItemAttributeValue, and rings SFX.GET_TM for the
--- TM/HM pocket, SFX.ITEM for every other one.  It is the sound inside
--- GiveItemScript, so every `verbosegiveitem` runs through it -- Sage Li's
--- `verbosegiveitem HM_FLASH` and every gym leader's TM included, all of which
--- rang the ordinary item jingle while the item argument was thrown away.  An
--- item the cache cannot name takes the `cp TM_HM / jr z` fall-through, SFX.ITEM.
+-- ../pokecrystal/engine/overworld/scripting.asm:528
 function World:specialSound(itemIndex)
-  -- The `waitsfx` above it (scripting.asm:445): SFX_READ_TEXT_2 ($08), which
-  -- the box rings on its own press, outranks SFX_GET_TM ($9b) here (#1483).
+  -- ../pokecrystal/engine/overworld/scripting.asm:471
   Sound.waitSfxDone()
   local id = itemIndex and self:itemIdByIndex(itemIndex)
   local items = self.game and self.game.data and self.game.data.items
@@ -3176,13 +3174,6 @@ function World:bankOfMomAmount(kind, saved, held, onDone)
   return true
 end
 
--- The rename half of the Goldenrod NAME RATER (engine/events/name_rater.asm,
--- src/script/gen2/Specials.lua H.NameRater).  Same keyboard World:nameHatchling
--- opens for a freshly-hatched egg, but the header is the species name loaded
--- by GetBaseData (`ld b, NAME_MON / ld de, wStringBuffer2 / farcall
--- _NamingScreen`), not a fixed prompt -- BoxMenu:askNickname's screen is the
--- same shape for the same reason.  `onDone(name)` gets the typed string or nil
--- for B; IsNewNameEmpty/CompareNewToOld both live in the special, not here.
 -- SetDayOfWeek's wheel (src/ui/gen2/InitClock.lua day mode).  `onDone(day)` is
 -- the special's own resume, the same shape World:nameRival hands H.NameRival:
 -- the screen's close is what starts the script again.
@@ -3223,6 +3214,7 @@ function World:renameMon(mon, onDone, opts)
   end
   local ok = self:pushScreen("Gen2NamingScreen", {
     type = "nickname",
+    mon = mon,
     monName = mon.name or mon.species,
     initial = (opts and opts.blank) and ""
       or (mon.nickname or mon.name or mon.species or ""),
@@ -6709,7 +6701,7 @@ end
 -- list standing -- engine/events/overworld.asm:556, :578 over
 -- engine/pokemon/mon_menu.asm:624.
 function World:openFlyMap(mon, opts)
-  local points = self:flyPoints()
+  local points, flyRegion = self:flyPoints()
   if #points == 0 then return false end
   -- Loaded on demand and through pcall: a headless run has no love, and this
   -- is the only place in the world that reaches for a screen module by hand.
@@ -6720,6 +6712,7 @@ function World:openFlyMap(mon, opts)
         save = self.game.save,
         currentLandmark = self:currentLandmarkId(),
         fly = points,
+        flyRegion = flyRegion,
         -- (../pokecrystal/engine/pokegear/pokegear.asm:2708-2721).
         flyMon = mon,
         onFly = function(spawnId)
@@ -8043,6 +8036,52 @@ function World:showText(body, onDone, stay, hold, sfxWait, arrows)
   end, { sfxWait = sfxWait and true or nil, waitButton = waitButton }))
 end
 
+function World:stayedTextUp()
+  local box = self.stayedTextBox
+  local stack = self.game and self.game.stack
+  return not not (box and stack and stack:top() == box)
+end
+
+-- ../pokecrystal/engine/overworld/scripting.asm:528
+-- ../pokecrystal/engine/overworld/scripting.asm:371
+-- ../pokecrystal/engine/overworld/scripting.asm:374
+-- ../pokecrystal/engine/overworld/scripting.asm:2208
+-- ../pokecrystal/engine/overworld/scripting.asm:2224
+-- ../pokecrystal/home/pokemon.asm:124
+function World:holdStayedText(kind, done, frames)
+  if not self:stayedTextUp() then return false end
+  local box = self.stayedTextBox
+  if kind == "close" then
+    self.stayedTextBox = nil
+    self.textbox = nil
+    self.game.stack:pop()
+    return false
+  end
+  local stay = { onShown = function()
+    self.stayedTextBox = box
+    if done then done() end
+  end }
+  if kind == "sfx" then
+    box.sfxWait = true
+  elseif kind == "frames" then
+    box.holdFrames = frames or 0
+  elseif kind == "cry" then
+    local src = self.lastSfx
+    if not (src and src.isPlaying and src:isPlaying()) then return false end
+    local Sound = require("src.core.Sound")
+    box.pauseSrc = src
+    box.pauseSrcLeft = Sound.waitFrames and Sound.waitFrames(src) or 180
+  elseif kind == "prompt" then
+    stay.prompt = true
+    box.waitButton = false
+  else
+    stay.press = true
+  end
+  box.stay = stay
+  box.stayShown = false
+  return true
+end
+
 function World:pooledNpc(mapId, obj)
   if not self.sprites or not obj or not obj.sprite then return nil end
   -- An object whose `sprite` is a NUMBER names a wVariableSprites slot rather
@@ -8646,6 +8685,7 @@ function World:interactBody()
   local d = Map.DELTA[p.facing]
   local fx, fy = p.cellX + d[1], p.cellY + d[2]
   local npc = self:npcAt(self:facingObjectCell())
+  if npc and npc.onTalk then return npc:onTalk(self) end
   -- TryObjectEvent writes hLastTalked for EVERY A-press dispatch; scripts
   -- then use LAST_TALKED (`disappear`, `applymovementlasttalked`) without any
   -- setlasttalked of their own.  The port only wrote it from the explicit
@@ -9218,7 +9258,7 @@ function World:feetCompositeCanvas(w, h)
     return canvas
   end
   if canvas and canvas.release then canvas:release() end
-  local ok, made = pcall(G.newCanvas, w, h)
+  local ok, made = pcall(PixelCanvas.new, w, h)
   if not ok or not made then return nil end
   made:setFilter("nearest", "nearest")
   self._feetCanvases[key] = made
@@ -9389,7 +9429,7 @@ function World:blitBgOverRegion(mapDef, ox, oy, s, rx0, ry0, rx1, ry1, keyed, ti
 
   -- originX/Y is the screen position of map pixel (rx0, ry0): ox/oy are the
   -- playfield-local offset of map (0,0), so a tile at (tx, ty) lands at
-  -- origin + (tx - rx0) * s — same convention as drawGrassOverGoldSilver's
+  -- origin + (tx - rx0) * s, same convention as drawGrassOverGoldSilver's
   -- ox + cx0 * s with absolute map coordinates.
   self:blitBgOverRegionLocal(mapDef,
     math.floor(ox + rx0 * s), math.floor(oy + ry0 * s),
@@ -10467,6 +10507,8 @@ function World:takeWarp(warpDef)
       if ok then
         self:spawnFacing()
         self:recordWarpBackup(prevMapId, prevWarpIndex, destWarp, destMapId)
+        require("src.world.gen2.UnionCenter2F").noteWarp(self, prevMapId,
+          prevWarpIndex, warpDef, destMapId, destWarp)
       end
       return ok
     end)
@@ -11148,9 +11190,6 @@ function World:nameHatchling(mon, onDone)
   local game = self.game
   if not (game and game.stack) then return onDone() end
   local data = game.data or {}
-  local icons = data.gen2Icons
-  local iconId = icons and icons.species and icons.species[mon.species]
-  local entry = iconId and icons.icons and icons.icons[iconId]
   local done = function(name)
     game.stack:pop()
     -- _InitString's blank test, not a length one: "zero or more spaces
@@ -11162,8 +11201,8 @@ function World:nameHatchling(mon, onDone)
   end
   Screens.push(game, "Gen2NamingScreen", {
     type = "nickname",
+    mon = mon,
     monName = mon.name or mon.species,
-    iconPath = entry and entry.image or nil,
     menuGfx = data.gen2MenuGfx,
     onDone = done,
     onCancel = function() done(nil) end,

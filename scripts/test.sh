@@ -9,7 +9,8 @@
 # when neither exists rather than failing the run.
 #
 #   scripts/test.sh                 every tier this checkout can run
-#   scripts/test.sh --quick         skip the slow content tier
+#   scripts/test.sh --quick         fast smoke run: tests/quick.list in parallel, under a minute
+#   scripts/test.sh --standard      every tier except the slow content tier
 #   scripts/test.sh --group NAME    one ROM-free CI group
 #   scripts/test.sh --list          show selected tiers without running them
 #   scripts/test.sh --list-groups   list the ROM-free CI groups
@@ -35,6 +36,7 @@ LUA=${LUA:-luajit}
 LUA54=${LUA54:-lua5.4}
 BLESS=0
 QUICK=0
+FAST=0
 SHOTS=${WITH_SHOTS:-0}
 GROUP=all
 LIST=0
@@ -47,7 +49,8 @@ while [ $# -gt 0 ]; do
   case "$arg" in
     --bless) BLESS=1 ;;
     --bless-shots) SHOTS=1; BLESS=1 ;;
-    --quick) QUICK=1 ;;
+    --quick) FAST=1 ;;
+    --standard) QUICK=1 ;;
     --group) [ $# -ge 2 ] || { echo "--group needs a name" >&2; exit 2; }; GROUP="$2"; shift ;;
     --list) LIST=1 ;;
     --list-groups) printf '%s\n' "${ROM_FREE_GROUPS[@]}"; exit 0 ;;
@@ -178,6 +181,26 @@ run_tier() {
   fi
 }
 
+if [ "$FAST" = 1 ]; then
+  START=$(date +%s)
+  SYNTAX_BAD=$({ git diff --name-only HEAD -- '*.lua'; git ls-files --others --exclude-standard -- '*.lua'; } 2>/dev/null \
+    | sort -u | while IFS= read -r f; do [ -f "$f" ] && { "$LUA" -b "$f" /dev/null >/dev/null 2>&1 || echo "$f"; }; done)
+  QUICK_FAILS=$(grep -v '^[[:space:]]*\(#\|$\)' tests/quick.list \
+    | xargs -P "${QUICK_JOBS:-8}" -n 1 sh -c 'perl -e "alarm 30; exec @ARGV" "$0" "$1" >/dev/null 2>&1 || echo "$1"' "$LUA")
+  TOTAL=$(grep -cv '^[[:space:]]*\(#\|$\)' tests/quick.list)
+  ELAPSED=$(( $(date +%s) - START ))
+  echo ""
+  for f in $SYNTAX_BAD; do echo "   SYNTAX $f"; done
+  for f in $QUICK_FAILS; do echo "   FAIL $f"; done
+  echo "-- quick: $TOTAL suites in ${ELAPSED}s"
+  if [ -n "$SYNTAX_BAD$QUICK_FAILS" ]; then
+    echo "  QUICK FAILED"
+    exit 1
+  fi
+  echo "  QUICK PASSED"
+  exit 0
+fi
+
 # ------- ROM-free tiers: these are what CI runs
 
 if command -v luacheck >/dev/null 2>&1; then
@@ -189,6 +212,7 @@ else
   echo "   luarocks install luacheck; CI installs and gates on it regardless)"
 fi
 
+run_tier "T0 Android importer copy lifecycle" python3 tests/android_importer_copy_test.py
 run_tier "T0 ROM builder version routing" python3 tests/build_rom_data_cli_test.py
 run_tier "T0 ROM manifest generator pin/overrides" python3 tests/rom_manifest_generator_test.py
 run_tier "T0 save conversion CLI" python3 tests/save_convert_cli_test.py
@@ -224,10 +248,13 @@ run_tier "T2 save editor: mobile properties (fixtures)" \
 run_tier "T2 save editor: Gen 3 IV / EV / PP (fixtures)" "$LUA" tests/save_editor_gen3_ev_iv_tests.lua
 run_tier "T2 save editor: touch value controls" \
   env POKEPORT_DATA_DIR=tests/fixture_data "$LUA" tests/save_editor_touch_controls_test.lua
+run_tier "T2 save editor: inspector layout" \
+  env POKEPORT_DATA_DIR=tests/fixture_data "$LUA" tests/save_editor_inspector_layout_test.lua
 run_tier "T2 save editor: wheel scrolling" "$LUA" tests/save_editor_wheel_bug595_test.lua
 run_tier "T2 save editor: pad / NX input" "$LUA" tests/save_editor_pad_input_test.lua
 run_tier "T2 save editor: gold / gen2 (fixtures)" "$LUA" tests/save_editor_gen2_tests.lua
 ACTIVE_GROUP=mods
+run_tier "T2 Gen 5 importer + provider suites" "$LUA" tests/run_gen5.lua
 run_tier "T4 mod-SDK" "$LUA" tests/run_modkit.lua
 run_tier "T4 modkit dev tooling (fixture)" "$LUA" tests/modkit_tests.lua
 

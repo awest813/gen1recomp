@@ -398,6 +398,7 @@ function StartMenu.draw()
   local maxVisible = (d and d.maxVisible) or StartMenu.MAX_VISIBLE or 8
   local visibleCount = math.min(#StartMenu.ENTRIES, maxVisible)
   local scroll = StartMenu._scrollOffset or 0
+  local nativeCursorX, nativeCursorY
 
   for r = 1, visibleCount do
     local i = scroll + r
@@ -407,10 +408,12 @@ function StartMenu.draw()
     local yPx = Window.menuRowPx(topPx, r)
     if d and d.rowPitch then yPx = topPx + d.textY + (r - 1) * d.rowPitch end
     if not StartMenu._confirmExit and i == StartMenu.cursor then
-      Window.cursorPx(leftPx, yPx)
+      if d and d.drawCursor then nativeCursorX, nativeCursorY = leftPx, yPx
+      else Window.cursorPx(leftPx, yPx) end
     end
-    Window.printPx(e.label, leftPx + Window.CURSOR_WIDTH, yPx)
+    Window.printPx(e.label, leftPx + (d and d.textX or Window.CURSOR_WIDTH), yPx)
   end
+  if nativeCursorX then d.drawCursor(nativeCursorX, nativeCursorY) end
 
   local n = #StartMenu.ENTRIES
   if n > visibleCount and not StartMenu._confirmExit then
@@ -434,6 +437,17 @@ function StartMenu.draw()
     local popY = 9
     local popW = 6
     local popH = 4
+    if d and d.drawCursor then
+      -- pokeruby/src/menu.c:608
+      Window.stdFrame(Window.template(popX, popY, 5, popH))
+      local cur = StartMenu._confirmCursor == 1 and 0 or 1
+      -- pokeruby/src/menu.c:602
+      FrlgFont.draw(RomText.plain("gText_Yes"), popX * 8, popY * 8, { colors = FrlgFont.COLOR.NORMAL })
+      FrlgFont.draw(RomText.plain("gText_No"), popX * 8, popY * 8 + 16, { colors = FrlgFont.COLOR.NORMAL })
+      -- pokeruby/src/menu.c:721, :750
+      require("src.ui.game3.rs.menu_cursor").draw(popX * 8, popY * 8 + cur * 16, 40)
+      return
+    end
     Window.stdFrame(Window.template(popX, popY, popW, popH))
     local rowY1 = popY * 8 + 2
     local rowY2 = popY * 8 + 18

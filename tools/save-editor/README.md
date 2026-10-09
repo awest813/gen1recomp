@@ -35,16 +35,21 @@ If the file isn't there (or you want another copy), use **Open...**, drop a
 
 Party, Boxes, Items, Events, Map, Pokédex, Trainer and Checks are separate pages.
 The Pokemon inspector has Main, Stats, Moves, Origin, Extras and Checks sections.
-Phones open the roster and inspector as separate sliding pages; wide windows
-show them side by side. Buttons share the launcher's painter and font scale,
+Wide windows show the roster beside the inspector; phones stack a party grid
+above it on one scrolling page. The inspector opens with the Pokemon's sprite,
+types, level and HP, then section tabs (a dropdown when the tabs do not fit),
+the section form and a row of tools for that section. Numbers have a typed
+value box and a slider that commits when released. Buttons share the launcher's painter and font scale,
 with a minimum 44px target. Pages and screen sections use dropdown popup
 choosers on both phones and desktop. The current page stays in place behind
 the scrim; choosing a destination closes the popup and slides to that section.
 Popups support finger/wheel scrolling, keyboard selection, Escape, a close icon
 and outside-tap dismissal. They shield the page underneath from clicks and scrolling.
 Short screens use compact storage
-actions and an item Tools menu. Map browsing splits into Maps, View and Spawn
-sections on phones; storage and inventory actions stay in their viewport.
+actions and an item Tools menu. Map browsing splits into Maps and View
+sections on phones; Player, Heal (Spawn in Gen 2) and Outdoor (Gen 1) buttons
+sit on top of the map in every layout and act on the selected cell; storage and
+inventory actions stay in their viewport.
 Safe-area margins protect controls around notches.
 Short landscape map views have an expand icon that gives the map the editor's
 full content area; the back icon restores the editor chrome.
@@ -80,6 +85,19 @@ Badges. Boxes supports storage, deposit, withdraw, clone, inspect and release.
 Crystal also shows Buena points in Trainer and Items / Wallet. The Blue Card
 balance accepts whole numbers from 0 to 30 through the numeric popup and supports
 Undo/Redo; it preserves the password, daily state and Blue Card inventory.
+FireRed, LeafGreen and Emerald also show Berry Powder in Trainer and Items /
+Wallet. It accepts whole numbers from 0 to 99999 and supports Undo/Redo; the
+.sav export re-encrypts it with the save's key. Ruby and Sapphire have no Berry
+Powder, so the row is hidden there.
+Ruby, Sapphire and Emerald also show Volcanic Ash in Trainer and Items / Wallet.
+It accepts whole numbers from 0 to 9999 and supports Undo/Redo. Edits update
+`VAR_ASH_GATHER_COUNT`, the Soot Sack currency spent at the Glass Workshop;
+Lua saves and cartridge `.sav` export preserve that same variable. Other
+editions do not show the row.
+Emerald also shows Battle Points in Trainer and Items / Wallet: the Battle
+Frontier balance spent at the Exchange Service Corner. It accepts whole numbers
+from 0 to 9999 and supports Undo/Redo; the `.sav` export writes the Frontier
+`battlePoints` word and leaves the trainer card's earned-BP total alone.
 
 **Undo/Redo** and Ctrl/Cmd+Z (Shift+Z to redo) retain up to eight session snapshots.
 Snapshots preserve unknown metadata. Saving establishes the clean history point;

@@ -340,6 +340,14 @@ local SURFABLE_BEH = {
   [0x1A] = true, [0x1B] = true,
   [0x50] = true, [0x51] = true, [0x52] = true, [0x53] = true,
 }
+-- pokeemerald/src/metatile_behavior.c:25
+for _, name in ipairs({"POND_WATER", "INTERIOR_DEEP_WATER", "DEEP_WATER", "WATERFALL",
+  "SOOTOPOLIS_DEEP_WATER", "OCEAN_WATER", "NO_SURFACING", "SEAWEED", "SEAWEED_NO_SURFACING",
+  "EASTWARD_CURRENT", "WESTWARD_CURRENT", "NORTHWARD_CURRENT", "SOUTHWARD_CURRENT",
+  "WATER_DOOR", "WATER_SOUTH_ARROW_WARP", "UNUSED_6F"}) do
+  local id = MB.id(name)
+  if id and id >= MB.RSE_BASE then SURFABLE_BEH[id] = true end
+end
 
 -- pokefirered/src/metatile_behavior.c:204
 function Collision.isSurfable(beh)
@@ -843,8 +851,6 @@ function Collision.tryConnection(game, fromX, fromY, dir, run)
   -- Park one cell before landing and keep the step running so the seam does
   -- not hitch (same world pixels the neighbor strip already showed).
   local CELL = 16
-  local WALK_FRAMES = 16
-  local RUN_FRAMES = 8
   Player.cellX, Player.cellY = lx - d[1], ly - d[2]
   Player.px, Player.py = Player.cellX * CELL, Player.cellY * CELL
   Player.facing = dir
@@ -857,7 +863,7 @@ function Collision.tryConnection(game, fromX, fromY, dir, run)
   Player.dismounting = Player.surfing and not landingWater or false
   if Player.dismounting then lazyReq("src.core.game3.audio").stopSurfMusic() end
   Player.spriteYOffset = 0
-  Player.stepFrames = run and RUN_FRAMES or WALK_FRAMES
+  Player.stepFrames, Player.running = Player.ordinaryStepFrames(run)
   Player.syncSavePosition(g)
 
   if Collision.isGrass and Collision.isGrass(lx, ly) then
@@ -1194,6 +1200,7 @@ local function resolveDest(game, warp)
   end
   return destMap, 0, 0
 end
+Collision.resolveWarpDestination = resolveDest
 
 function Collision.warpAt(cx, cy)
   return Collision._warps[cy * 1024 + cx]

@@ -9,6 +9,7 @@ local function compute()
     or "Unknown"
   local nx = osName == "NX"
   local uwp = osName == "UWP"
+  local ps4 = osName == "PS4"
   local mobile = osName == "Android" or osName == "iOS"
   -- love.js (LÖVE compiled to WebAssembly).  No processes, no threads to
   -- trust (the compat build has none), no self-update, and no curl: see
@@ -29,9 +30,10 @@ local function compute()
     os = osName,
     nx = nx,
     uwp = uwp,
+    ps4 = ps4,
     mobile = mobile,
     web = web,
-    console = nx or uwp,
+    console = nx or uwp or ps4,
     -- love.thread workers are actually scheduled.  Every worker in the engine
     -- has a main-thread fallback, but most only take it when thread creation
     -- *fails*; a thread that starts and never runs would hang the caller, so
@@ -39,10 +41,10 @@ local function compute()
     hasThreads = not web,
     hasNativePicker = nativePicker,
     canSpawnProcess = osName == "OS X" or osName == "Windows" or osName == "Linux",
-    romImportMode = nx and "save-directory"
+    romImportMode = (nx or ps4) and "save-directory"
       or (nativePicker and "native-picker")
       or "desktop",
-    networkValidated = not nx and not uwp and not web,
+    networkValidated = not nx and not uwp and not web and not ps4,
     -- networkValidated is the self-updater's gate and stays a per-platform
     -- policy call: a console package cannot replace itself on disk, so that
     -- answer never depends on whether a transport exists.  Fetching a mod
@@ -53,12 +55,22 @@ local function compute()
     -- (#597).  The UWP LOVE backend does not export that bridge yet, so this
     -- still resolves false on Xbox and the launcher still says so, but the
     -- day the backend grows one, nothing here or in RomImporter has to change.
-    canFetchRemote = (not nx and not uwp and not web) or nativeHttp,
+    canFetchRemote = (not nx and not uwp and not web and not ps4) or nativeHttp,
     -- Picked files are scratch copies the host made for this one import, so
     -- the importer deletes them once read.  UWP copies into LocalState; the
     -- browser bridge writes into a non-persistent /tmp so a ROM never lands
     -- in IndexedDB.
     pickedFilesAreTemporary = uwp or web,
+
+    -- How a gamepad drives the launcher when it is the only input: the Switch
+    -- moves a virtual cursor, Xbox and PS4 move a focus ring (the highlighted
+    -- control is the selected one; Y/Triangle still toggles the cursor).  nil
+    -- on desktop and handhelds, where the cursor stays latent until used.
+    padNavigation = (nx and "pointer") or ((uwp or ps4) and "focus") or nil,
+    -- The system owns leaving the app (iOS Home, PS button): no Quit button.
+    systemQuit = osName == "iOS" or ps4,
+    -- How files reach a save-directory inbox, for the hints under its path.
+    inboxTransfer = (nx and "mtp") or (ps4 and "ftp") or nil,
   }
 end
 
@@ -87,8 +99,24 @@ function Platform.pickedFilesAreTemporary()
   return Platform.detect().pickedFilesAreTemporary
 end
 
+function Platform.isPS4()
+  return Platform.detect().ps4
+end
+
 function Platform.romImportMode()
   return Platform.detect().romImportMode
+end
+
+function Platform.padNavigation()
+  return Platform.detect().padNavigation
+end
+
+function Platform.systemQuit()
+  return Platform.detect().systemQuit and true or false
+end
+
+function Platform.inboxTransfer()
+  return Platform.detect().inboxTransfer
 end
 
 function Platform.canSpawnProcess()

@@ -1,4 +1,6 @@
 local Rng = require("src.core.game3.rng")
+local G3uRng = require("src.battle.g3u.Rng")
+local G3uHash = require("src.battle.g3u.Hash")
 
 local LB = {}
 
@@ -29,6 +31,9 @@ LB.LINKTYPE = {
   SINGLE_BATTLE = 0x2233,
   DOUBLE_BATTLE = 0x2244,
   MULTI_BATTLE = 0x2255,
+  -- pokeemerald/include/link.h:95
+  BATTLE_TOWER_50 = 0x2266,
+  BATTLE_TOWER_OPEN = 0x2277,
   RECORD_MIX_BEFORE = 0x3311,
   BERRY_BLENDER_SETUP = 0x4411,
 }
@@ -44,7 +49,7 @@ LB.MSG = {
   FORFEIT = "forfeit",
 }
 
-LB.HASH_PARTS = { "actives", "volatile", "bench", "field", "rng" }
+LB.HASH_PARTS = G3uHash.PARTS
 
 LB.MODE_OF = { single = 1, double = 2, multi = 5 }
 
@@ -111,29 +116,7 @@ end
 
 LB.copy = copyTable
 
--- pokefirered/src/random.c:15 ISO_RANDOMIZE1
-function LB.makeRng(seed, counter)
-  local value = math.floor(tonumber(seed) or 0) % 4294967296
-  local function word()
-    if counter then counter.n = counter.n + 1 end
-    value = (Rng.mulU32(value, 1103515245) + 24691) % 4294967296
-    return math.floor(value / 65536) % 65536
-  end
-  return function(lo, hi)
-    if lo == nil and hi == nil then return word() / 65536 end
-    if hi == nil then
-      lo = math.floor(tonumber(lo) or 1)
-      if lo <= 0 then return 0 end
-      return 1 + (word() % lo)
-    end
-    lo = math.floor(tonumber(lo) or 0)
-    hi = math.floor(tonumber(hi) or lo)
-    if hi < lo then lo, hi = hi, lo end
-    local span = hi - lo + 1
-    if span <= 0 then return lo end
-    return lo + (word() % span)
-  end
-end
+LB.makeRng = G3uRng.make
 
 function LB.dealSeed()
   return Rng.Random32() % 4294967296
@@ -324,7 +307,7 @@ function LB.localPlayer()
   local s = session()
   return {
     name = (s and s.name) or "PLAYER",
-    trainerId = tonumber(s and (s.trainerId or s.id)) or 0,
+    trainerId = require("src.core.game3.link.family").trainerId(s),
     gender = (s and (s.gender == "female" or s.gender == 1)) and 1 or 0,
   }
 end
@@ -333,6 +316,14 @@ end
 function LB.battleParty(s)
   s = s or session()
   local party = partyOf(s)
+  if type(LB._team) == "table" and #LB._team > 0 then
+    local out = {}
+    for _, slot in ipairs(LB._team) do
+      slot = tonumber(slot)
+      if slot and party[slot] then out[#out + 1] = copyTable(party[slot]) end
+    end
+    if #out > 0 then return out end
+  end
   local okT, Tower = pcall(require, "src.core.game3.trainer_tower")
   local order = okT and Tower and Tower.selectedOrder and Tower.selectedOrder(s) or nil
   if type(order) == "table" and (tonumber(order[1]) or 0) ~= 0 then
@@ -383,6 +374,21 @@ function LB.myParty()
   return party
 end
 
+function LB.enigmaForSetups(setups, localOf)
+  local E = require("src.core.game3.rs.enigma")
+  local out = {}
+  for seat, setup in pairs(setups or {}) do
+    local berry = E.decodeBattle(setup and setup.enigmaBerry)
+    local id = localOf and localOf[seat] or seat
+    if berry and id ~= nil then out[id] = berry end
+  end
+  return out
+end
+
+local function ownEnigmaPacket()
+  return require("src.core.game3.rs.enigma").packBattle(session())
+end
+
 local function sendSetup()
   local lk = link().link
   if not (lk and lk:isOpen()) then return false end
@@ -403,6 +409,7 @@ local function sendSetup()
     gender = me.gender,
     seat = LB.relaySeat() or LB.seat,
     party = LB.myPacked(),
+    enigmaBerry = ownEnigmaPacket(),
     hostRules = hostRules,
   })
   return true
@@ -459,6 +466,14 @@ LB.TRAINER_PIC_LEAF = 136
 -- pokefirered/include/constants/union_room.h:19
 LB.NUM_UNION_ROOM_CLASSES = 8
 
+function LB.hasUnionRoomClasses()
+  if LB._unionRoomClasses then return true end
+  local ok, src = pcall(function()
+    return require("src.core.game3.dataset").cache():read("data/generated/gba/trainers/union_room_classes.lua")
+  end)
+  return ok and src ~= nil
+end
+
 function LB.unionRoomClasses()
   if not LB._unionRoomClasses then
     local rel = "data/generated/gba/trainers/union_room_classes.lua"
@@ -487,7 +502,7 @@ end
 
 -- pokefirered/src/battle_controller_link_opponent.c:1172
 function LB.peerPicId(setup)
-  if LB.unionRoom then return LB.unionRoomTrainerPic(setup) end
+  if LB.unionRoom and LB.hasUnionRoomClasses() then return LB.unionRoomTrainerPic(setup) end
   if tonumber(setup and setup.gender) == 1 then return LB.TRAINER_PIC_LEAF end
   return LB.TRAINER_PIC_RED
 end
@@ -604,9 +619,11 @@ function LB.beginBattle(setup, onDone)
     linkFlags = flags,
     -- pokefirered/src/battle_controllers.c:148 the master's own mon is battler 0 on both machines
     linkMaster = LB.isMaster(),
+    enigmaBerries = LB.enigmaForSetups({[0] = {enigmaBerry = ownEnigmaPacket()}, [1] = setup,
+      [2] = {enigmaBerry = ownEnigmaPacket()}, [3] = setup}),
     hostRules = hostVersion,
     double = double,
-    unionRoom = LB.unionRoom,
+    unionRoom = LB.unionRoom and LB.hasUnionRoomClasses(),
     trainerId = nil,
     rng = LB.makeRng(LB.seed, LB._draws),
     peerName = setup.name,
@@ -727,6 +744,8 @@ function LB.beginMulti(setups, onDone, opts)
   local genders = {}
   for seat = 0, 3 do genders[seat] = info[seat].gender end
   local layout, playerParty, foeParty = LB.multiLayout(mySeat, parties, names, genders)
+  local berrySetups = copyTable(setups or {})
+  berrySetups[mySeat] = {enigmaBerry = ownEnigmaPacket()}
   local oppSeat = LB.oppositeSeat(mySeat)
   local foe = LB.foeFrom({ name = names[oppSeat], party = foeParty })
   if not foe then return LB.refuse("peer_has_no_party", onDone) end
@@ -757,6 +776,7 @@ function LB.beginMulti(setups, onDone, opts)
     hostRules = hostVersion,
     double = true,
     multi = layout,
+    enigmaBerries = LB.enigmaForSetups(berrySetups, layout.localOf),
     unionRoom = false,
     trainerId = nil,
     rng = LB.makeRng(LB.seed, LB._draws),
@@ -798,155 +818,14 @@ local function battleState()
   return Battle and Battle.getState and Battle.getState() or nil, Battle
 end
 
-local bit = require("bit")
-
-local function fnv(text)
-  local h = 0x811C9DC5
-  for i = 1, #text do
-    h = bit.bxor(h, text:byte(i)) % 4294967296
-    h = ((bit.lshift(h, 24) % 4294967296) + h * 403) % 4294967296
-  end
-  return string.format("%08x", h)
-end
-
-LB.fnv = fnv
-
-local function scalar(v)
-  local t = type(v)
-  if t == "number" then
-    if v == math.floor(v) then return string.format("%d", v) end
-    return string.format("%.6f", v)
-  end
-  if t == "boolean" then return v and "T" or "F" end
-  if t == "string" then return v end
-  if v == nil then return "-" end
-  return "t"
-end
-
-local STAGES = { "attack", "defense", "speed", "spAtk", "spDef", "accuracy", "evasion" }
-
-local VOLATILE_KEYS = {
-  "confusion", "substitute", "toxicCounter", "focusEnergy", "perishSong", "seeded", "trapped",
-  "attracted", "disabled", "encore", "taunt", "bide", "rage", "endure", "protect", "destinyBond",
-  "transformed", "isFirstTurn",
-  "expCharged", "expCursed", "expDisableTurns", "expDisabledMove", "expEncoreMove", "expEncoreSlot",
-  "expEncoreTurns", "expFocusEnergy", "expFuryCutter", "expInfatuated", "expIngrain", "expLockedMove",
-  "expLockedSlot", "expMustRecharge", "expNightmare", "expPerishTurns", "expRampageTurns",
-  "expRechargeTurns", "expRolloutTimer", "expSeeded", "expTauntedTurns", "expTormented",
-  "expTransform", "expTrapTurns", "expTrapped", "expTruantCounter", "expUproarTurns", "expYawnTurns",
-  "expCastformForm",
-}
-
-local function perspective(st)
-  if st.linkMaster == false then
-    return { 1, 0, 3, 2 }, { "enemy", "player" }
-  end
-  return { 0, 1, 2, 3 }, { "player", "enemy" }
-end
-
-local function battlerOf(st, id)
-  local State = require("src.core.game3.battle.state")
-  if State.isAbsent(st, id) then return nil end
-  return State.battler(st, id)
-end
-
-local function sortedScalars(t, skip, st)
-  if type(t) ~= "table" then return scalar(t) end
-  local flip = st and st.linkMaster == false
-  local keys = {}
-  for k, v in pairs(t) do
-    if (type(k) == "string" or type(k) == "number") and not (skip and skip[k])
-        and type(v) ~= "table" and type(v) ~= "function" then
-      keys[#keys + 1] = tostring(k)
-    end
-  end
-  table.sort(keys)
-  local out = {}
-  for _, k in ipairs(keys) do
-    local v = t[k]
-    if v == nil then v = t[tonumber(k)] end
-    if flip and type(v) == "number" and k:sub(-2) == "Id" and v >= 0 and v <= 3 then
-      v = (v % 2 == 0) and (v + 1) or (v - 1)
-    end
-    out[#out + 1] = k .. "=" .. scalar(v)
-  end
-  return table.concat(out, ",")
-end
-
-local function monPp(mon)
-  local pp = {}
-  for i = 1, 4 do pp[i] = scalar(mon and mon.pp and mon.pp[i]) end
-  return table.concat(pp, "/")
-end
-
-local SIDE_SKIP = { id = true }
+LB.fnv = G3uHash.fnv
 
 function LB.hashParts(st)
-  local order, sides = perspective(st)
-  local actives, volatile = {}, {}
-  for _, id in ipairs(order) do
-    local b = battlerOf(st, id)
-    if not b then
-      actives[#actives + 1] = "-"
-      volatile[#volatile + 1] = "-"
-    else
-      local mon = b.mon or {}
-      local stages = {}
-      for i, key in ipairs(STAGES) do stages[i] = scalar(b.stages and b.stages[key] or 0) end
-      actives[#actives + 1] = table.concat({
-        scalar(tonumber(b.species or mon.species)), scalar(tonumber(mon.hp)), scalar(tonumber(mon.maxHp)),
-        scalar(b.status or mon.status), scalar(mon.sleep or b.sleepTurns), table.concat(stages, "/"),
-        scalar(b.ability), scalar(tonumber(b.item) or 0), monPp(mon),
-      }, ":")
-      local vol = {}
-      for _, key in ipairs(VOLATILE_KEYS) do vol[#vol + 1] = scalar(b[key]) end
-      vol[#vol + 1] = sortedScalars(b.volatiles)
-      volatile[#volatile + 1] = table.concat(vol, ":")
-    end
-  end
-  local bench, field = {}, {}
-  for _, side in ipairs(sides) do
-    local party = (side == "player") and st.playerParty or st.foeParty
-    local active = {}
-    for _, id in ipairs((side == "player") and { 0, 2 } or { 1, 3 }) do
-      local b = battlerOf(st, id)
-      if b and b.partyIndex then active[b.partyIndex] = true end
-    end
-    local rows = {}
-    for i, mon in ipairs(party or {}) do
-      if active[i] then
-        rows[#rows + 1] = "*"
-      else
-        rows[#rows + 1] = table.concat({
-          scalar(tonumber(mon.species or mon.speciesId)), scalar(tonumber(mon.hp)), scalar(mon.status),
-          scalar(tonumber(mon.item or mon.heldItem) or 0), monPp(mon),
-        }, ":")
-      end
-    end
-    bench[#bench + 1] = table.concat(rows, ";")
-    local sideState = (side == "player") and st.playerSide or st.enemySide
-    field[#field + 1] = sortedScalars(sideState, SIDE_SKIP, st) .. "|" .. sortedScalars(sideState and sideState.hazards, nil, st)
-  end
-  table.insert(field, 1, scalar(st.weather) .. ":" .. scalar(st.weatherTurns))
-  local raw = {
-    actives = table.concat(actives, "#"),
-    volatile = table.concat(volatile, "#"),
-    bench = table.concat(bench, "#"),
-    field = table.concat(field, "#"),
-  }
-  return {
-    actives = fnv(raw.actives),
-    volatile = fnv(raw.volatile),
-    bench = fnv(raw.bench),
-    field = fnv(raw.field),
-    rng = string.format("%d", LB._draws and LB._draws.n or 0),
-  }, raw
+  return G3uHash.parts(st, LB._draws)
 end
 
 function LB.hashValue(parts)
-  local list = {}
-  for i, key in ipairs(LB.HASH_PARTS) do list[i] = tostring(parts[key] or "") end
-  return fnv(table.concat(list, "|"))
+  return G3uHash.value(parts)
 end
 
 local function firstDiff(mine, theirs)
@@ -1327,13 +1206,17 @@ local function bumpGameStat(s, outcome)
 end
 
 -- pokefirered/src/battle_records.c:376 AddOpponentLinkBattleRecord
-function LB.addOpponentRecord(s, name, trainerId, outcome)
+function LB.addOpponentRecord(s, name, trainerId, outcome, peer)
   s = s or session()
+  local profile = require("src.core.game3.profile").forSession(s)
+  if profile.id == "ruby" or profile.id == "sapphire" then
+    return require("src.core.game3.link.records_rs").update(s, name, trainerId, outcome, peer)
+  end
   local records = LB.records(s)
   bumpGameStat(s, outcome)
   sortRecords(records)
   name = tostring(name or "")
-  trainerId = math.floor(tonumber(trainerId) or 0)
+  trainerId = math.floor(tonumber(trainerId) or 0) % 65536
   local found
   for _, entry in ipairs(records) do
     if entry.name == name and (tonumber(entry.trainerId) or 0) == trainerId then
@@ -1358,8 +1241,12 @@ function LB.addOpponentRecord(s, name, trainerId, outcome)
 end
 
 -- pokefirered/src/battle_records.c:411 IncTrainerCardWinCount
-local function bumpTrainerCard(s, outcome)
+local function bumpTrainerCard(s, outcome, peer)
   if type(s) ~= "table" then return end
+  local profile = require("src.core.game3.profile").forSession(s)
+  if profile.id == "ruby" or profile.id == "sapphire" then
+    return require("src.core.game3.link.trainer_card_counters_rs").apply(s, outcome, peer)
+  end
   if type(s.trainerCard) ~= "table" then s.trainerCard = {} end
   local card = s.trainerCard
   if outcome == LB.B_OUTCOME.WON then
@@ -1444,12 +1331,22 @@ function LB.finish(result)
     -- pokefirered/src/load_save.c:239
     L.savePlayerBag()
     if s then s.battleOutcome = recorded end
+    local profile = require("src.core.game3.profile").forSession(s)
+    local nativeRs = profile.id == "ruby" or profile.id == "sapphire"
+    local nativeFieldOutcome = nativeRs and
+      require("src.core.game3.link.trainer_card_counters_rs").callbackOutcome(result, outcome) or recorded
+    if nativeRs then
+      if s then s.battleOutcome = nativeFieldOutcome end
+      require("src.core.game3.rse.fan_club_lifecycle_rs").onLinkBattleEnd(s, nativeFieldOutcome)
+    end
     -- pokefirered/src/battle_records.c:443
     if LB.mode ~= L.USING.MULTI_BATTLE and not LB.unionRoom then
-      bumpTrainerCard(s, recorded)
-      LB.addOpponentRecord(s, LB.peer and LB.peer.name, LB.peer and LB.peer.trainerId, recorded)
+      bumpTrainerCard(s, nativeFieldOutcome, LB.peer)
+      LB.addOpponentRecord(s, LB.peer and LB.peer.name, LB.peer and LB.peer.trainerId,
+        nativeFieldOutcome, LB.peer)
       -- pokefirered/src/cable_club.c:782
-      if require("src.core.game3.profile").family(s) == "rse" then
+      if nativeRs then
+      elseif require("src.core.game3.profile").family(s) == "rse" then
         -- pokeemerald/src/field_specials.c:4244
         local okR, FieldRse = pcall(require, "src.core.game3.scripting.natives_field_rse")
         if okR and FieldRse.updateTrainerFansAfterLinkBattle then
@@ -1512,6 +1409,8 @@ function LB.peerDropped()
   LB.endReason = LB.endReason or "peer_dropped"
   local Battle = package.loaded["src.core.game3.battle"]
   if Battle and Battle.isActive and Battle.isActive() then
+    local PartyMenu = package.loaded["src.ui.game3.party_menu"]
+    if PartyMenu and PartyMenu.isOpen and PartyMenu.isOpen() and PartyMenu._battle then PartyMenu.close() end
     Battle.abort("draw")
   else
     LB.finish("draw")
@@ -1578,9 +1477,59 @@ function LB.playerCount()
   return 2
 end
 
--- pokefirered/src/cable_club.c:222 CreateLinkupTask
+local function relayPeers(live)
+  local out = {}
+  for seat, hello in pairs(type(live.peerHellos) == "table" and live.peerHellos or {}) do
+    local g3 = type(hello) == "table" and type(hello.game3) == "table" and hello.game3 or {}
+    out[#out + 1] = { seat = seat, linkType = tonumber(g3.linkType), version = tonumber(g3.gameVersion),
+      progressFlags = tonumber(g3.progressFlags) or 0 }
+  end
+  table.sort(out, function(a, b) return a.seat < b.seat end)
+  return out
+end
+
+-- pokeemerald/src/link.c:817 GetLinkPlayerDataExchangeStatusTimed
+function LB.linkupStatus(ctx, spec, peers, relay)
+  local L = link()
+  local Family = require("src.core.game3.link.family")
+  local CableEntry = require("src.core.game3.link.cable_entry")
+  local players = LB.playerCount()
+  -- pokeemerald/src/link.c:830
+  if players < spec.min or players > spec.max then return L.LINKUP.WRONG_NUM_PLAYERS end
+  local want = spec.linkType
+  if relay then want = CableEntry.classOf(spec.linkType) end
+  for _, peer in ipairs(peers) do
+    local got = tonumber(peer.linkType)
+    if relay then got = CableEntry.classOf(peer.linkType) end
+    if (relay and want ~= nil and got ~= nil and got ~= want) or (not relay and got ~= want) then
+      -- pokeemerald/src/link.c:876
+      local towers = { battle_tower = true, battle_tower_open = true }
+      if towers[CableEntry.classOf(spec.linkType)] and towers[CableEntry.classOf(peer.linkType)] then
+        L.setVar(ctx, LB.VAR_0x8005, 3)
+      end
+      return L.LINKUP.DIFF_SELECTIONS
+    end
+  end
+  local peer = peers[1]
+  if spec.linkType == require("src.link.Game3Link").LINKTYPE.TRADE_SETUP and peer and peer.version ~= nil then
+    local mine = Family.localLinkPlayer(L.session())
+    -- pokeemerald/src/link.c:853
+    local code = Family.gameProgressForLinkTrade(mine.family, mine, peer)
+    if code == Family.TRADE.PLAYER_NOT_READY then return L.LINKUP.PLAYER_NOT_READY end
+    if code == Family.TRADE.PARTNER_NOT_READY then return L.LINKUP.PARTNER_NOT_READY end
+  end
+  return L.LINKUP.SUCCESS
+end
+
+-- pokefirered/src/cable_club.c:76
 function LB.createLinkupTask(ctx, adapters, spec)
   local L = link()
+  local lk = L.link
+  if not (lk and lk.isOpen and lk:isOpen()) then
+    return require("src.core.game3.link.cable_entry").run(ctx, adapters, spec, function(c, a)
+      return LB.createLinkupTask(c, a, spec)
+    end)
+  end
   local function report(code)
     LB.linkup = code
     L.setResult(ctx, code)
@@ -1589,22 +1538,13 @@ function LB.createLinkupTask(ctx, adapters, spec)
   report(L.LINKUP.ONGOING)
   LB.state = "linkup"
   LB.seed = nil
-  local announced = false
-  local lk = L.link
-  local Family = require("src.core.game3.link.family")
-  local mine = Family.localLinkPlayer(L.session())
-  local function linkupMsg()
-    return { type = LB.MSG.LINKUP, linkType = spec.linkType, players = spec.min,
-             version = mine.version, progressFlags = mine.progressFlags }
-  end
-  if lk then
-    lk.linkType = spec.linkType
-    -- pokefirered/src/cable_club.c:318 Task_LinkupExchangeDataWithLeader
-    lk:send(linkupMsg())
-    announced = true
-  else
-    -- pokefirered/src/cable_club.c:222 CreateLinkupTask waits for the other machine
-    L.beginConnect({ linkType = spec.linkType })
+  local relay = LB.onRelay()
+  lk.linkType = spec.linkType
+  if not relay then
+    local mine = require("src.core.game3.link.family").localLinkPlayer(L.session())
+    -- pokefirered/src/cable_club.c:318
+    lk:send({ type = LB.MSG.LINKUP, linkType = spec.linkType, players = spec.min,
+              version = mine.version, progressFlags = mine.progressFlags })
   end
   local ticks = 0
   local Natives = natives()
@@ -1617,41 +1557,20 @@ function LB.createLinkupTask(ctx, adapters, spec)
   ctx.nativePoll = function()
     ticks = ticks + 1
     local live = L.link
-    if live and not announced then
-      live.linkType = spec.linkType
-      live:send(linkupMsg())
-      announced = true
-    end
-    if not announced then
-      -- pokefirered/src/cable_club.c:482 TryLinkTimeout
-      if ticks > LB.LINKUP_TICKS then
-        report(L.LINKUP.CONNECTION_ERROR)
-        LB.state = "off"
-        return true
-      end
-      return false
-    end
-    local peer = live and live:isReady() and live:take(LB.MSG.LINKUP) or nil
-    if peer then
-      local players = LB.playerCount()
-      if tonumber(peer.linkType) ~= spec.linkType then
-        -- pokefirered/src/cable_club.c:122 EXCHANGE_DIFF_SELECTIONS
-        report(L.LINKUP.DIFF_SELECTIONS)
-        LB.state = "off"
-      elseif players < spec.min or players > spec.max then
-        -- pokefirered/src/cable_club.c:127 EXCHANGE_WRONG_NUM_PLAYERS
-        report(L.LINKUP.WRONG_NUM_PLAYERS)
-        LB.state = "off"
-      elseif spec.linkType == require("src.link.Game3Link").LINKTYPE.TRADE_SETUP and peer.version ~= nil
-          and Family.gameProgressForLinkTrade(mine.family, mine, peer) ~= Family.TRADE.BOTH_PLAYERS_READY then
-        -- pokeemerald/src/link.c:853
-        local code = Family.gameProgressForLinkTrade(mine.family, mine, peer)
-        report(code == Family.TRADE.PLAYER_NOT_READY and L.LINKUP.PLAYER_NOT_READY or L.LINKUP.PARTNER_NOT_READY)
-        LB.state = "off"
+    local peers
+    if live and live:isOpen() and live:isReady() then
+      if relay then
+        peers = relayPeers(live)
       else
-        report(L.LINKUP.SUCCESS)
-        LB.state = "seat"
+        local peer = live:take(LB.MSG.LINKUP)
+        if peer then
+          peers = { { linkType = tonumber(peer.linkType), version = peer.version, progressFlags = peer.progressFlags } }
+        end
       end
+    end
+    if peers then
+      local code = report(LB.linkupStatus(ctx, spec, peers, relay))
+      LB.state = code == L.LINKUP.SUCCESS and "seat" or "off"
       return true
     end
     if not (live and live:isOpen()) then
@@ -1677,7 +1596,17 @@ function LB.tryBattleLinkup(ctx, adapters)
   local mode = L.getVar(ctx, L.VAR_0x8004)
   LB.mode = mode
   LB.unionRoom = false
+  if mode == L.USING.BATTLE_TOWER then return LB.createLinkupTask(ctx, adapters, LB.towerSpec()) end
   return LB.createLinkupTask(ctx, adapters, LB.PLAYERS[mode] or LB.PLAYERS[1])
+end
+
+-- pokeemerald/src/cable_club.c:591
+function LB.towerSpec()
+  local okU, Util = pcall(require, "src.core.game3.rse.frontier.util")
+  local okD, D = pcall(require, "src.core.game3.rse.frontier.trainers")
+  local f = okU and Util.frontier and Util.frontier(session()) or nil
+  local open = okD and type(f) == "table" and D.LVL and f.lvlMode == D.LVL.OPEN
+  return { min = 2, max = 2, linkType = open and LB.LINKTYPE.BATTLE_TOWER_OPEN or LB.LINKTYPE.BATTLE_TOWER_50 }
 end
 
 -- pokefirered/src/script_pokemon_util.c:90 HasEnoughMonsForDoubleBattle
@@ -1721,7 +1650,8 @@ function LB.enterColosseumPlayerSpot(ctx, adapters)
   end
   ctx.nativePoll = function()
     local live = L.link
-    if not (live and live:isOpen()) then
+    if not (live and live:isOpen())
+        or (live.players and #live:players() < (LB.isMulti() and 4 or 2)) then
       -- pokefirered/src/cable_club.c:859 CABLE_SEAT_FAILED
       LB.state = "off"
       return true
@@ -1759,7 +1689,8 @@ function LB.enterColosseumPlayerSpot(ctx, adapters)
 end
 
 -- pokefirered/src/union_room.c:1811 StartUnionRoomBattle
-function LB.startUnionRoomBattle(onDone)
+function LB.startUnionRoomBattle(onDone, opts)
+  opts = opts or {}
   local L = link()
   local lk = L.link
   if not (lk and lk:isOpen()) then return false, "no_link" end
@@ -1769,6 +1700,7 @@ function LB.startUnionRoomBattle(onDone)
   LB.unionRoom = true
   LB.state = "setup"
   LB.freshBattle()
+  LB._team = type(opts.team) == "table" and opts.team or nil
   if LB.onRelay() then
     LB.seed = LB.seedFromRelay()
   elseif lk.role == "host" then
@@ -1822,6 +1754,7 @@ function LB.freshBattle()
   LB._drained = nil
   LB._myPacked = nil
   LB._myParty = nil
+  LB._team = nil
   LB._reported = false
   LB._relay = nil
   LB._turn = nil
@@ -2087,6 +2020,7 @@ function LB.spectatorStep()
     linkParty = mine,
     linkFlags = flags,
     linkMaster = true,
+    enigmaBerries = LB.enigmaForSetups({[0] = host, [1] = guest, [2] = host, [3] = guest}),
     hostRules = hostVersion,
     double = LB.mode == LB.MODE_OF.double,
     unionRoom = false,
@@ -2177,6 +2111,7 @@ function LB.spectatorStepMulti()
     hostRules = hostVersion,
     double = true,
     multi = layout,
+    enigmaBerries = LB.enigmaForSetups(sp.setups, layout.localOf),
     unionRoom = false,
     rng = LB.makeRng(LB.seed, LB._draws),
     peerName = names[1],

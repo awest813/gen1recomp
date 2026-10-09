@@ -145,8 +145,17 @@ function Gen.bindGoldData(data)
 end
 
 function Gen.game3CacheReady()
+  local version = GameVersion.get()
+  local selected = pcall(function()
+    require("src.import.gba.versions").selectCache(version, require("src.core.game3.dataset").cache())
+  end)
+  if not selected then
+    require("src.core.game3.scripting.space").bundle = nil
+    return false
+  end
   local RomText = require("src.core.game3.rom_text")
-  if RomText.has(RomText.key("gNatureNamePointers", 0)) then return true end
+  local natureTable = (version == "ruby" or version == "sapphire") and "gNatureNames" or "gNatureNamePointers"
+  if RomText.has(RomText.key(natureTable, 0)) then return true end
   require("src.core.game3.scripting.space").bundle = nil
   return false
 end
@@ -162,6 +171,7 @@ function Gen.bindGame3Data(data)
   if type(data) ~= "table" then return data end
   local okD, Dataset = pcall(require, "src.core.game3.dataset")
   if okD and Dataset then
+    require("src.import.gba.versions").selectCache(GameVersion.get(), Dataset.cache())
     if Dataset.mountExtractRoots then pcall(Dataset.mountExtractRoots) end
     local okM, g3Maps = pcall(Dataset.buildMaps)
     if okM and g3Maps then
@@ -221,12 +231,19 @@ function Gen.bindGame3Data(data)
   local okI, ItemsData = pcall(require, "src.core.game3.items_data")
   if okI and ItemsData then
     data.items = data.items or {}
+    local version = GameVersion.get()
+    local rs = version == "ruby" or version == "sapphire"
+    local C = rs and require("src.core.game3.constants").of(version)
     for k, v in pairs(ItemsData.BY_HOST or {}) do
-      local iDef = { id = k, name = v.name or k, pocket = v.pocket, itemId = v.frlg }
-      data.items[k] = iDef
+      local itemId = rs and C.items.byName["ITEM_" .. k] or not rs and v.frlg
+      if itemId then
+        local info = rs and ItemsData.info(itemId)
+        local iDef = { id = k, name = info and info.name or v.name or k,
+          pocket = info and info.pocket or v.pocket, itemId = itemId }
+        data.items[k] = iDef
+      end
     end
     local lastItem = 375
-    local version = GameVersion.get()
     if GameVersion.layout(version) == "rse" then
       -- pokeemerald/include/constants/items.h:412
       lastItem = require("src.core.game3.constants").of(version):require("items", "ITEMS_COUNT") - 1
@@ -438,6 +455,79 @@ function Gen.setBuenaPoints(save, amount, version)
   if crystal.buenaPassword ~= nil and type(crystal.buenaPassword) ~= "table" then return false end
   local buena = crystal.buenaPassword or {}
   save.crystal, crystal.buenaPassword, buena.balance = crystal, buena, amount
+  return true
+end
+
+Gen.BERRY_POWDER_MAX = 99999 -- pokefirered/src/berry_powder.c:13
+
+function Gen.hasBerryPowder(save, version)
+  if type(save) ~= "table" or Gen.of(save, version) ~= 3 then return false end
+  local v = versionOf(save, version)
+  return v == "firered" or v == "leafgreen" or v == "emerald"
+end
+
+function Gen.berryPowder(save, version)
+  if not Gen.hasBerryPowder(save, version) then return 0 end
+  return tonumber(save.berryPowder) or 0
+end
+
+function Gen.setBerryPowder(save, amount, version)
+  if not Gen.hasBerryPowder(save, version) or type(amount) ~= "number" or amount ~= amount
+      or amount < 0 or amount > Gen.BERRY_POWDER_MAX or amount ~= math.floor(amount) then return false end
+  save.berryPowder = amount
+  return true
+end
+
+Gen.BATTLE_POINTS_MAX = 9999 -- pokeemerald/include/constants/battle_frontier.h:48
+
+function Gen.hasBattlePoints(save, version)
+  if type(save) ~= "table" or Gen.of(save, version) ~= 3 then return false end
+  return versionOf(save, version) == "emerald"
+end
+
+-- pokeemerald/include/global.h:449
+function Gen.battlePoints(save, version)
+  if not Gen.hasBattlePoints(save, version) or type(save.frontier) ~= "table" then return 0 end
+  return tonumber(save.frontier.battlePoints) or 0
+end
+
+function Gen.setBattlePoints(save, amount, version)
+  if not Gen.hasBattlePoints(save, version) or type(amount) ~= "number" or amount ~= amount
+      or amount < 0 or amount > Gen.BATTLE_POINTS_MAX or amount ~= math.floor(amount) then return false end
+  if save.frontier ~= nil and type(save.frontier) ~= "table" then return false end
+  save.frontier = save.frontier or {}
+  save.frontier.battlePoints = amount
+  return true
+end
+
+Gen.VOLCANIC_ASH_MAX = 9999 -- pokeemerald/src/field_tasks.c:773
+
+function Gen.hasVolcanicAsh(save, version)
+  if type(save) ~= "table" or Gen.of(save, version) ~= 3 then return false end
+  local v = versionOf(save, version)
+  return v == "ruby" or v == "sapphire" or v == "emerald"
+end
+
+local function volcanicAshVar(save, version)
+  return require("src.core.game3.scripting.flags").forVersion(versionOf(save, version))
+    .VAR_IDS.VAR_ASH_GATHER_COUNT
+end
+
+function Gen.volcanicAsh(save, version)
+  if not Gen.hasVolcanicAsh(save, version) or type(save.vars) ~= "table" then return 0 end
+  -- Read by the save's edition, not the currently active cart. Flags.getVar
+  -- accepts both canonical numeric keys and legacy serialized string keys.
+  return tonumber(require("src.core.game3.scripting.flags").getVar(save, nil,
+    volcanicAshVar(save, version))) or 0
+end
+
+function Gen.setVolcanicAsh(save, amount, version)
+  if not Gen.hasVolcanicAsh(save, version) or type(amount) ~= "number" or amount ~= amount
+      or amount < 0 or amount > Gen.VOLCANIC_ASH_MAX or amount ~= math.floor(amount) then return false end
+  if save.vars ~= nil and type(save.vars) ~= "table" then return false end
+  if Gen.volcanicAsh(save, version) == amount then return true end
+  save.vars = save.vars or {}
+  require("src.core.game3.scripting.flags").setVar(save, nil, volcanicAshVar(save, version), amount)
   return true
 end
 

@@ -144,7 +144,7 @@ function TextBox.new(game, text, onDone, opts)
   self.stay = opts and opts.stay
   -- engine/events/hidden_events/cinnabar_gym_quiz.asm:119
   self.preSound = opts and opts.preSound
-  -- pokegold engine/overworld/scripting.asm:485 WaitSFX
+  -- ../pokecrystal/engine/overworld/scripting.asm:537
   self.sfxWait = opts and opts.sfxWait
   -- ../pokecrystal/home/joypad.asm:302 WaitButton
   self.waitButton = opts and opts.waitButton
@@ -409,7 +409,7 @@ function TextBox:visibleText()
   return #out > 0 and out or nil
 end
 
--- pokegold engine/overworld/scripting.asm:484-485 PlaySFX / WaitSFX
+-- ../pokecrystal/engine/overworld/scripting.asm:536
 function TextBox:sfxHeld()
   if not self.sfxWait then return false end
   if require("src.core.Sound").sfxBusy() then return true end
@@ -442,6 +442,22 @@ function TextBox:arrowPos()
   local gold = self:isGold()
   return (self.boxTx + self.boxTw - 2) * 8,
     gold and (self.boxTy + self.boxTh - 1) * 8 or self.line2Y
+end
+
+-- home/text.asm:270
+function TextBox:blankArrowCell()
+  if not self.fixedGen1Rows then return end
+  local line = self.shown[#self.shown]
+  if not line or #self.shown < 2 then return end
+  local ax = self:arrowPos()
+  local pen = self.textX
+  for i, code in ipairs(line) do
+    if pen == ax then
+      line[i] = 0x7F
+      return
+    end
+    pen = pen + Font.advanceOf(code)
+  end
 end
 
 -- scripts/MtMoonPokecenter.asm:30
@@ -521,9 +537,10 @@ function step(self, dt)
     -- exactly once (#591)
     if self.stay then
       if not self.stayShown then
+        if self:sfxHeld() then return end
         -- stay.prompt: arrowed A/B wait, then the box stays up
         -- (TextCommand_PROMPT_BUTTON, home/text.asm:434-444)
-        if self.stay.prompt
+        if (self.stay.prompt or self.stay.press)
            and not (input:wasPressed("a") or input:wasPressed("b")) then
           return
         end
@@ -640,6 +657,7 @@ function step(self, dt)
       if self.contAdvance then
         -- ContText / ManualTextScroll: keep the box, scroll one line
         self.contAdvance = false
+        self:blankArrowCell()
         self.lineIndex = self.lineIndex + 1
         self:beginLine()
         -- ScrollTextUpOneLine is 5 blocking frames and, as its own comment
@@ -760,13 +778,20 @@ function TextBox:draw()
   -- nothing in the original is ever drawn between two rows.
   local off = self.scrollPx or 0
   local ys = { self.line1Y, self.line2Y }
+  -- home/text.asm:264
+  local coverX, coverY
+  if self.fixedGen1Rows and self:arrowVisible() then
+    coverX, coverY = arrowX, arrowY
+  end
   for i, line in ipairs(self.shown) do
     local y = (ys[i] or self.line2Y) + (i == 1 and off or 0)
     -- the pen advances per glyph, matching the pixel budget paginate
     -- measured with; every fixed-width page still lands on the 8px grid
     local pen = self.textX
     for _, code in ipairs(line) do
-      drawGlyph(code, pen, y)
+      if not (pen == coverX and y == coverY) then
+        drawGlyph(code, pen, y)
+      end
       pen = pen + Font.advanceOf(code)
     end
   end

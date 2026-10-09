@@ -11,6 +11,7 @@ local BattleText = require("src.core.game3.battle.battle_text")
 local Adapter = require("src.core.game3.battle.adapter")
 local ShinySeq = require("src.core.game3.battle.shiny_seq")
 local MonAnimBattle = require("src.core.game3.battle.mon_anim_battle")
+local TrainerPic = require("src.core.game3.trainer_pic")
 
 local IntroSeq = {}
 
@@ -286,6 +287,8 @@ local function build_trainer(st, opts)
     for i = 1, 3 do slots[3 + i] = st.foeParty[st.foeHalf + i] or false end
     for i = 1, 6 do enemyBalls[7 - i] = slots[i] and ball_status(slots[i]) or "empty" end
     strings.wants = IntroSeq.introText(st)
+  elseif st.frontierTrainer and not (opts.trainerId or st.trainerId) then
+    strings.wants, strings.sentOut = IntroSeq.introText(st), IntroSeq.sendOutText(st, "enemy")
   end
   local playerBalls = player_party_balls(st.playerParty or (st.player and { st.player.mon }))
 
@@ -412,7 +415,7 @@ function IntroSeq.begin(st, opts)
   s.trainer.player.visible = true
   s.trainer.player.gender = playerGender
   s.trainer.player.ox = 240
-  s.trainer.player.frame = 0
+  s.trainer.player.frame = TrainerPic.backIdleFrame(playerGender)
 
   if st.wild then
     local p = Anim.present("enemy")
@@ -526,7 +529,7 @@ local function run_step(step)
       s.trainer.player.visible = true
       s.trainer.player.gender = d.gender or 0
       s.trainer.player.ox = d.playerFrom or 240
-      s.trainer.player.frame = 0
+      s.trainer.player.frame = TrainerPic.backIdleFrame(s.trainer.player.gender)
       s.bgSlide.playerOx = d.playerFrom or 240
     end
     if d.slideEnemy then
@@ -640,7 +643,7 @@ local function run_step(step)
       s.trainer.player.visible = true
       s.trainer.player.gender = d.gender or 0
       s.trainer.player.ox = d.playerFrom or 240
-      s.trainer.player.frame = 0
+      s.trainer.player.frame = TrainerPic.backIdleFrame(s.trainer.player.gender)
       wait_busy()
       local function start_move()
         Anim.tweenStage(d.frames or 120, function(u)
@@ -772,7 +775,7 @@ local function run_step(step)
           ball.frame = 1
           if not openedSe then
             openedSe = true
-            pcall(function() Audio.playSe(SE.SE_BALL_OPEN, { pan = 63 }) end)
+            pcall(function() Audio.playSe(SE.SE_BALL_OPEN) end)
           end
           local p = present_of(m.key)
           if p then
@@ -827,12 +830,12 @@ local function run_step(step)
     if not tr.visible then
       tr.visible = true
       tr.ox = 0
-      tr.frame = 0
       tr.gender = (IntroSeq._opts and IntroSeq._opts.playerGender) or 0
+      tr.frame = TrainerPic.backIdleFrame(tr.gender)
     end
     s.partyBar.player.visible = false
-    -- pret sAnimCmd_Red_1: 1(20) 2(6) 3(6) 4(24) 0(1) = 57f; exit linear ox 0→-120 over 50f.
-    local pose = { { 1, 20 }, { 2, 6 }, { 3, 6 }, { 4, 24 }, { 0, 1 } }
+    -- pokeemerald/src/battle_controller_player.c:2931
+    local pose = TrainerPic.backAnims(tr.gender).throw
     local poseFrame, poseLeft, poseI = 0, 0, 0
     local exitTo = -120
     local mons = {}
@@ -840,7 +843,7 @@ local function run_step(step)
       local pcx, pcy = center_of(st, key)
       mons[n] = { key = key, ball = ball_for(s, key, st), tx = pcx, ty = pcy + 24 }
     end
-    local threwSe, openedSe = false, false
+    local openedSe = false
     wait_busy()
     Anim.tweenStage(57, function(u, t)
       local f = t.frames
@@ -873,10 +876,6 @@ local function run_step(step)
           ball.y = oy
           ball._sx, ball._sy = ox, oy
           ball._tx, ball._ty = m.tx, m.ty
-          if not threwSe then
-            threwSe = true
-            pcall(function() Audio.playSe(SE.SE_BALL_THROW, { pan = -64 }) end)
-          end
         end
         -- pret SpriteCB_PlayerMonSendOut_1 / 2: 25 frames arc flight with affine rotation
         if f > 32 and f <= 57 and ball.visible then
@@ -894,7 +893,7 @@ local function run_step(step)
       tr.ox = exitTo
       if not openedSe then
         openedSe = true
-        pcall(function() Audio.playSe(SE.SE_BALL_OPEN, { pan = -64 }) end)
+        pcall(function() Audio.playSe(SE.SE_BALL_OPEN) end)
       end
       for _, m in ipairs(mons) do
         m.ball.frame = 1

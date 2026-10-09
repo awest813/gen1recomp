@@ -193,7 +193,9 @@ function Party.giveMon(session, species, level, nickname, opts)
   end
 
   local Rng = require("src.core.game3.rng")
-  local personality = Rng.Random32()
+  local personality = opts and tonumber(opts.fixedPersonality)
+  if personality == nil then personality = Rng.Random32() end
+  personality = personality % 0x100000000
   local iv1 = Rng.Random()
   local iv2 = Rng.Random()
   local ivs = {
@@ -254,7 +256,7 @@ function Party.giveMon(session, species, level, nickname, opts)
     otName = session.name or session.playerName or "RED",
     otId = session.trainerId or session.id or session.playerId or 12345,
     -- pokefirered/src/pokemon.c:1796 CreateBoxMon OT_ID_PLAYER_ID
-    otSecretId = tonumber(session.secretId) or nil,
+    otSecretId = Pokemon.playerSecretId(session),
     -- pokefirered/src/pokemon.c:1822
     otGender = Party.otGender(session),
     pokeball = 4, -- Poké Ball

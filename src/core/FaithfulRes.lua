@@ -120,6 +120,7 @@ function FaithfulRes.fixedDisplay()
   -- so the game never resizes or fullscreens its own window there.
   return osName == "Android" or osName == "iOS" or osName == "NX"
     or osName == "Web"
+    or osName == "PS4"
 end
 
 FaithfulRes.isMobile = FaithfulRes.fixedDisplay

@@ -779,6 +779,11 @@ return {
   [0x1BB084] = 0x1BB060, -- :Help_Text_TypeMatchupOwnPokemonWater + 0
   [0x1BB0DF] = 0x1BB0BB, -- :Help_Text_TypeMatchupOwnMoveBug + 0
   [0x1BB156] = 0x1BB132, -- :Help_Text_TypeMatchupOwnPokemonBug + 0
+  [0x1BB981] = 0x1BB95D, -- :CableClub_EventScript_ReadTrainerCard + 0
+  [0x1BB992] = 0x1BB96E, -- :CableClub_EventScript_ReadTrainerCardColored + 0
+  [0x1BB9A3] = 0x1BB97F, -- :CableClub_EventScript_TooBusyToNotice + 0
+  [0x1BB9D4] = 0x1BB9B0, -- :TradeCenter_ConfirmLeaveRoom + 0
+  [0x1BB9F0] = 0x1BB9CC, -- :TradeCenter_TerminateLink + 0
   [0x1BC311] = 0x1BC2ED, -- :CableClub_Text_WelcomeWhichCableClubService + 0
   [0x1BC35E] = 0x1BC33A, -- :CableClub_Text_WhichService + 0
   [0x1BC388] = 0x1BC364, -- :CableClub_Text_TradeMonsUsingLinkCable + 0
@@ -1404,6 +1409,7 @@ return {
   [0x2380CC] = 0x2380A8, -- :gMonShinyPaletteTable + 0
   [0x23957C] = 0x239558, -- :gTrainerFrontPicTable + 0
   [0x239A1C] = 0x2399F8, -- :gTrainerFrontPicPaletteTable + 0
+  [0x239F74] = 0x239F50, -- :gTrainerBackAnimsPtrTable + 0
   [0x239FA4] = 0x239F80, -- :gTrainerBackPicTable + 0
   [0x239FD4] = 0x239FB0, -- :gTrainerBackPicPaletteTable + 0
   [0x23E558] = 0x23E534, -- :gTrainerClassNames + 0
@@ -1711,6 +1717,7 @@ return {
   [0x3E2280] = 0x3E20BC, -- naming_screen.o:sTransferredToPCMessages + 0
   [0x3ECED4] = 0x3ECD10, -- easy_chat.o:sEasyChatGroups + 0
   [0x3EDF98] = 0x3EDDD4, -- easy_chat.o:sEasyChatGroupNamePointers + 0
+  [0x3EE008] = 0x3EDE44, -- mon_markings.o:sMonMarkings_Pal + 0
   [0x3EE028] = 0x3EDE64, -- mon_markings.o:sMonMarkings_Gfx + 0
   [0x3EE828] = 0x3EE664, -- mon_markings.o:sJPText_Confirm + 0
   [0x3EEBF8] = 0x3EEA34, -- heal_location.o:sHealLocations + 0

@@ -23,6 +23,54 @@ local SaveData = require("src.core.SaveData")
 
 local LauncherSettings = {}
 
+local function copyValue(v)
+  if type(v) ~= "table" then return v end
+  local out = {}
+  for k, val in pairs(v) do out[k] = copyValue(val) end
+  return out
+end
+
+local function sameValue(a, b)
+  if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+  for k, v in pairs(a) do
+    if not sameValue(v, b[k]) then return false end
+  end
+  for k in pairs(b) do
+    if a[k] == nil then return false end
+  end
+  return true
+end
+
+local function restoreInto(dst, key, value)
+  local cur = dst[key]
+  if type(cur) == "table" and type(value) == "table" then
+    for k in pairs(cur) do cur[k] = nil end
+    for k, v in pairs(value) do cur[k] = copyValue(v) end
+  else
+    dst[key] = copyValue(value)
+  end
+end
+
+function LauncherSettings.persist(opts, base)
+  local changed = {}
+  for k, v in pairs(opts) do
+    if not sameValue(v, base[k]) then changed[#changed + 1] = k end
+  end
+  for k in pairs(base) do
+    if opts[k] == nil then changed[#changed + 1] = k end
+  end
+  if #changed == 0 then return true end
+  SaveData.invalidateOptionsCache()
+  local fresh = SaveData.loadOptions()
+  for _, k in ipairs(changed) do fresh[k] = copyValue(opts[k]) end
+  if SaveData.saveOptions(fresh) ~= nil then
+    for _, k in ipairs(changed) do base[k] = copyValue(opts[k]) end
+    return true
+  end
+  for _, k in ipairs(changed) do restoreInto(opts, k, base[k]) end
+  return false
+end
+
 local function bgLocked(opts)
   return opts.battleLayout == "wide" and opts.battleFit == "fill"
      and opts.battleHud == "extended"
@@ -238,6 +286,9 @@ local function coreRows(opts, hooks)
       opts.musicFilter = ((opts.musicFilter or 0) + dir) % #FILTERS
       return true
     end)
+  add(Strings("AUDIO MODE"),
+    ladder(opts, "audioMode",
+      { { "both", "BOTH" }, { "external_only", "EXT ONLY" }, { "game_only", "GAME ONLY" } }, "both"))
 
   local okPerf, Performance = pcall(require, "src.core.Performance")
   if okPerf then
@@ -420,12 +471,10 @@ local function discoverModSchemas(opts)
         local flag = require("src.core.SaveData").modEnabled(opts, m.id)
         local enabled = flag == true or (flag == nil and not m.experimental)
         if enabled and not SaveData.isSafeMode(opts) then
-          local chunk = fs.load(path .. "/" .. m.options_schema)
-          if chunk then
-            local okR, schema = pcall(chunk)
-            if okR and type(schema) == "table" then
-              out[#out + 1] = { id = m.id, name = m.name or m.id, schema = schema }
-            end
+          local rel = path .. "/" .. m.options_schema
+          local schema = require("src.mods.Sandbox").evalData(fs.read(rel), "@" .. rel)
+          if schema then
+            out[#out + 1] = { id = m.id, name = m.name or m.id, schema = schema }
           end
         end
       end
@@ -596,6 +645,9 @@ local function gen2Rows(opts, hooks, shared)
       opts.musicFilter = ((opts.musicFilter or 0) + dir) % #FILTERS
       return true
     end)
+  add(Strings("AUDIO MODE"),
+    ladder(opts, "audioMode",
+      { { "both", "BOTH" }, { "external_only", "EXT ONLY" }, { "game_only", "GAME ONLY" } }, "both"))
 
   local okPal, GbcPalette = pcall(require, "src.render.GbcPalette")
   if okPal then
@@ -820,6 +872,20 @@ function LauncherSettings.open(hooks, version)
           return true
         end,
       },
+      {
+        label = Strings("Showcase Music"),
+        value = function() return volLabel(opts.boxMusicVol) end,
+        step = function(dir)
+          opts.boxMusicVol = stepVolume(opts.boxMusicVol, dir or 1)
+          require("src.box.Showcase").setVolume(opts.boxMusicVol)
+          return true
+        end,
+      },
+      {
+        label = Strings("Showcase Cry"),
+        value = function() return volLabel(opts.boxCryVol) end,
+        step = function(dir) opts.boxCryVol = stepVolume(opts.boxCryVol, dir or 1); return true end,
+      },
     },
   }
   -- The browser build has no launcher splash or theme videos
@@ -844,8 +910,25 @@ function LauncherSettings.open(hooks, version)
       select = function(value) Window.observe(0); return Window.apply(value) end,
     })
   end
+  if hooks and hooks.openExtras then
+    table.insert(launcher.rows, 1, {
+      label = Strings("Extras"), actionLabel = Strings("Open"),
+      action = function() hooks.openExtras(); return false end,
+    })
+  end
+  local UnionSetting = require("src.online.union.Setting")
+  launcher.rows[#launcher.rows + 1] = {
+    label = Strings("Union Room"),
+    note = Strings("Adds a Union Room upstairs in Gen 1 and Gen 2 Pokemon Centers. OFF restores the original Centers. Gen 3 Union Rooms always work."),
+    value = function()
+      return UnionSetting.enabledIn(opts) and Strings("ON") or Strings("OFF")
+    end,
+    step = function()
+      opts[UnionSetting.KEY] = not UnionSetting.enabledIn(opts)
+      return true
+    end,
+  }
   local RomSources = require("src.import.RomSources")
-  local forgotRoms = false
   launcher.rows[#launcher.rows + 1] = {
     label = Strings("Auto Re-import"),
     value = function()
@@ -870,7 +953,6 @@ function LauncherSettings.open(hooks, version)
     doneText = Strings("Saved ROMs forgotten."),
     action = function()
       RomSources.forgetAll(opts)
-      forgotRoms = true
       return true
     end,
   }
@@ -883,17 +965,22 @@ function LauncherSettings.open(hooks, version)
       sections[#sections + 1] = { title = mod.name, rows = rows }
     end
   end
-  return {
+  local base = copyValue(opts)
+  local model = {
     opts = opts,
     version = version,
     sections = sections,
-    save = function()
-      if not forgotRoms then
-        opts.romSources = SaveData.loadOptions().romSources
-      end
-      SaveData.saveOptions(opts)
-    end,
   }
+  model.save = function()
+    if LauncherSettings.persist(opts, base) then
+      model.saveError = nil
+      return true
+    end
+    model.saveError = Strings("Settings could not be saved. Check the log.")
+    model.flash = nil
+    return false
+  end
+  return model
 end
 
 return LauncherSettings

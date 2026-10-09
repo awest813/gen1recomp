@@ -377,6 +377,75 @@ function BattleState.trainerArt(data, classId)
   return path, (classDef and classDef.trueColor) and true or false
 end
 
+local BATTLE_SFX = {
+  "Sfx_Damage", "Sfx_SuperEffective", "Sfx_NotVeryEffective",
+  "Sfx_ExpBar", "Sfx_HitEndOfExpBar", "Sfx_DexFanfare5079",
+  "Sfx_Faint", "Sfx_Kinesis", "Sfx_CaughtMon", "Sfx_Run",
+  "Sfx_SwitchPokemon", "Sfx_Potion",
+}
+
+local function animSounds(anims, order, key, out, seen)
+  if not key or seen[key] then return end
+  seen[key] = true
+  for _, row in ipairs(anims.scripts[key] or {}) do
+    if row[1] == "sound" then
+      local name = order[(row[3] or 0) + 1]
+      if name then out[#out + 1] = name end
+    else
+      for i = 2, #row do
+        local target = row[i]
+        if type(target) == "string" and anims.scripts[target] then
+          animSounds(anims, order, target, out, seen)
+        end
+      end
+    end
+  end
+end
+
+local function moveIdOf(move)
+  if type(move) == "table" then return move.id end
+  return move
+end
+
+function BattleState.battleSfxNames(data, anims, battle)
+  local audio = data and data.audio
+  local sfx = audio and audio.sfx
+  if not sfx then return {} end
+  local order = audio.sfxOrder or {}
+  local names, listed = {}, {}
+  local function add(name)
+    if name and sfx[name] and not listed[name] then
+      listed[name] = true
+      names[#names + 1] = name
+    end
+  end
+  local function addMoves(mon)
+    if not (mon and anims and anims.scripts and anims.moves) then return end
+    for _, move in ipairs(mon.moves or {}) do
+      local out = {}
+      animSounds(anims, order, anims.moves[moveIdOf(move)], out, {})
+      for _, name in ipairs(out) do add(name) end
+    end
+  end
+  battle = battle or {}
+  addMoves(battle.enemy)
+  addMoves(battle.player)
+  for _, name in ipairs(BATTLE_SFX) do add(name) end
+  if anims and anims.scripts and anims.ids then
+    local ids = {}
+    for id in pairs(anims.ids) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for _, id in ipairs(ids) do
+      local out = {}
+      animSounds(anims, order, anims.ids[id], out, {})
+      for _, name in ipairs(out) do add(name) end
+    end
+  end
+  for _, mon in ipairs(battle.enemyParty or {}) do addMoves(mon) end
+  for _, mon in ipairs(battle.party or {}) do addMoves(mon) end
+  return names
+end
+
 -- opts: battle (a Battle), onDone(outcome), save
 function BattleState.new(game, opts)
   opts = opts or {}
@@ -628,6 +697,11 @@ function BattleState.new(game, opts)
   local data = game and game.data
   for _, mon in ipairs({ enemy or false, player or false }) do
     if mon and mon.species then pcall(Sound.prewarmCry, data, mon.species) end
+  end
+  local okNames, names = pcall(BattleState.battleSfxNames, data, self.anims,
+    self.battle)
+  if okNames then
+    for _, name in ipairs(names) do pcall(Sound.prewarmSfx, data, name) end
   end
   return self
 end
@@ -1615,7 +1689,7 @@ function BattleState:afterAnimFor(side, kind)
   return "ANIM_PLAYER_DAMAGE"
 end
 
--- engine/battle_anims/anim_commands.asm:1200 PlayHitSound
+-- engine/battle_anims/anim_commands.asm:1313 PlayHitSound
 function BattleState:playHitSound(effectiveness)
   if not effectiveness or effectiveness == 0 then return end
   if effectiveness > 10 then self:playSfx("Sfx_SuperEffective")
@@ -1678,6 +1752,17 @@ end
 -- pages a text box.
 function BattleState:stepAnim(input)
   if not self.anim then return end
+  local hit = self.anim.hitSound
+  if hit ~= nil then
+    -- engine/battle_anims/anim_commands.asm:91-93
+    local waited = self.anim.hitWait or 0
+    if Sound.sfxBusy() and waited < EXP_WAIT_SFX_CAP then
+      self.anim.hitWait = waited + 1
+      return
+    end
+    self.anim.hitSound = nil
+    self:playHitSound(hit)
+  end
   if input and (input:wasPressed("b") or input:wasPressed("start")) then
     -- Cut short: only the explicit latches (a caught mon) survive a skip.
     self:latchCaughtPic()
@@ -2209,14 +2294,13 @@ function BattleState:advanceQueue()
       self:clearVanishReveal(event.side)
     end
     if not started then
-      -- BATTLE SCENE off skips the move script but still runs wBattleAfterAnim
-      -- (anim_commands.asm:55-72 .disabled fallthrough).
+      -- engine/battle_anims/anim_commands.asm:77-93
       local options = self.game and self.game.options
       local name = self:afterAnimFor(event.side, event.afterAnim)
       if options and options.battleScene == false and name then
         if self:animForId(name, event.side) then
           if event.afterAnim == "damage" then
-            self:playHitSound(event.effectiveness)
+            self.anim.hitSound = event.effectiveness
           end
           self.afterAnimPlayed = true
         end
@@ -3783,9 +3867,6 @@ function BattleState:answerNickname(yes)
   if not (yes and mon and stack) then return self:advanceQueue() end
   self.phase = "submenu"
   local data = (self.game and self.game.data) or {}
-  local icons = data.gen2Icons
-  local iconId = icons and icons.species and icons.species[mon.species]
-  local entry = iconId and icons.icons and icons.icons[iconId]
   local done = function(name)
     stack:pop()
     -- InitName: an empty entry keeps whatever was already in the buffer, which
@@ -3796,8 +3877,8 @@ function BattleState:answerNickname(yes)
   end
   Screens.push(self.game, "Gen2NamingScreen", {
     type = "nickname",
+    mon = mon,
     monName = mon.name or mon.species,
-    iconPath = entry and entry.image or nil,
     menuGfx = data.gen2MenuGfx,
     onDone = done,
     onCancel = function() done(nil) end,
@@ -4719,7 +4800,7 @@ function BattleState:drawLiftedRows()
   if not (enemyLift or playerLift) then return end
   local G = love.graphics
   if not self.liftCanvas then
-    self.liftCanvas = G.newCanvas(160, 144)
+    self.liftCanvas = require("src.render.PixelCanvas").new(160, 144)
     self.liftCanvas:setFilter("nearest", "nearest")
   end
   local previous = G.getCanvas()

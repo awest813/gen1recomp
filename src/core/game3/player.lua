@@ -72,6 +72,7 @@ Player.surfing = false
 Player.fishing = false
 Player.prevCellX = 0
 Player.prevCellY = 0
+Player.stepSerial = 0
 -- pokefirered/src/field_player_avatar.c:325
 Player.animDisabled = false
 -- pokefirered/src/event_object_movement.c:7741
@@ -191,6 +192,7 @@ function Player.reset(x, y, facing)
   -- whiteout out of the water must not leave surfing set -- Collision.canEnter
   -- reads Player.surfing and would treat water as walkable on land.
   Player.surfing = false
+  Player.underwater = false
   Player.surfHopping = false
   Player.dismounting = false
   Player.prevCellX = Player.cellX
@@ -229,6 +231,18 @@ function Player.syncFromSession(session)
   if session.bikeType ~= nil then
     Player.bikeType = session.bikeType
   end
+  Player.restoreAvatar(session)
+end
+
+-- pokeemerald/src/field_player_avatar.c:1373
+function Player.restoreAvatar(state)
+  if not state then return end
+  Player.underwater = state.underwater == true
+  Player.surfing = not Player.underwater and state.surfing == true
+  Player.biking = not Player.underwater and not Player.surfing and state.biking == true
+  Player.bikeType = state.bikeType
+  if state.elevation ~= nil then Player.elevation = tonumber(state.elevation) or 3 end
+  Player.surfHopping, Player.dismounting = false, false
 end
 
 function Player.syncFromHost(game)
@@ -248,17 +262,27 @@ end
 --- Write avatar coords into save.position (ferry / host save). No host entity mirror.
 function Player.syncSavePosition(game)
   local save = game and game.save
-  if not (save and save.position) then return end
-  save.position.x = Player.cellX
-  save.position.y = Player.cellY
-  save.position.facing = Player.facing
-  save.position.biking = (Player.biking == true)
-  save.biking = (Player.biking == true)
+  if save then
+    if save.position then
+      save.position.x = Player.cellX
+      save.position.y = Player.cellY
+      save.position.facing = Player.facing
+      save.position.biking = Player.biking == true
+    end
+    save.biking = Player.biking == true
+    save.surfing = Player.surfing == true
+    save.underwater = Player.underwater == true
+    save.elevation = Player.elevation
+  end
   local session = package.loaded["src.core.game3.runtime"]
   session = session and session.getSession and session.getSession()
   if session then
     session.biking = (Player.biking == true)
-    if session.map then
+    session.surfing = Player.surfing == true
+    session.underwater = Player.underwater == true
+    session.bikeType = Player.bikeType
+    session.elevation = Player.elevation
+    if session.map and save and save.position then
       save.position.map = session.map
     end
   end
@@ -329,10 +353,6 @@ function Player.drawFlip()
   return Player.stepFlip and true or false
 end
 
-local SURF_HOP_Y = {
-  -2, -4, -6, -8, -9, -10, -10, -9, -8, -6, -4, -2, 0, 0, 0, 0,
-}
-
 --- pret DoJumpSpriteMovement y2 for JUMP_DISTANCE_FAR + JUMP_TYPE_HIGH.
 function Player.jumpSpriteY()
   if not Player.jumping then return 0 end
@@ -343,10 +363,6 @@ function Player.jumpSpriteY()
     local idx = (Player.stepFrames or 16) >= 32 and math.floor((progress - 1) / 2) or (progress - 1)
     local t = JUMP_Y[Player.jumpType] or JUMP_Y_HIGH
     return t[idx + 1] or 0
-  end
-  if Player.surfHopping or Player.dismounting then
-    local idx = math.min(progress, #SURF_HOP_Y)
-    return SURF_HOP_Y[idx] or 0
   end
   -- After frame N's Step1, sTimer == N; y2 = sJumpY_High[sTimer >> 1].
   local idx = math.floor((progress - 1) / 2)
@@ -373,6 +389,7 @@ local function beginStep(tx, ty, run, ledge)
   Player.updateElevation(tx, ty, Player.cellX, Player.cellY)
   Player.prevCellX = Player.cellX
   Player.prevCellY = Player.cellY
+  Player.stepSerial = (Player.stepSerial or 0) + 1
   Player.moving = true
   Player.progress = 0
   Player.targetX = tx
@@ -381,8 +398,10 @@ local function beginStep(tx, ty, run, ledge)
   Player.jumping = ledge and true or false
   Player.spriteYOffset = 0
   if Player.surfHopping or Player.dismounting then
-    Player.stepFrames = 16
+    -- pokeemerald/src/event_object_movement.c:8495 DoJumpSpecialSpriteMovement
+    Player.stepFrames = JUMP_FRAMES
     Player.jumping = true
+    Player.jumpType = "high"
   elseif ledge then
     Player.stepFrames = JUMP_FRAMES
   elseif Player.biking then
@@ -438,6 +457,20 @@ local function stepTriggers(game, dir, wasFacing, tx, ty)
         return "door"
       end
       return "door_busy"
+    end
+  end
+
+  if dir == "down" and wasFacing == "down" and Collision.arrowWarpDir(Collision.behavior(Player.cellX, Player.cellY)) == "down" then
+    -- pokeruby/src/overworld.c:1984
+    local Link = package.loaded["src.core.game3.link"] or package.loaded["src.core.game3.link.init"]
+    local Space = package.loaded["src.core.game3.scripting.space"]
+    local key = Space and Space.vm and (Space.scriptKey("TradeRoom_PromptToCancelLink")
+      or Space.scriptKey("EventScript_ConfirmLeaveCableClubRoom")
+      or Space.scriptKey("TradeCenter_ConfirmLeaveRoom"))
+    if key and Link and Link.link and Link.link:isOpen() and Link.inLinkRoom(Space.vm.ctx) then
+      local Audio = lazyReq("src.core.game3.audio")
+      if Audio.playSe then Audio.playSe(lazyReq("src.core.game3.se_ids").SE_WIN_OPEN) end
+      if Space.startScript(key) then return "link_room_exit" end
     end
   end
 
@@ -591,16 +624,21 @@ function Player.tryMove(dir, game, run)
         and Collision.tryConnection(game, Player.cellX, Player.cellY, dir, run) then
       return "connection"
     end
+    Player.notOnBikeCollide(dir)
     return "blocked", why
   end
   local RG = package.loaded["src.core.game3.rotating_gate"]
   if RG and RG.active() and RG.checkCollision(dir, tx, ty) then
-    -- pokeemerald/src/field_player_avatar.c:709
+    -- pokeemerald/src/field_player_avatar.c:709; a gate that cannot turn is
+    -- COLLISION_ROTATING_GATE, which PlayerNotOnBikeMoving leaves out of the
+    -- bump (the pret-documented oversight), so no sound and no walk here
     return "blocked", "rotating_gate"
   end
   local BikeRse = rseBike()
   if BikeRse and BikeRse.acroCollision(Collision.behavior(tx, ty)) ~= 0 then
-    -- pokeemerald/src/field_player_avatar.c:711
+    -- pokeemerald/src/field_player_avatar.c:711: the rail collisions are
+    -- ordinary collisions on foot, so they bump like a wall
+    Player.notOnBikeCollide(dir)
     return "blocked", "acro"
   end
   local isDismount = Player.surfing and not Player.underwater
@@ -613,7 +651,52 @@ function Player.tryMove(dir, game, run)
   end
 
   beginStep(tx, ty, run, false)
+  if not Player.jumping and not Player.biking then
+    Player.stepFrames, Player.running = Player.ordinaryStepFrames(run)
+  end
   return "step"
+end
+
+-- pokeemerald/src/field_player_avatar.c:1115 PlayCollisionSoundIfNotFacingWarp:
+-- SE_WALL_HIT unless the player stands on an arrow warp pointing the way
+-- they pushed, or is pushing up into a warp door.
+function Player.playCollisionSoundIfNotFacingWarp(dir)
+  local here = Collision.behavior and Collision.behavior(Player.cellX, Player.cellY)
+  if Collision.arrowWarpDir and Collision.arrowWarpDir(here) == dir then return end
+  if dir == "up" and Collision.isWarpDoor
+      and Collision.isWarpDoor(Collision.behavior(Player.cellX, Player.cellY - 1)) then
+    return
+  end
+  pcall(function()
+    local Audio = lazyReq("src.core.game3.audio")
+    local SE = lazyReq("src.core.game3.se_ids")
+    if Audio.playSe and SE.SE_WALL_HIT then Audio.playSe(SE.SE_WALL_HIT) end
+  end)
+end
+
+-- pokeemerald/src/field_player_avatar.c:1011 PlayerNotOnBikeCollide: every
+-- on-foot refusal that is not a ledge hop, a surf dismount, a boulder push or
+-- a stuck rotating gate plays the wall bump and walks in place for the
+-- 32-frame MOVEMENT_ACTION_WALK_IN_PLACE_SLOW (event_object_movement.c
+-- MovementAction_WalkInPlaceSlow_Step0).  Player.update polls no input while
+-- the action runs, so holding into the wall repeats the bump every 32 frames
+-- the way PlayerNotOnBikeMoving re-collides once the action ends.  Gen 3 had
+-- no bump at all on foot: the player just stood there silently (#2787).
+local IN_PLACE_SLOW_FRAMES = 32
+function Player.notOnBikeCollide(dir)
+  Player.playCollisionSoundIfNotFacingWarp(dir)
+  if not Player.facingLocked then Player.facing = dir end
+  Player.moveDir = dir
+  Player.startAction({ frames = IN_PLACE_SLOW_FRAMES, walk = "normal" })
+end
+
+-- pokeemerald/src/field_player_avatar.c:651
+function Player.ordinaryStepFrames(run)
+  if Player.surfHopping or Player.dismounting then return WALK_FRAMES, false end
+  if Player.surfing and not Player.underwater and not Player.biking and not Player.action then
+    return RUN_FRAMES, false
+  end
+  return run and RUN_FRAMES or WALK_FRAMES, run == true
 end
 
 -- pokefirered/src/metatile_behavior.c:668 MetatileBehavior_IsCyclingRoadPullDownTile
@@ -732,6 +815,11 @@ function Player.forceStep(dir, onDone)
   Player.facing = dir or Player.facing
   Player._onStepDone = onDone
   beginStep(Player.cellX + d[1], Player.cellY + d[2], false, false)
+  -- pokeemerald/src/field_screen_effect.c:699
+  if Player.biking then
+    Player.stepFrames = WALK_FRAMES
+    Player.running = false
+  end
   return true
 end
 
@@ -760,8 +848,8 @@ function Player.forcedStep(dir, frames, opts)
   return true
 end
 
---- Forced script step (applymovement localId 0xFF) — skips collision.
-function Player.scriptStep(dir, run, slow, fast)
+--- Forced script step (applymovement localId 0xFF): skips collision.
+function Player.scriptStep(dir, run, slow, fast, frames)
   if Player.moving then return false end
   local d = DELTA[dir or Player.facing]
   if not d then return false end
@@ -780,13 +868,19 @@ function Player.scriptStep(dir, run, slow, fast)
   end
   beginStep(tx, ty, run and true or false, false)
   Player._scriptedStep = true
+  -- pokeemerald/src/event_object_movement.c:5101
+  if Player.biking and not (Player.surfHopping or Player.dismounting) then
+    Player.stepFrames = run and RUN_FRAMES or WALK_FRAMES
+    Player.running = run and true or false
+  end
   -- pokefirered/src/event_object_movement.c:9029 UpdateRunSlowAnim
   if run and slow then Player.stepFrames = RUN_SLOW_FRAMES end
   if fast then Player.stepFrames = RUN_FRAMES end
+  if frames then Player.stepFrames = frames end
   return true
 end
 
---- Forced script jump (applymovement localId 0xFF) — hops over ledges / gaps.
+--- Forced script jump (applymovement localId 0xFF): hops over ledges / gaps.
 function Player.scriptJump(dir, distance)
   if Player.moving then return false end
   distance = distance or 1
@@ -870,6 +964,14 @@ local ACRO_FRAMES = {
   pedal = { down = { 21, 10, 22, 10 }, up = { 23, 14, 24, 14 }, left = { 25, 18, 26, 18 }, right = { 25, 18, 26, 18 } },
 }
 
+-- pokeemerald/src/data/object_events/object_event_anims.h:392
+local SURF_JUMP_FRAME = { down = 9, up = 10, left = 11, right = 11 }
+
+function Player.surfJumpFrame()
+  if not ((Player.surfHopping or Player.dismounting) and Player.jumping and Player.moving) then return nil end
+  return SURF_JUMP_FRAME[Player.facing] or 9
+end
+
 function Player.acroFrame()
   local a = Player.acroAnim
   if not (a and Player.biking) then return nil end
@@ -921,7 +1023,6 @@ local function finishStep(game)
   Player.jumpType = nil
   Player.spriteYOffset = 0
   Player.updateElevation(Player.cellX, Player.cellY)
-  Player.syncSavePosition(game)
 
   -- Surf landing / dismount state transitions
   local wasSurfing = Player.surfing or Player.dismounting
@@ -948,6 +1049,7 @@ local function finishStep(game)
       end)
     end
   end
+  Player.syncSavePosition(game)
 
   if ModRuntime.wants("world.stepped") then
     local Map = package.loaded["src.core.game3.map"]
@@ -1117,7 +1219,7 @@ function Player.canDash()
   local Space = package.loaded["src.core.game3.scripting.space"]
   local store = Space and Space.getStore and Space.getStore()
   if not store then
-    -- Field not scripted yet — deny dash (shoes not granted).
+    -- Field not scripted yet: deny dash (shoes not granted).
     return false
   end
   local Flags = lazyReq("src.core.game3.scripting.flags")
@@ -1196,6 +1298,8 @@ function Player.update(game, input)
   if Space and Space.vm and Space.vm.isRunning and Space.vm:isRunning() then
     return
   end
+  -- pokeemerald/src/field_control_avatar.c:150
+  if Space and Space._pendingOnFrame then return end
 
   -- Menu Dismissal Frame Trap & Idle Sight Check: check sight before D-pad input polling
   local okTs, TrainerSight = pcall(lazyReq, "src.core.game3.trainer_sight")

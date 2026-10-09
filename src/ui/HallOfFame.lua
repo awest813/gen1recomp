@@ -190,10 +190,15 @@ function HallOfFame:advanceMonPhase()
   end
 end
 
+-- AnimateHallOfFame (engine/movie/hall_of_fame.asm) is a pure DelayFrames
+-- program: the 80-frame info hold, the 180-frame HALL OF FAME banner,
+-- GBFadeOutToWhite and HoFDisplayPlayerStats' three HoFPrintTextAndDelay
+-- (PrintText + 120 DelayFrames) never read the joypad, so no button can
+-- shorten any of it.  The port used to let A cut every hold short, which
+-- rushed the whole induction and the dex-rating texts before the credits
+-- (#2785).  The only press the sequence takes is the
+-- WaitForTextScrollButtonPress on THE END, which lives in Credits.
 function HallOfFame:update(dt)
-  local input = self.game.input
-  local skip = input:wasPressed("a")
-
   -- .ScrollPic with d = $a0, e = 4: the back pic crosses the screen right to
   -- left and is gone before the front pic starts.  Both scrolls are plain
   -- DelayFrame loops in the ROM, so neither takes a button (#847).
@@ -221,11 +226,11 @@ function HallOfFame:update(dt)
     if self.phase == "fade" then
       self.timer = self.timer - 1
       self.fade = 1 - math.max(0, self.timer) / FADE_FRAMES
-      if self.timer <= 0 or skip then self:advanceMonPhase() end
+      if self.timer <= 0 then self:advanceMonPhase() end
       return
     end
     self.timer = self.timer - 1
-    if skip or self.timer <= 0 then
+    if self.timer <= 0 then
       self:advanceMonPhase()
     end
   elseif self.phase == "player" then
@@ -238,7 +243,7 @@ function HallOfFame:update(dt)
   elseif self.phase == "player_stats" then
     -- name / play time / money boxes are up; then the dex texts
     self.timer = self.timer - 1
-    if skip or self.timer <= 0 then
+    if self.timer <= 0 then
       self.phase = "player_dex"
       self:showDexTexts()
     end

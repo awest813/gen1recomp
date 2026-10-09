@@ -686,6 +686,7 @@ mod.content.map_songs:override("PALLET_TOWN", "Music_Routes1")
 | `index` | integer >= 0 | no |
 | `label` | string | no |
 | `objects` | list of {pokemon?, ...} | no |
+| `outdoor` | boolean | no |
 | `palette` | string | no |
 | `signs` | list of any value | no |
 | `tileset` | tilesets id | yes |
@@ -940,6 +941,7 @@ do not.
 | `catchRate` | integer 0..255 | yes |
 | `cry` | cries id | no |
 | `dex` | integer >= 1 | yes |
+| `dexEntry` | {heightM?, kind?, text?, text2?, weightKg?} | no |
 | `eggGroups` | list of string | no |
 | `eggGroupsRaw` | integer 0..255 | no |
 | `eggMoves` | list of moves id | no |

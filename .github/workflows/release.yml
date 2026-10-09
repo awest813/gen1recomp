@@ -1,7 +1,7 @@
 name: Release
 
 # Builds the macOS, Windows, and Linux desktop apps, an Android APK, an iOS
-# IPA, a Nintendo Switch SD-ready zip (experimental), Xbox UWP, the Anbernic
+# IPA, a Nintendo Switch SD-ready zip (experimental), a PS4 homebrew .pkg, Xbox UWP, the Anbernic
 # RG34XXSP (Stock OS 64-bit MOD / PortMaster) and Linux ARM SBC PortMaster
 # handheld ports on the self-hosted Mac runner, and publishes them as a
 # GitHub Release.
@@ -771,6 +771,56 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  ps4:
+    name: build PS4
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      OO_TAG: v0.5.4
+      OO_SHA256: 3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526
+      OO_PS4_TOOLCHAIN: ${{ github.workspace }}/.bazinga/openorbis/OpenOrbis/PS4Toolchain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Restore pinned love-ps4 runtime
+        uses: actions/cache@v6
+        with:
+          path: .bazinga/love-ps4
+          key: love-ps4-${{ hashFiles('scripts/ps4/love-ps4-runtime.sha256') }}
+
+      - name: Restore OpenOrbis packaging tools
+        id: oo-cache
+        uses: actions/cache@v6
+        with:
+          path: .bazinga/openorbis
+          key: openorbis-${{ env.OO_TAG }}-${{ env.OO_SHA256 }}
+
+      - name: Fetch OpenOrbis packaging tools
+        if: steps.oo-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p .bazinga/openorbis
+          curl -fL --retry 3 -o "$RUNNER_TEMP/oo.tar.gz" \
+            "https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/$OO_TAG/toolchain-llvm-18.tar.gz"
+          echo "$OO_SHA256  $RUNNER_TEMP/oo.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/oo.tar.gz" -C .bazinga/openorbis OpenOrbis/PS4Toolchain/bin/linux
+
+      - name: Build PS4
+        run: |
+          set -euo pipefail
+          scripts/build_ps4.sh --fetch --fused \
+            --version "${{ needs.version.outputs.version }}"
+
+      - name: Upload gen1recomp-ps4-release
+        uses: actions/upload-artifact@v7
+        with:
+          name: gen1recomp-ps4-release
+          path: |
+            dist/ps4/gen1recomp-${{ needs.version.outputs.version }}-ps4.pkg
+          if-no-files-found: error
+          retention-days: 7
+
   rg34xxsp:
     name: build Anbernic RG34XXSP port
     needs: [version, shaderfx-bridge]
@@ -1039,7 +1089,7 @@ jobs:
           retention-days: 7
 
   release:
-    needs: [version, notes, love-payload, web, xbox-uwp, linux-arm64, linux-flatpak, desktop, windows-sign, android, ios, switch, rg34xxsp, linux-arm-sbc]
+    needs: [version, notes, love-payload, web, xbox-uwp, linux-arm64, linux-flatpak, desktop, windows-sign, android, ios, switch, ps4, rg34xxsp, linux-arm-sbc]
     if: github.repository == 'bryanthaboi/gen1recomp'
     runs-on: ubuntu-latest
     steps:
@@ -1096,6 +1146,12 @@ jobs:
         with:
           name: gen1recomp-switch-release
           path: dist/switch
+
+      - name: Download gen1recomp-ps4-release
+        uses: actions/download-artifact@v8
+        with:
+          name: gen1recomp-ps4-release
+          path: dist/ps4
 
       - name: Download gen1recomp-rg34xxsp-release
         uses: actions/download-artifact@v8
@@ -1170,6 +1226,10 @@ jobs:
           # Local fused .nro stays under dist/switch/ for PR CI / debug; release
           # publishes the SD-ready zip only.
 
+          ps4pkg="dist/ps4/gen1recomp-${v}-ps4.pkg"
+          [ -f "$ps4pkg" ] || { echo "::error::$ps4pkg not found (expected from scripts/build_ps4.sh --fused)"; exit 1; }
+          cp "$ps4pkg" "$outdir/gen1recomp-${v}-ps4.pkg"
+
           uwp="dist/xbox-uwp/gen1recomp-${v}-xbox-uwp.zip"
           [ -f "$uwp" ] || { echo "::error::$uwp not found (expected from the Xbox UWP job)"; exit 1; }
           cp "$uwp" "$outdir/gen1recomp-${v}-xbox-uwp.zip"
@@ -1226,6 +1286,7 @@ jobs:
             "dist/release/gen1recomp-${v}-android.apk"
             "dist/release/gen1recomp++-${v}-ios.ipa"
             "dist/release/gen1recomp-${v}-switch.zip"
+            "dist/release/gen1recomp-${v}-ps4.pkg"
             "dist/release/gen1recomp-${v}-xbox-uwp.zip"
             "dist/release/gen1recomp-${v}-rg34xxsp-stockos64-mod.zip"
             "dist/release/gen1recomp-${v}-sbc-portmaster.zip"

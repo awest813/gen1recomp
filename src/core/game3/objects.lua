@@ -264,6 +264,8 @@ local function newEventObject(src, neighbor, prepared)
     eo.originMapGroup = tonumber(def.originMapGroup or def.mapGroup) or mg
     eo.originMapNum = tonumber(def.originMapNum or def.mapNum) or mn
   end
+  -- pokeemerald/src/event_object_movement.c:1301
+  eo.spawnElevation = true
   return eo
 end
 
@@ -731,6 +733,92 @@ function Objects.foreignKey(mapId, localId)
   return f and f[tostring(mapId) .. ":" .. tostring(tonumber(localId) or localId)] or nil
 end
 
+-- pokeemerald/src/load_save.c:180
+function Objects.snapshot()
+  if not Objects._mapId then return nil end
+  local protos = {}
+  for _, def in ipairs(Objects._defs or {}) do
+    local lid = tonumber(def.localId or def.index) or 0
+    if lid > 0 then
+      local p = newEventObject(def)
+      Objects.spawnElevation(p)
+      protos[lid] = p
+    end
+  end
+  local list = {}
+  for _, lid in ipairs(Objects._order) do
+    local eo, p = Objects._byId[lid], protos[lid]
+    if eo and p and lid > 0 and lid < FOREIGN_BASE and not eo.foreignMap then
+      local row = { l = lid }
+      local diff = false
+      local function put(k, v, base)
+        if v ~= base then row[k], diff = v, true end
+      end
+      if eo.hidden then
+        if not p.hidden then row.h, diff = 1, true end
+      else
+        local x, y = eo.cellX, eo.cellY
+        if eo.moving and eo.targetX then x, y = eo.targetX, eo.targetY end
+        put("x", tonumber(x), p.cellX)
+        put("y", tonumber(y), p.cellY)
+        put("hx", tonumber(eo.homeX), p.homeX)
+        put("hy", tonumber(eo.homeY), p.homeY)
+        put("f", eo.facing, p.facing)
+        put("m", tonumber(eo.movementType), p.movementType)
+        put("e", tonumber(eo.elevation), p.elevation)
+        put("c", tonumber(eo.currentElevation), p.currentElevation)
+        if (eo.invisible == true) ~= (p.invisible == true) then row.i, diff = eo.invisible and 1 or 0, true end
+        if p.hidden then diff = true end
+      end
+      if diff then list[#list + 1] = row end
+    end
+  end
+  return { mapId = Objects._mapId, list = list }
+end
+
+local function placeObject(eo, x, y, homeX, homeY)
+  eo.cellX, eo.cellY = x, y
+  eo.px, eo.py = x * CELL, y * CELL
+  eo.targetX, eo.targetY = x, y
+  eo.homeX, eo.homeY = homeX or x, homeY or y
+  eo.moving, eo.progress = false, 0
+  if eo.def then eo.def.x, eo.def.y = x, y end
+end
+
+-- pokeemerald/src/load_save.c:188
+-- pokeemerald/src/event_object_movement.c:1715
+function Objects.restoreSnapshot(snap)
+  if type(snap) ~= "table" or type(snap.list) ~= "table" or snap.mapId ~= Objects._mapId then return false end
+  for _, row in ipairs(snap.list) do
+    local lid = type(row) == "table" and tonumber(row.l) or 0
+    if lid > 0 and lid < FOREIGN_BASE then
+      local eo = Objects._byId[lid]
+      if row.h then
+        if eo and not eo.hidden then
+          eo.hidden, eo.visible = true, false
+          if eo.def then eo.def.hidden = true end
+          Objects._tracks[lid] = nil
+        end
+      else
+        if not eo or eo.hidden then eo = respawnFromTemplate(lid) end
+        if eo then
+          local x, y, hx, hy = tonumber(row.x), tonumber(row.y), tonumber(row.hx), tonumber(row.hy)
+          if x or y or hx or hy then
+            placeObject(eo, x or eo.cellX, y or eo.cellY, hx or eo.homeX, hy or eo.homeY)
+          end
+          local mt = tonumber(row.m)
+          if mt and mt ~= tonumber(eo.movementType) then Objects.setTrainerMovementType(eo, mt) end
+          if type(row.f) == "string" then eo.facing = row.f end
+          if tonumber(row.e) then eo.elevation = tonumber(row.e) end
+          if tonumber(row.c) then eo.currentElevation = tonumber(row.c) end
+          if row.i ~= nil then eo.invisible = tonumber(row.i) == 1 end
+        end
+      end
+    end
+  end
+  return true
+end
+
 function Objects.find(localId)
   localId = tonumber(localId) or 0
   if Objects.isPlayer(localId) then
@@ -844,7 +932,7 @@ function Objects.forDraw()
     local eo = Objects._byId[lid]
     -- src/event_object_movement.c:8014
     if eo and eo.visible and not eo.hidden and not eo.invisible
-        and (eo.foreignMap ~= nil or not offMap(Objects._bounds, eo)) then
+        and (eo.foreignMap ~= nil or eo.moving or eo.scriptBusy or (Objects._tracks and Objects._tracks[eo.localId] ~= nil) or not offMap(Objects._bounds, eo)) then
       n = n + 1
       list[n] = eo
     end
@@ -859,13 +947,19 @@ function Objects.forDraw()
         vrecs[vo.id] = vrec
       end
       local gid = tonumber(vo.graphicsId) or 0
+      local foreign = vo.foreign
       vrec.cellX = tonumber(vo.x) or 0
       vrec.cellY = tonumber(vo.y) or 0
       vrec.elevation = tonumber(vo.elevation) or 3
       vrec.facing = VIRT_DIR_FACE[tonumber(vo.direction)] or "down"
-      vrec.sprite = GfxIds.spriteFor(gid)
-      vrec.graphicsId = gid
+      vrec.foreign = foreign
+      vrec.draw = foreign and Objects.drawForeign or nil
+      vrec.sprite = not foreign and GfxIds.spriteFor(gid) or nil
+      vrec.graphicsId = not foreign and gid or nil
       vrec.raiseY = tonumber(vo.y2) or 0
+      vrec.px, vrec.py, vrec.moving = vo.px, vo.py, vo.moving == true
+      vrec.targetX, vrec.targetY = vo.targetX, vo.targetY
+      vrec.animClock, vrec.stepFrames, vrec.stepFlip = tonumber(vo.animClock) or 0, vo.stepFrames, vo.stepFlip
       if not offMap(Objects._bounds, vrec) then
         n = n + 1
         list[n] = vrec
@@ -874,6 +968,15 @@ function Objects.forDraw()
   end
   for i = #list, n + 1, -1 do list[i] = nil end
   return list
+end
+
+function Objects.drawForeign(a, camX, camY)
+  local eo = a and a.eventObject
+  local p = eo and eo.foreign
+  if not p then return false end
+  local Avatars = require("src.online.union.Avatars")
+  return Avatars.draw(Avatars.resolve(p, p.host), math.floor(a.x - camX + CELL / 2), math.floor(a.y - camY + CELL),
+    a.facing, a.walkPhase, a.stepFlip, 1)
 end
 
 --- First visible EventObject standing on (tx, ty), or nil if moving onto it.
@@ -919,6 +1022,8 @@ function Objects.blocks(tx, ty, exceptLocalId, elevation)
   for i = 1, VirtualObjects.slots() do
     local vo = VirtualObjects.nth(i)
     if vo and vo.solid == true and tonumber(vo.x) == tx and tonumber(vo.y) == ty then return true end
+    -- pokeruby/src/overworld.c:2709
+    if vo and vo.solid == true and tonumber(vo.prevX) == tx and tonumber(vo.prevY) == ty then return true end
   end
   return false
 end
@@ -956,6 +1061,20 @@ function Objects.updateElevation(eo)
   if eo.moving then cx, cy = eo.targetX, eo.targetY end
   eo.currentElevation = Coll.nextElevation(mapDef, eo.currentElevation or 0,
     cx, cy, eo.cellX, eo.cellY)
+end
+
+-- pokeemerald/src/event_object_movement.c:7737
+function Objects.spawnElevation(eo)
+  eo.spawnElevation = nil
+  if eo.fixedPriority then return end
+  local Coll = Collision()
+  if not (Coll and Coll.nextElevation) then return end
+  local cx, cy = eo.cellX, eo.cellY
+  if eo.moving then cx, cy = eo.targetX, eo.targetY end
+  local cur, prev = Coll.nextElevation(eo.mapDef or Coll._mapDef, eo.currentElevation or 0,
+    cx, cy, eo.cellX, eo.cellY)
+  eo.currentElevation = cur
+  if prev then eo.elevation = prev end
 end
 
 local function beginStep(eo, tx, ty)
@@ -1054,11 +1173,11 @@ local function tickMotion(eo, game, ctx)
 end
 
 --- Scripted one-cell step (no collision — FRLG applymovement forces).
-function Objects.scriptStep(eo, dir, run, slow, fast)
+function Objects.scriptStep(eo, dir, run, slow, fast, frames)
   if not eo then return false end
   local P = Player()
   if eo == P then
-    return P.scriptStep and P.scriptStep(dir, run, slow, fast)
+    return P.scriptStep and P.scriptStep(dir, run, slow, fast, frames)
   end
   if eo.moving then return false end
   local d = DELTA[dir]
@@ -1069,6 +1188,7 @@ function Objects.scriptStep(eo, dir, run, slow, fast)
   -- pokefirered/src/event_object_movement.c:5333 StartRunningAnim
   if run then eo.stepFrames = slow and RUN_SLOW_FRAMES or RUN_FRAMES end
   if fast then eo.stepFrames = RUN_FRAMES end
+  if frames then eo.stepFrames = frames end
   eo.frozen = true
   eo.scriptBusy = true
   return true
@@ -1188,9 +1308,9 @@ local function advanceTrack(lid, tr, game)
   if type(act) == "table" then
     if act.kind == "step" then
       if eo == Player() then
-        if Player().scriptStep then Player().scriptStep(act.dir, act.run, act.slow, act.fast) end
+        if Player().scriptStep then Player().scriptStep(act.dir, act.run, act.slow, act.fast, act.frames) end
       elseif eo then
-        Objects.scriptStep(eo, act.dir, act.run, act.slow, act.fast)
+        Objects.scriptStep(eo, act.dir, act.run, act.slow, act.fast, act.frames)
       end
     elseif act.kind == "jump" then
       if eo == Player() then
@@ -1236,6 +1356,7 @@ local function advanceTrack(lid, tr, game)
       Objects.revealTrainer(eo)
     elseif act.kind == "turn" then
       Objects.scriptFace(eo, act.dir)
+      if act.frames then tr.sleep = act.frames end
     elseif act.kind == "face_player" then
       -- pokefirered/src/event_object_movement.c:6772 MovementAction_FacePlayer_Step0
       if eo and eo ~= Player() then
@@ -1284,16 +1405,14 @@ local function advanceTrack(lid, tr, game)
       if eo == Player() then
         Player().setVisible(false)
       elseif eo then
-        eo.hidden = true
-        eo.visible = false
+        eo.invisible = true
       end
     elseif act.kind == "show" then
       -- pokefirered/src/event_object_movement.c:7061
       if eo == Player() then
         Player().setVisible(true)
       elseif eo then
-        eo.hidden = false
-        eo.visible = true
+        eo.invisible = false
       end
     end
   end
@@ -1730,6 +1849,7 @@ function Objects.update(game)
   for _, lid in ipairs(Objects._order) do
     local eo = Objects._byId[lid]
     if eo then
+      if eo.spawnElevation then Objects.spawnElevation(eo) end
       if eo.bowFrames and eo.bowFrames > 0 then
         eo.bowFrames = eo.bowFrames - 1
         if eo.bowFrames <= 0 then eo.bowFrames = nil end
@@ -1940,14 +2060,18 @@ local function copyTick(eo)
   local P = Player()
   if not (c and P) then return end
   if not c.playerInit then c.playerInit = P.facing end
-  local moving = P.moving and true or false
-  local started = moving and not c.wasMoving
-  local finished = c.wasMoving and not moving
-  c.wasMoving = moving
+  local serial = P.stepSerial or 0
+  if c.serial == nil then c.serial = serial end
+  if c.serial == serial then return end
+  -- pokeemerald/src/event_object_movement.c:4170
+  if not P.moving then
+    c.serial = serial
+    return
+  end
+  if eo.moving or eo.frozen or eo.scriptBusy then return end
+  c.serial = serial
   local okF, Faraway = pcall(lazyReq, "src.core.game3.faraway_island")
   local mew = okF and Faraway and Faraway.isMew(eo)
-  if finished and mew then Faraway.updateStepCounter() end
-  if not started or eo.moving or eo.frozen or eo.scriptBusy then return end
   local dir
   if mew then
     -- pokeemerald/src/event_object_movement.c:4206
@@ -1967,6 +2091,16 @@ local function copyTick(eo)
   end
   beginStep(eo, eo.cellX + d[1], eo.cellY + d[2])
   if P.running or P.biking then eo.stepFrames = RUN_FRAMES end
+  -- pokeemerald/src/event_object_movement.c:8048
+  if mew and Faraway.shouldShakeGrass() and isPokeGrass(eo.targetX, eo.targetY) then
+    local MB = lazyReq("src.core.game3.mb")
+    local Coll = Collision()
+    local long = Coll.behavior(eo.targetX, eo.targetY) == MB.id("LONG_GRASS")
+    local okFx, FxRse = pcall(lazyReq, "src.core.game3.field_effects_rse")
+    if okFx and FxRse then
+      FxRse.spawnAt(long and "long_grass" or "tall_grass", eo.targetX, eo.targetY, 8, 8, { layer = "front" })
+    end
+  end
 end
 
 function Objects.tickRse(eo)
@@ -2040,6 +2174,7 @@ function Objects.tickPool(pool, game, ctx)
   for _, lid in ipairs(pool.order or {}) do
     local eo = pool.byId[lid]
     if eo then
+      if eo.spawnElevation then Objects.spawnElevation(eo) end
       if eo.bowFrames and eo.bowFrames > 0 then
         eo.bowFrames = eo.bowFrames - 1
         if eo.bowFrames <= 0 then eo.bowFrames = nil end

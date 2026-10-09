@@ -1,5 +1,5 @@
 -- Game3 map loader. Owns Sevii enter: player, collision, EventObjects, Space scripts.
--- Talk/interact is Field.interact. Do not call host setMap/warpToMapId here —
+-- Talk/interact is Field.interact. Do not call host setMap/warpToMapId here:
 -- MAPSETUP.WARP races ON_FRAME and wipes applymovement tracks (Bill intro).
 
 local MapIds = require("src.core.game3.map_ids")
@@ -453,9 +453,40 @@ function Map.ensureMidLayout(game, mapId, def)
   return def.midLayout
 end
 
---- Load a Sevii map under game3 ownership (pret enter order).
--- 1) Bind game3 player + collision + EventObjects
--- 2) Objects.loadMap then Space.runEnterScripts (ON_TRANSITION → ON_FRAME)
+-- pokeemerald/src/overworld.c:911
+-- pokefirered/src/overworld.c:878
+function Map.applyInitialAvatar(session, def, saved, previous)
+  if not session then return end
+  local Player = require("src.core.game3.player")
+  if saved and (saved.surfing ~= nil or saved.underwater ~= nil) then
+    Player.restoreAvatar(saved)
+    return
+  end
+  local Flags = require("src.core.game3.scripting.flags")
+  local version = session.version or require("src.core.game3.profile").active().id
+  local cruiseId = Flags.forVersion(version).IDS.FLAG_SYS_CRUISE_MODE
+  local cruise = cruiseId and Flags.getFlag(session, nil, cruiseId)
+  local mapType = def and tonumber(def.mapType)
+  local isRse = session and require("src.core.game3.profile").family(session) == "rse"
+  local Collision = require("src.core.game3.collision")
+  local surfable = Collision.isSurfable(Collision.behavior(Player.cellX, Player.cellY))
+  local mapId = session and session.map or ""
+  local seafoam = not isRse and (mapId == "FR_SEAFOAM_ISLANDS_B3F" or mapId == "FR_SEAFOAM_ISLANDS_B4F")
+  Player.surfing, Player.underwater = false, false
+  if cruise and mapType ~= 8 then
+    Player.biking = false
+    if mapType == 6 then Player.facing = "right" end
+  elseif mapType == 5 then
+    Player.underwater, Player.biking = true, false
+  elseif surfable and not seafoam then
+    Player.surfing, Player.biking = true, false
+  end
+  if previous and ((previous.underwater and Player.surfing)
+      or (previous.surfing and Player.underwater)) then
+    Player.facing = previous.facing
+  end
+end
+
 function Map.load(mod, game, mapId, opts)
   opts = opts or {}
   if not MapIds.isGame3Map(mapId) then
@@ -464,6 +495,9 @@ function Map.load(mod, game, mapId, opts)
   if not opts.seamless then
     local StayMessage = package.loaded["src.ui.game3.message"]
     if StayMessage and StayMessage.closeStay then StayMessage.closeStay() end
+    -- pokeemerald/src/overworld.c:2170
+    local CamObj = package.loaded["src.core.game3.camera_object"]
+    if CamObj and CamObj.reset then CamObj.reset() end
   end
   -- pret RestartWildEncounterImmunitySteps on LoadMap / LoadMapFromWarp: every
   -- map entry restarts the wild encounter grace period. Unconditional, so the
@@ -554,6 +588,13 @@ function Map.load(mod, game, mapId, opts)
   local session = (Runtime.getSession and Runtime.getSession()) or (game and game.session)
   local save = game and game.save
   local Player = require("src.core.game3.player")
+  local previousAvatar = { surfing = Player.surfing, underwater = Player.underwater, facing = Player.facing }
+  local savedAvatar = session and session._savedAvatar
+  if (opts.enterVia or Map._nextEnterVia) ~= "continue" or not savedAvatar
+      or savedAvatar.map ~= mapId or savedAvatar.x ~= x or savedAvatar.y ~= y
+      or (session and session._continueWarpDeferred) then
+    savedAvatar = nil
+  end
   local onCyclingRoad = Player.isOnCyclingRoad and Player.isOnCyclingRoad(session, x, y, def)
   local wasBiking = (Player.biking == true)
   if opts.initialLoad and not wasBiking then
@@ -610,7 +651,6 @@ function Map.load(mod, game, mapId, opts)
   end
   -- pokefirered/src/overworld.c:2145 SetPlayerAvatarTransitionFlags
   Player.biking = keepBike
-  Player.syncSavePosition(game)
 
   local okFv, FieldView = pcall(require, "src.core.game3.field_view")
   if okFv and FieldView then FieldView._nativeDirty = true end
@@ -642,6 +682,8 @@ function Map.load(mod, game, mapId, opts)
     -- the host map (collision.lua: "Prefer owned grid; fall back to host map").
     Collision.clear()
   end
+
+  Player.syncSavePosition(game)
 
   Map._warmPairs = not opts.seamless or nil
   -- pret GroundEffect_SpawnOnTallGrass when warping onto grass.
@@ -676,7 +718,11 @@ function Map.load(mod, game, mapId, opts)
   if fromMapId and (fromMapId ~= mapId or opts.heal) and FieldModules.enabled("vsSeeker", session) then
     require("src.core.game3.vs_seeker").mapReset(session)
   end
-  if isRse and require("src.core.game3.capabilities").gate(session, "match_call") then
+  local RsRematch = isRse and require("src.core.game3.rs.rematch")
+  if RsRematch and RsRematch.enabled(session) then
+    -- pokeruby/src/overworld.c:617
+    RsRematch.tryUpdateRandomTrainerRematchesForMap(session, mapId)
+  elseif isRse and require("src.core.game3.capabilities").gate(session, "match_call") then
     -- pokeemerald/src/overworld.c:801
     require("src.core.game3.rse.rematch").tryUpdateRandomTrainerRematchesForMap(session, mapId)
   end
@@ -721,7 +767,8 @@ function Map.load(mod, game, mapId, opts)
   -- pokefirered/src/overworld.c:809 SetCurrentAndNextWeather
   if def and def.weather ~= nil then
     local Weather = require("src.core.game3.weather")
-    Weather.apply(def.weather, { seamless = opts.seamless })
+    Weather.apply(def.weather, { seamless = opts.seamless,
+      continue = isRse and (opts.enterVia or Map._nextEnterVia) == "continue" })
   end
   if isRse and not opts.seamless and def and require("src.core.game3.dataset").isOutdoorMapType(def.mapType) then
     -- pokeemerald/src/overworld.c:857
@@ -747,10 +794,37 @@ function Map.load(mod, game, mapId, opts)
   local enterVia = opts.enterVia or Map._nextEnterVia
   Map._nextEnterVia = nil
   if Space and Space.runEnterScripts then
+    local Weather = isRse and def and def.weather ~= nil and require("src.core.game3.weather")
+    local savedBefore = Weather and Weather.getSaved()
     Space.runEnterScripts(mod or Runtime._mod, mapId, game, world,
       { seamless = opts.seamless, enterVia = enterVia, keepScript = opts.keepScript })
+    if enterVia == "continue" and session and not opts.seamless then
+      local snap = session.objectEvents
+      session.objectEvents = nil
+      if snap == nil or snap.mapId ~= mapId then
+        -- pokeemerald/src/overworld.c:1739
+        -- pokeemerald/src/overworld.c:2177
+        Space.runOnWarpIntoMap(mapId)
+      else
+        -- pokeemerald/src/overworld.c:2182
+        Objects.restoreSnapshot(snap)
+      end
+    end
+    -- pokeruby/src/overworld.c:661
+    if Weather and Weather.getSaved() ~= savedBefore then
+      if opts.seamless then Weather.doCurrent() else Weather.resumePaused() end
+    end
   elseif Space and Space.onMapEnter then
     Space.onMapEnter(mod or Runtime._mod, mapId, game, world)
+  end
+  -- pokeemerald/src/overworld.c:2172
+  if not opts.seamless then
+    Map.applyInitialAvatar(session, def, savedAvatar, previousAvatar)
+    if session then
+      session._savedAvatar = nil
+      session.facing = Player.facing
+    end
+    Player.syncSavePosition(game)
   end
   -- pokeemerald/src/overworld.c:870
   if session and not opts.seamless and require("src.core.game3.capabilities").has(session, "tv")

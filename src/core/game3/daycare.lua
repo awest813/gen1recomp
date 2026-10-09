@@ -166,25 +166,63 @@ function Daycare.teachMove(mon, moveId)
   mon.moves = mon.moves or {}
   mon.pp = mon.pp or {}
   mon.maxPp = mon.maxPp or {}
-  for i = 1, #mon.moves do
-    if mon.moves[i] == moveId then return false end
-  end
+
   local Pokemon = pokemonMod()
+  local moves = {}
+  local entries = {}
+  local pps = {}
+  local maxPps = {}
+  local tableShaped = false
+  for i = 1, MAX_MON_MOVES do
+    local entry = mon.moves[i]
+    if type(entry) == "table" then tableShaped = true end
+    local m = tonumber(Pokemon.moveIdAt(mon, i)) or 0
+    if m > 0 then
+      if m == moveId then return false end
+      moves[#moves + 1] = m
+      entries[#entries + 1] = entry
+      local pp = mon.pp[i]
+      local maxPp = mon.maxPp[i]
+      if type(entry) == "table" then
+        pp = entry.pp or pp
+        maxPp = entry.maxPp or maxPp
+      end
+      pps[#pps + 1] = tonumber(pp) or 0
+      maxPps[#maxPps + 1] = tonumber(maxPp) or 0
+    end
+  end
+
   local maxPp = 0
   if Pokemon.movePp then maxPp = tonumber(Pokemon.movePp(moveId)) or 0 end
-  if #mon.moves < MAX_MON_MOVES then
-    mon.moves[#mon.moves + 1] = moveId
-    mon.pp[#mon.moves] = maxPp
-    mon.maxPp[#mon.moves] = maxPp
-    return true
+  local newEntry = moveId
+  if tableShaped then newEntry = { id = moveId, moveId = moveId, pp = maxPp, maxPp = maxPp } end
+
+  if #moves < MAX_MON_MOVES then
+    moves[#moves + 1] = moveId
+    entries[#entries + 1] = newEntry
+    pps[#pps + 1] = maxPp
+    maxPps[#maxPps + 1] = maxPp
+  else
+    -- pokefirered/src/daycare.c:495 DeleteFirstMoveAndGiveMoveToMon
+    table.remove(moves, 1)
+    table.remove(entries, 1)
+    table.remove(pps, 1)
+    table.remove(maxPps, 1)
+    moves[MAX_MON_MOVES] = moveId
+    entries[MAX_MON_MOVES] = newEntry
+    pps[MAX_MON_MOVES] = maxPp
+    maxPps[MAX_MON_MOVES] = maxPp
   end
-  -- pokefirered/src/daycare.c:495 DeleteFirstMoveAndGiveMoveToMon
-  table.remove(mon.moves, 1)
-  table.remove(mon.pp, 1)
-  table.remove(mon.maxPp, 1)
-  mon.moves[MAX_MON_MOVES] = moveId
-  mon.pp[MAX_MON_MOVES] = maxPp
-  mon.maxPp[MAX_MON_MOVES] = maxPp
+
+  for i = 1, MAX_MON_MOVES do
+    if tableShaped then
+      mon.moves[i] = entries[i]
+    else
+      mon.moves[i] = moves[i] or 0
+    end
+    mon.pp[i] = pps[i] or 0
+    mon.maxPp[i] = maxPps[i] or 0
+  end
   return true
 end
 
@@ -397,6 +435,8 @@ end
 function Daycare.step(session)
   session = sessionOf(session)
   if not session then return 0 end
+  local policy = require("src.core.game3.profile").forSession(session).daycare
+  if policy and policy.step then return policy.step(session) end
   local r5 = Daycare.route5Of(session)
   if r5 and speciesOf(r5.mon) ~= SPECIES_NONE then
     r5.steps = r5.steps + 1

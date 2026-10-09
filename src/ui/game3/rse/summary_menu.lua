@@ -5,6 +5,7 @@ local RomText = require("src.core.game3.rom_text")
 local Pokemon = require("src.core.game3.pokemon")
 local ItemsData = require("src.core.game3.items_data")
 local SummaryData = require("src.core.game3.summary_data")
+local Strings = require("src.core.Strings")
 
 local RseSummary = {}
 
@@ -355,7 +356,9 @@ local function drawTitles(m, page, detail, Sm)
     local w = win(m, prompt[1])
     local sx = 62 - width(prompt[2])
     local ix = math.max(0, sx - 16)
-    FrlgFont.drawKeypadIcon(0x00, w.left * 8 + ix + 4, w.top * 8 + 2)
+    -- pokeemerald/src/pokemon_summary_screen.c:2821
+    assert(m.buttons and Kit.image(m.buttons.png), "rse/summary/buttons.png is not in the cache")
+    drawFrame(m.buttons, 0, w.left * 8 + ix, w.top * 8)
     put(m, w, prompt[2], sx, 1, 0)
   end
 end
@@ -416,7 +419,7 @@ local function drawInfo(m, Sm, mon, egg)
     dynamic = {
       [0] = RomText.ir("sMemoNatureTextColor"), [1] = RomText.ir("sMemoMiscTextColor"),
       [2] = RomText.at("gNatureNamePointers", natureId), [3] = tostring(metLevel == 0 and 5 or metLevel),
-      [4] = secName or "", [5] = RomText.ir("gText_EmptyString5"),
+      [4] = secName and Strings(secName) or "", [5] = RomText.ir("gText_EmptyString5"),
     },
   })
 end
@@ -545,7 +548,7 @@ local function drawMoves(m, Sm, mon, contest, detail)
         drawTile(m, "hearts", i < appeal and 1 or 0, tx * 8, ty * 8)
         drawTile(m, "hearts", i < jam and 3 or 4, tx * 8, (ty + 2) * 8)
       end
-      put(m, dw, eff.description or "", 6, 1, 0)
+      put(m, dw, SummaryData.contestEffectDescription(eff), 6, 1, 0)
     end
   else
     local pa = win(m, W.POWER_ACC)

@@ -259,7 +259,9 @@ function Hud.update(game, _dt, inputTop)
     local top = Stack.top()
     local evoTop = top and top.id == "evolution_scene" and (inputTop == nil or top == inputTop)
     local pyramidBagTop = top and top.id == "rse_pyramid_bag"
-    if (not inBattle) or evoTop or pyramidBagTop or (top and top.id == "naming") then
+    local safariCaseTop = top and top.id == "rse_pokeblock_case"
+      and Battle._phase == "safari_pokeblock" and (inputTop == nil or top == inputTop)
+    if (not inBattle) or evoTop or pyramidBagTop or safariCaseTop or (top and top.id == "naming") then
       if update_top_menu(input) then
         return
       end
@@ -285,7 +287,9 @@ function Hud.update(game, _dt, inputTop)
     if aPress then
       local onLast = Message.isWaiting()
         and Message._page >= #(Message._pages or {})
-      if Message._stay and onLast then
+      if not Message.isWaiting() then
+        Message.pressAB()
+      elseif Message._stay and onLast then
         -- Stay on last page: waitbuttonpress / yesnobox own the A press.
         if Hud._waitButton then
           local cb = Hud._waitButton

@@ -219,10 +219,21 @@ function Runtime.start(mod, game, session, opts)
       end
     end
     Player.biking = keepBike
-    if session then session.biking = keepBike end
+    local Collision = lazyReq("src.core.game3.collision")
+    if def then Collision.bindMap(game, session.map, def) end
+    local savedAvatar = session._savedAvatar
+    if savedAvatar and (savedAvatar.map ~= session.map or savedAvatar.x ~= session.x
+        or savedAvatar.y ~= session.y or session._continueWarpDeferred) then savedAvatar = nil end
+    local adoptedAvatar = (session.surfing ~= nil or session.underwater ~= nil) and {
+      surfing = session.surfing, underwater = session.underwater,
+      biking = keepBike, bikeType = session.bikeType, elevation = session.elevation,
+    } or nil
+    Map.applyInitialAvatar(session, def, savedAvatar or adoptedAvatar)
+    session._savedAvatar = nil
+    if session then session.biking = Player.biking end
     if game and game.save then
-      game.save.biking = keepBike
-      if game.save.position then game.save.position.biking = keepBike end
+      game.save.biking = Player.biking
+      if game.save.position then game.save.position.biking = Player.biking end
     end
     Player.syncSavePosition(game)
     -- Space.onMapEnter already ran (or will run) from afterMap — don't double.
@@ -233,6 +244,8 @@ function Runtime.start(mod, game, session, opts)
       x = session.x,
       y = session.y,
       facing = session.facing,
+      initialLoad = true,
+      enterVia = opts.reason == "continue" and "continue" or nil,
       depth1Connections = true,
     })
     log("warped via game3 map loader → " .. tostring(session.map))
@@ -466,7 +479,8 @@ function Runtime.install(mod)
   Runtime._mod = mod
   log("Runtime.install — display ownership + START intercept + game.ready")
 
-  local ok, World = pcall(lazyReq, "src.world.gen2.World")
+  local World = package.loaded["src.world.gen2.World"]
+  local ok = type(World) == "table"
   if ok and World and World.step and not World._game3RuntimeStep then
     local prev = World.step
     World.step = function(self, ...)
@@ -507,7 +521,8 @@ function Runtime.install(mod)
   end
 
   -- Own the frame: replace Gen2 drawScene presentation while active.
-  local ok2, Game2 = pcall(lazyReq, "src.core.Game2")
+  local Game2 = package.loaded["src.core.Game2"]
+  local ok2 = type(Game2) == "table"
   if ok2 and Game2 and Game2.drawScene and not Game2._game3Display then
     local prevDraw = Game2.drawScene
     Game2.drawScene = function(self, w, h)

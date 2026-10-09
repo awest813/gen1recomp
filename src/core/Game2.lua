@@ -342,7 +342,9 @@ function Game2:continueGame(save)
   self:applyOptions()
   self.stack:clear()
   self.world = nil
+  require("src.world.gen2.UnionSafety").settle(save, self.data)
   self:startWorld()
+  require("src.online.union.TradeTxn").resumePending(self)
   -- After the adopt and after the world is standing, which is where Gen 1
   -- emits it (src/core/Game.lua:1127, once the stack has been rebuilt).
   if modsDiff then
@@ -1002,6 +1004,7 @@ function Game2:snapshotSave()
     -- WRAM on the cart, so a save made on POKECENTER_2F must still know which
     -- centre's stairs lead back down -- World:loadPlayerData reads it back.
     self.save.backupWarp = world.backupWarp or self.save.backupWarp
+    require("src.world.gen2.UnionSafety").seal(self.save, self.data)
   end
   self.save.options = self.options
   return self.save
@@ -1143,6 +1146,7 @@ function Game2:load(opts)
   self.data.gen2Scripts = loadGenerated("data/generated/scripts.lua")
   self.data.gen2StdScripts = loadGenerated("data/generated/std_scripts.lua")
   self.data.gen2Text = loadGenerated("data/generated/text.lua")
+  require("src.world.gen2.UnionCenter2F").apply(self.data)
   -- The engine's own strings, keyed by the disassembly's label.  gen2Text
   -- above is the script text and is keyed by bank:address for the overworld
   -- VM, so the two are different tables and both are loaded.  This one is
@@ -1240,6 +1244,7 @@ function Game2:load(opts)
     pcall(Font.load, self.data)
   end
   Strings.load(self.data)
+  self:prewarmSessionSfx()
 
   -- The boot skeleton (Game2.new built it, before any bus existed) announced
   -- here rather than at its construction, which is the same spot in the boot
@@ -1307,6 +1312,7 @@ function Game2:load(opts)
     -- open the same frame), rather than once per render frame in World:draw.
     local world = self.world
     if world and world.tickFrameClocks then world:tickFrameClocks() end
+    if world then require("src.world.gen2.UnionRoomPresence").tick(self) end
     -- Not the audio tick: _UpdateSound runs once per frame off VBlank
     -- (audio/engine.asm:84, home/vblank.asm:141-143), never off the logic clock.
     local top = self.stack:top()
@@ -1347,6 +1353,25 @@ function Game2:load(opts)
   end
 end
 
+Game2.SESSION_SFX = {
+  -- engine/overworld/scripting.asm:467
+  "Sfx_Item", "Sfx_KeyItem", "Sfx_GetTm",
+  "Sfx_ReadText2", "Sfx_Menu", "Sfx_Bump", "Sfx_EnterDoor",
+  "Sfx_ExitBuilding", "Sfx_JumpOverLedge", "Sfx_WarpTo", "Sfx_WarpFrom",
+  "Sfx_Save", "Sfx_Transaction", "Sfx_Wrong", "Sfx_SwitchPokemon",
+  "Sfx_GetBadge", "Sfx_Strength",
+}
+
+function Game2:prewarmSessionSfx()
+  local Sound = require("src.core.Sound")
+  local ChipAudio = require("src.core.ChipAudio")
+  ChipAudio.prewarmPinned(function()
+    for _, name in ipairs(Game2.SESSION_SFX) do
+      pcall(Sound.prewarmSfx, self.data, name)
+    end
+  end)
+end
+
 function Game2:inFillBoot()
   -- Entire pre-world cinema (copyright / title / Oak / name / nested NamingScreen)
   -- draws in GB letterbox space.
@@ -1381,6 +1406,9 @@ function Game2:logicSpeed()
 end
 
 function Game2:update(dt)
+  require("src.core.DeferredWrite").tick()
+  local ChipAudio = package.loaded["src.core.ChipAudio"]
+  if ChipAudio then ChipAudio.pumpEffects() end
   -- _UpdateSound is a VBlank job, so it runs at 60Hz off real time whatever the
   -- logic multiplier is (audio/engine.asm:84, home/vblank.asm:141-143).
   local step = FixedStep.STEP
@@ -2139,7 +2167,7 @@ end
 -- path binds them in (src/core/Game.lua keypressed), driving the same shared
 -- modules so a player's muscle memory carries between the two games:
 --
---   F1/F2  write / reload the save        1  GAME SPEED
+--   F1/F2  write / reload the save        1  GAME SPEED (0 steps down)
 --   -  =   zoom one step out / in         2  COLOR
 --   4      cycle ZOOM                     3  TILT (mnemonic: 3D)
 --
@@ -2167,6 +2195,12 @@ function Game2:hotkey(key)
     if self:speedLocked() then return true end
     local GameSpeed = require("src.core.GameSpeed")
     options.speed = GameSpeed.cycle(options.speed, 1)
+    persist()
+    return true
+  elseif hk == "0" then
+    if self:speedLocked() then return true end
+    local GameSpeed = require("src.core.GameSpeed")
+    options.speed = GameSpeed.cycle(options.speed, -1)
     persist()
     return true
   elseif hk == "2" then
@@ -2204,7 +2238,7 @@ function Game2:storeZoom()
   self.options = options
   options.zoom = require("src.render.Zoom").offset
   if self.save then self.save.options = options end
-  self:persistOptions()
+  require("src.core.DeferredWrite").schedule("options", function() self:persistOptions() end)
 end
 
 function Game2:zoomStep(delta)
@@ -2417,7 +2451,7 @@ end
 function Game2:focus(f)
   Input:reset()
   TouchControls:reset()
-  if f then Input:reconcile() end
+  if f then Input:reconcile() else require("src.core.DeferredWrite").flush("options") end
   self:cancelPointers()
 end
 
@@ -2425,6 +2459,7 @@ function Game2:visible(v)
   if v then
     self:onResume()
   else
+    require("src.core.DeferredWrite").flush("options")
     Input:reset()
     TouchControls:reset()
     self:cancelPointers()
@@ -2599,6 +2634,18 @@ function Game2:gamepadaxis(joystick, axis, value)
       end
       return
     end
+    local stickEvents = Input.stickAxisEvents and Input:stickAxisEvents(axis, value)
+    if stickEvents then
+      for i = 1, #stickEvents do
+        local ev = stickEvents[i]
+        if ev.phase == "pressed" then
+          padPressedBody(self, joystick, ev.button)
+        elseif ev.phase == "released" then
+          padReleasedBody(self, joystick, ev.button)
+        end
+      end
+      return
+    end
     Input:gamepadaxis(joystick, axis, value)
   end
   if not ModRuntime.wantsHook("input.gamepad") then return vanilla() end
@@ -2680,6 +2727,7 @@ end
 -- Same rule as Gen1: only release known GPU owners -- never fan out
 -- arbitrary field:release() (shared modules use :release as a handle API).
 function Game2:reset()
+  require("src.core.DeferredWrite").flush("options")
   if self.stack and self.stack.clear then
     pcall(function() self.stack:clear() end)
   end

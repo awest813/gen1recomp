@@ -9,8 +9,10 @@
 --   CRED_TEXT_MON       text appears at once, hold 110, mon wipe
 --   CRED_TEXT_FADE      fade in, hold 120, next screen replaces the text
 --   CRED_TEXT           text appears at once, hold 140
--- The mon wipe is DisplayCreditsMon: three CreditsCopyTileMapToVRAM copies
--- (9 frames of Delay3, text still up), then the middle band scrolls left 8px
+-- The mon wipe is DisplayCreditsMon: LoadFrontSpriteByMonIndex decompresses
+-- the pic with the text still up (~36 frames of CPU on the Game Boy, see
+-- MON_LOAD_FRAMES), three CreditsCopyTileMapToVRAM copies follow (9 frames
+-- of Delay3, text still up), then the middle band scrolls left 8px
 -- per frame for 27 frames (ScrollCreditsMonLeft x7 then x20) while the next
 -- CreditsMons entry crosses right-to-left as a black silhouette
 -- (BGP %11111100), leaving the band blank; BGP is left at %11000000, which
@@ -62,6 +64,26 @@ local WIPE_FRAMES = 27 -- ScrollCreditsMonLeft: 7 + 20 calls, 8px/frame
 -- by the ROM program (Music_Credits is 5880 frames and does not loop), which
 -- is what made the song look like it overran the roll (#703).
 local MON_PREP_FRAMES = 9
+-- LoadFrontSpriteByMonIndex is the one piece of the roll that is not a
+-- DelayFrames loop: UncompressMonSprite, InterlaceMergeSpriteBuffers and the
+-- vFrontPic copy run on the CPU while the credits text is still on screen,
+-- and a 7x7 pic costs the Game Boy about 0.6s.  Timed against a hardware
+-- recording, THE END comes up ~95s after the letterbox bars appear, against
+-- the 86s the DelayFrames alone add up to; the difference is 15 mon screens
+-- at 36 frames each.  Without it the port's roll ran 540 frames ahead of
+-- Music_Credits (5880 frames, no loop) and parked THE END on screen for 13s
+-- of theme instead of the original's ~4s (#2786).
+local MON_LOAD_FRAMES = 36
+
+-- the per-screen frame program, for the parity suites
+Credits.FADE_FRAMES = FADE_FRAMES
+Credits.HOLD_FADE_MON = HOLD_FADE_MON
+Credits.HOLD_MON = HOLD_MON
+Credits.HOLD_FADE = HOLD_FADE
+Credits.HOLD_TEXT = HOLD_TEXT
+Credits.WIPE_FRAMES = WIPE_FRAMES
+Credits.MON_PREP_FRAMES = MON_PREP_FRAMES
+Credits.MON_LOAD_FRAMES = MON_LOAD_FRAMES
 
 -- LoadCopyrightTiles (engine/movie/title.asm CopyrightTextString): tile
 -- sequences into the extracted title/copyright.png strip (tiles $60-$72:
@@ -221,10 +243,11 @@ function Credits:update(dt)
     self.timer = self.screen.mon and HOLD_FADE_MON or HOLD_FADE
   elseif self.phase == "hold" then
     if self.screen.mon then
-      -- the text stays up through DisplayCreditsMon's VRAM copies; the
-      -- silhouette only starts moving once ScrollCreditsMonLeft does
+      -- the text stays up through DisplayCreditsMon's sprite decompression
+      -- and VRAM copies; the silhouette only starts moving once
+      -- ScrollCreditsMonLeft does
       self.phase = "mon_prep"
-      self.timer = MON_PREP_FRAMES
+      self.timer = MON_LOAD_FRAMES + MON_PREP_FRAMES
     else
       self:nextScreen()
     end

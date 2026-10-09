@@ -73,6 +73,22 @@ function Display.fit(winW, winH)
     if d and d > 1e-6 then dpiX, dpiY = d, d end
   end
 
+  local okPF, Playfield = pcall(require, "src.render.Playfield")
+  if okPF and Playfield and Playfield.cutout then
+    local vx, vy, vw, vh = Playfield.cutout(winW, winH)
+    if vx and vw and vh and vw > 0 and vh > 0 then
+      local k = math.max(1, math.floor(math.min(vw * dpiX / Display.W, vh * dpiY / Display.H) + 1e-9))
+      local scaleX, scaleY = k / dpiX, k / dpiY
+      local pw = Display.W * scaleX
+      local ph = Display.H * scaleY
+      local ox = vx + (vw - pw) * 0.5
+      local oy = vy + (vh - ph) * 0.5
+      ox = math.floor(ox * dpiX + 1e-9) / dpiX
+      oy = math.floor(oy * dpiY + 1e-9) / dpiY
+      return scaleX, ox, oy, pw, ph, scaleY
+    end
+  end
+
   local isPortrait = safeH > safeW
   local k, ox, oy, pw, ph, scaleX, scaleY
 
@@ -237,7 +253,10 @@ local function drawFieldPlane(game, vw, vh, Renderer)
   if Tilt.active() and not transitioning and Renderer and Renderer.beginUprightPass then
     FieldView.draw(game, vw, vh, { skipActors = true, exchangeCanvas = exchange })
     Renderer:beginUprightPass()
-    FieldView.draw(game, vw, vh, { actorsOnly = true, billboard = true })
+    FieldView.draw(game, vw, vh, {
+      actorsOnly = true, billboard = true,
+      endUnderActors = function(drawOverhead) Renderer:occludeUprightActors(drawOverhead) end,
+    })
     Renderer:endUprightPass()
   else
     FieldView.draw(game, vw, vh, { exchangeCanvas = exchange })
@@ -344,6 +363,7 @@ local function presentPlanes(game)
   local vw, vh = Renderer:worldViewSize()
   drawFieldPlane(game, vw, vh, Renderer)
   love.graphics.pop()
+  love.graphics.setCanvas(Renderer.worldCanvas)
   local Transition = package.loaded["src.core.game3.battle_transition"]
   if Transition and Transition.isActive and Transition.isActive() then
     Transition.drawWorld(Renderer.worldCanvas, vw, vh)

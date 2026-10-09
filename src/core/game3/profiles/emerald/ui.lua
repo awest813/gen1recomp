@@ -52,6 +52,13 @@ return {
       -- pokeemerald/src/menu_specialized.c:1503
       levelUpStats = { "gText_MaxHP", "gText_Attack", "gText_Defense", "gText_SpAtk", "gText_SpDef", "gText_Speed" },
     },
+    -- pokeemerald/src/data/party_menu.h:658
+    cursorOptionTexts = {
+      "gText_Summary5", "gText_Switch2", "gText_Cancel2", "gText_Item", "gMenuText_Give", "gText_Take",
+      "gText_Mail", "gText_Take2", "gText_Read2", "gText_Cancel2", "gText_Shift", "gText_SendOut",
+      "gText_Enter", "gText_NoEntry", "gText_Store", "gText_Register", "gText_Trade4", "gText_Trade4",
+      "gMenuText_Toss",
+    },
     -- pokeemerald/src/party_menu.c:2101
     buttons = { cancel = "gText_Cancel", confirm = "gMenuText_Confirm" },
     -- pokeemerald/src/party_menu.c:2557
@@ -85,7 +92,17 @@ return {
     gText_MonIsTryingToLearnMove = "gText_MoveRelearnerPkmnTryingToLearnMove",
     gText_WhichMoveShouldBeForgotten = "gText_MoveRelearnerWhichMoveToForget",
     gText_MonForgotOldMoveAndMonLearnedNewMove = "gText_MoveRelearnerPkmnForgotMoveAndLearnedNew",
+    -- pokeemerald/src/daycare.c:59
+    gOtherText_Exit = "gText_Exit",
   },
+  -- pokeemerald/src/daycare.c:42
+  daycareLevelMenu = { left = 15, top = 1, width = 14, height = 6,
+    -- pokeemerald/src/text.c:134
+    rowPitch = 16,
+    -- pokeemerald/src/daycare.c:71
+    textX = 8, textY = 1,
+    -- pokeemerald/src/daycare.c:1221
+    levelRight = 112 },
   -- pokeemerald/src/berry_powder.c:223
   berryPowderBox = { left = 1, top = 1, width = 7, height = 4, title = "gText_Powder", titleX = 0, titleY = 1,
     amountX = 26, amountY = 17 },

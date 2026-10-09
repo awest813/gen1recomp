@@ -463,10 +463,12 @@ end
 function State.prefixedName(st, battler, name)
   name = name or State.displayName(battler)
   if battler and battler.side == "player" then return name end
+  if require("src.core.game3.battle.adapter").textSink then return name end
   local RomText = require("src.core.game3.rom_text")
   local prefix = (st ~= nil and not st.wild) and "sText_FoePkmnPrefix" or "sText_WildPkmnPrefix"
   local ok, pre = pcall(RomText.plain, prefix)
-  return (ok and pre or (st ~= nil and not st.wild and "Foe " or "Wild ")) .. name
+  pre = ok and pre or (st ~= nil and not st.wild and "Foe " or "Wild ")
+  return require("src.core.game3.battle.battle_text").withMonPrefix(pre, name)
 end
 
 function State.isFainted(battler)

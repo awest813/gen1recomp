@@ -47,10 +47,14 @@ return {
   eggHatchText = "Text_EggHatchHuh",
   -- pokeemerald/src/field_poison.c:76
   poisonFaintText = "gText_PkmnFainted_FldPsn",
+  -- pokeemerald/src/field_control_avatar.c:551
+  fieldPoisonScript = "EventScript_FieldPoison",
   -- pokeemerald/src/event_object_movement.c:1927
   invalidGfx = "OBJ_EVENT_GFX_NINJA_BOY",
   -- pokeemerald/data/scripts/field_move_scripts.inc:60
   fieldMoveScripts = true,
+  -- pokeemerald/data/scripts/flash.inc:1
+  flashScript = "EventScript_UseFlash",
   -- pokeemerald/include/constants/event_objects.h:89
   fieldMoveGfx = {
     CUT_TREE = "OBJ_EVENT_GFX_CUTTABLE_TREE",

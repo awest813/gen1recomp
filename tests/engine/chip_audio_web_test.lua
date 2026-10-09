@@ -116,6 +116,8 @@ do
   local src = ChipAudio.newSfx(data, "TEST", nil, nil, sfx)
   check(src ~= nil and src.sd ~= nil, "newSfx returns a source")
   eq(renders, 0, "newSfx took the prewarmed PCM instead of rendering")
+  eq(ChipAudio._effectStateForTest().unpinnedReady, 0,
+    "web cache consumption keeps native eviction accounting balanced")
 
   -- a play that lands while its prewarm is still running finishes that job
   check(ChipAudio.prewarmSfx(data, "TEST", 3, nil, sfx), "prewarm a pitched variant")

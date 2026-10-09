@@ -1,10 +1,12 @@
--- Real-time check of the credits roll vs Music_Credits (#703).
+-- Real-time check of the credits roll vs Music_Credits (#703, #2786).
 -- The song is a fixed 5880-frame program (audio/music/credits.asm: tempo 140,
--- no loop), so on hardware it outlasts THE END by ~12s.  Our roll ran 135
+-- no loop), so on hardware it outlasts THE END by ~4s.  Our roll first ran 135
 -- frames short of pokered because Credits:update skipped DisplayCreditsMon's
 -- three CreditsCopyTileMapToVRAM calls (each `jp Delay3`, 9 frames per mon
--- screen, 15 mon screens); that stretched the overhang to ~14.3s and made the
--- music look too fast.  This driver plays the whole roll in real time (~98s,
+-- screen, 15 mon screens, #703), then another 540 short because it gave
+-- LoadFrontSpriteByMonIndex's sprite decompression no time at all (~36 frames
+-- per mon screen on the Game Boy, #2786); together those parked THE END under
+-- 13-14s of theme.  This driver plays the whole roll in real time (~98s,
 -- do NOT set POKEPORT_SPEED: the ear half needs the real clock), counts the
 -- fixed frames itself, and leaves the screen on THE END with the theme still
 -- going so a listener can judge the tail.
@@ -51,8 +53,9 @@ return function(game)
 
   -- Frame accounting, one fixed step per sample.  From the frame Music_Credits
   -- starts (phase leaves "white") pokered reaches the end of THE END's fade at
-  -- 128 + 35 screens + 16 + 20 = 5154 frames; the 15 mon screens each spend
-  -- 9 frames in mon_prep (the Delay3 x3) before their 27-frame wipe.
+  -- 128 + 35 screens + 16 + 20 = 5694 frames; the 15 mon screens each spend
+  -- 45 frames in mon_prep (36 of sprite decompression, then the Delay3 x3)
+  -- before their 27-frame wipe.
   -- no screenshots inside this loop: U.shot yields extra fixed steps of its
   -- own and would silently skew the count
   local musicStart, theEndAt, prepFrames = nil, nil, 0
@@ -64,20 +67,19 @@ return function(game)
     if phase == "end_hold" then theEndAt = f break end
   end
 
-  check("mon_prep ran 9 frames on each of the 15 mon screens (135 total)",
-        prepFrames == 135)
-  check("THE END finishes fading 5154 frames after the music starts",
+  check("mon_prep ran 45 frames on each of the 15 mon screens (675 total)",
+        prepFrames == 675)
+  check("THE END finishes fading 5694 frames after the music starts",
         musicStart ~= nil and theEndAt ~= nil
-          and theEndAt - musicStart == 5154)
+          and theEndAt - musicStart == 5694)
   U.log("music started at driver frame", musicStart,
         "THE END done at", theEndAt, "mon_prep frames", prepFrames)
   U.shot(game, DIR .. "/bug703_the_end.png")
 
   -- Music_Credits is 5880 frames long, so from here the theme has
-  -- 5880 - 5154 = 726 frames (~12.1s) left.  That overhang is authentic:
-  -- the original does the same on hardware, and this fix only removed the
-  -- extra 2.2s our shortened roll had added on top of it.
-  U.log("listen: the theme should keep playing about 12 seconds past this")
+  -- 5880 - 5694 = 186 frames (~3.1s) left, the same short tail a hardware
+  -- recording shows between THE END and the end of the theme.
+  U.log("listen: the theme should keep playing about 3 seconds past this")
   U.wait(726)
   U.log("the song should be ending right about now; silence after this",
         "point is correct, the program has no loop")

@@ -3,7 +3,7 @@
 -- 1. Lockstep Event Queue: Prevents simultaneous tick collisions; flushes on party white-out.
 -- 2. Happiness Step Counter (128 steps): +1 friendship to all party Pokémon.
 -- 3. VS Seeker Battery (100 steps): Increments while the VS SEEKER is in the bag.
--- 4. Overworld Poison (4 steps): 4-frame reddish screen flash, SE_FIELD_POISON, lethal faint at 0 HP.
+-- 4. Overworld Poison (4 steps RSE, 5 FRLG): 4-frame reddish screen flash, SE_FIELD_POISON, lethal faint at 0 HP.
 -- 5. Egg Cycles & Daycare (daycare stepCounter == 255): Decrements egg cycles -> EggHatch; +1 EXP per step in Daycare.
 -- 6. Repel Counter: Decrements steps -> Text_RepelWoreOff on expiration.
 
@@ -84,26 +84,6 @@ local function field_white_out_event(session, game)
     end
     local Field = package.loaded["src.core.game3.field"] or require("src.core.game3.field")
     Field.lock()
-    local Rse = require("src.core.game3.rse.init")
-    if Rse.isRse(session) then
-      local Pike = require("src.core.game3.rse.frontier.pike")
-      local Pyramid = require("src.core.game3.rse.frontier.pyramid")
-      local Hill = require("src.core.game3.rse.trainer_hill")
-      if Pike.inBattlePike(session) or Pyramid.inPyramid(session) or Hill.inChallenge(session) then
-        -- pokeemerald/data/scripts/field_poison.inc:23
-        local Space = package.loaded["src.core.game3.scripting.space"]
-          or require("src.core.game3.scripting.space")
-        local key = Space.scriptKey("EventScript_FrontierFieldWhiteOut")
-        if key and Space.startScript(key) then
-          ev.phase = "frontier_script"
-          ev.tick = function()
-            local vm = Space.vm
-            if not vm or not vm.active then onDone() end
-          end
-          return
-        end
-      end
-    end
     local BattleBridge = require("src.core.game3.battle_bridge")
     local save = game and game.save
     local name = session.name or session.playerName or ""
@@ -147,6 +127,23 @@ local function field_white_out_event(session, game)
   return ev
 end
 
+local function field_poison_script_event(scriptName)
+  local ev = { type = "field_poison_script", script = scriptName }
+  ev.run = function(onDone)
+    local Space = package.loaded["src.core.game3.scripting.space"]
+      or require("src.core.game3.scripting.space")
+    local key = Space.scriptKey(scriptName)
+    if not (key and Space.startScript(key)) then
+      error("field poison script did not start: " .. tostring(scriptName))
+    end
+    ev.tick = function()
+      local vm = Space.vm
+      if not vm or not vm.active then onDone() end
+    end
+  end
+  return ev
+end
+
 --- Evaluate step counters upon completing a grid step (Walk, Run, Bike, Surf).
 function StepEvents.onStepTaken(session, game)
   if not session then return end
@@ -171,9 +168,17 @@ function StepEvents.onStepTaken(session, game)
 
   local isRse = require("src.core.game3.profile").family(session) == "rse"
   local mcOn = isRse and require("src.core.game3.capabilities").gate(session, "match_call")
-  if mcOn then
+  local RsRematch = isRse and require("src.core.game3.rs.rematch")
+  if RsRematch and RsRematch.enabled(session) then
+    -- pokeruby/src/field_control_avatar.c:576
+    RsRematch.incrementStepCounter(session)
+  elseif mcOn then
     -- pokeemerald/src/field_control_avatar.c:543
     require("src.core.game3.rse.match_call").incrementRematchStepCounter(session)
+  end
+  if isRse then
+    -- pokeemerald/src/field_control_avatar.c:545
+    require("src.core.game3.faraway_island").updateStepCounter()
   end
 
   -- pokefirered/src/field_control_avatar.c:217
@@ -226,13 +231,22 @@ function StepEvents.onStepTaken(session, game)
     return
   end
 
-  -- 3. Overworld Poison Counter (every 4 steps, pret field_poison.c)
+  -- pokeemerald/src/field_control_avatar.c:641
+  local Map = package.loaded["src.core.game3.map"]
+  local curDef = Map and Map.currentDef and Map.currentDef()
+  -- pokeemerald/include/constants/map_types.h:13
+  local psnGate = not forced and not (curDef and tonumber(curDef.mapType) == 9)
   local psnVar = Sem.var(session, "poisonSteps")
-  local psnSteps = (tonumber(session.vars[psnVar] or session.poisonSteps) or 0) + 1
-  if psnSteps >= 4 then
-    psnSteps = 0
+  local psnSteps = tonumber(session.vars[psnVar] or session.poisonSteps) or 0
+  -- pokeemerald/src/field_control_avatar.c:645
+  -- pokefirered/src/field_control_avatar.c:718
+  local psnPeriod = isRse and 4 or 5
+  if psnGate then psnSteps = (psnSteps + 1) % psnPeriod end
+  if psnGate and psnSteps == 0 then
     local anyPoisonDamage = false
     local faintedMons = {}
+    local profileField = require("src.core.game3.profile").forSession(session).field
+    local poisonScript = profileField and profileField.fieldPoisonScript
 
     for slotIdx, mon in ipairs(party) do
       local isEgg = mon.isEgg or (type(mon.egg) == "boolean" and mon.egg)
@@ -243,7 +257,9 @@ function StepEvents.onStepTaken(session, game)
       if not isEgg and isPsn and hp > 0 then
         anyPoisonDamage = true
         mon.hp = math.max(0, hp - 1)
-        if mon.hp == 0 then
+        if mon.hp == 0 and poisonScript then
+          faintedMons[#faintedMons + 1] = { slot = slotIdx, mon = mon }
+        elseif mon.hp == 0 then
           -- pokefirered/src/field_poison.c:36
           Pokemon.adjustFriendship(mon, Pokemon.FRIENDSHIP_EVENT_FAINT_OUTSIDE_BATTLE,
             { mapSec = Pokemon.currentMapSec(session) })
@@ -265,6 +281,11 @@ function StepEvents.onStepTaken(session, game)
 
       -- pokefirered/src/field_control_avatar.c:727 FLDPSN_FNT
       poisonFainted = #faintedMons > 0
+      if poisonFainted and poisonScript then
+        -- pokeemerald/src/field_control_avatar.c:551
+        push_event(field_poison_script_event(poisonScript))
+        faintedMons = {}
+      end
       for _, fainted in ipairs(faintedMons) do
         push_event({
           type = "poison_faint",
@@ -281,7 +302,7 @@ function StepEvents.onStepTaken(session, game)
         })
       end
       -- pokefirered/src/field_poison.c:76
-      if poisonFainted then push_event(field_white_out_event(session, game)) end
+      if poisonFainted and not poisonScript then push_event(field_white_out_event(session, game)) end
     end
   end
   session.vars[psnVar] = psnSteps
@@ -356,9 +377,12 @@ function StepEvents.onStepTaken(session, game)
   end
 
   if isRse and require("src.core.game3.special_scene_rse").countSSTidalStep(1) then
-    -- pokeemerald/src/field_control_avatar.c:599
+    -- pokeruby/src/field_control_avatar.c:593
     local Space = require("src.core.game3.scripting.space")
-    local key = Space.scriptKey("SSTidalCorridor_EventScript_ReachedStepCount")
+    local id = require("src.core.game3.profile").forSession(session).id
+    local name = (id == "ruby" or id == "sapphire") and "gUnknown_0815FD0D"
+      or "SSTidalCorridor_EventScript_ReachedStepCount"
+    local key = Space.scriptKey(name)
     if key and Space.startScript(key) then
       StepEvents.onRepelStep(session, game)
       return
@@ -380,12 +404,11 @@ function StepEvents.onRepelStep(session, game)
   local Py = package.loaded["src.core.game3.rse.frontier.pyramid"]
   -- pokeemerald/src/wild_encounter.c:854
   if (Pike and Pike.inBattlePike(session)) or (Py and Py.inPyramid(session)) then return end
-  local repelVar = Sem.var(session, "repelSteps")
-  local repelSteps = tonumber(session.repelSteps or session.vars[repelVar]) or 0
+  local repelSteps = tonumber(Sem.getVar(session, "repelSteps")) or 0
   if repelSteps > 0 then
     repelSteps = repelSteps - 1
     session.repelSteps = repelSteps
-    session.vars[repelVar] = repelSteps
+    Sem.setVar(session, "repelSteps", repelSteps)
 
     if repelSteps == 0 then
       push_event({

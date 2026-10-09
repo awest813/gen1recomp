@@ -20,6 +20,30 @@ TextPlaceholders.SYMBOLS = {
   GROUDON = "gText_ExpandedPlaceholder_Groudon",
 }
 
+-- pokeruby/src/string_util.c:476
+function TextPlaceholders.rsSymbols(game)
+  local stems = {
+    UNKNOWN = "Empty", KUN_MALE = "Kun", KUN_FEMALE = "Chan",
+    RIVAL_MALE = "May", RIVAL_FEMALE = "Brendan",
+    VERSION = game == "sapphire" and "Sapphire" or "Ruby",
+    AQUA = "Aqua", MAGMA = "Magma", ARCHIE = "Archie", MAXIE = "Maxie",
+    KYOGRE = "Kyogre", GROUDON = "Groudon",
+  }
+  local evil, good = { "Magma", "Maxie", "Groudon" }, { "Aqua", "Archie", "Kyogre" }
+  if game == "sapphire" then evil, good = good, evil end
+  for i, name in ipairs({ "TEAM", "LEADER", "LEGENDARY" }) do
+    stems["EVIL_" .. name], stems["GOOD_" .. name] = evil[i], good[i]
+  end
+  local out = {}
+  for name, stem in pairs(stems) do out[name] = "gExpandedPlaceholder_" .. stem end
+  return out
+end
+
+function TextPlaceholders.symbolsFor(game)
+  if game == "ruby" or game == "sapphire" then return TextPlaceholders.rsSymbols(game) end
+  return TextPlaceholders.SYMBOLS
+end
+
 -- pokeemerald/src/string_util.c:448
 TextPlaceholders.BY_GENDER = {
   KUN = { male = "KUN_MALE", female = "KUN_FEMALE" },
@@ -46,6 +70,9 @@ function TextPlaceholders.extract(rom, offsets)
   local out = { byGender = {} }
   for name in pairs(TextPlaceholders.SYMBOLS) do
     out[name] = read_plain(rom, assert(offsets[name], "no offset for placeholder " .. name))
+  end
+  for name, off in pairs(offsets) do
+    if out[name] == nil then out[name] = read_plain(rom, off) end
   end
   for name, pair in pairs(TextPlaceholders.BY_GENDER) do
     out.byGender[name] = { male = out[pair.male], female = out[pair.female] }

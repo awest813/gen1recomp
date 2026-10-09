@@ -1049,6 +1049,8 @@ do
   f:write(SaveData.encode(data))
   f:close()
 
+  local stubDimensions = love.graphics.getDimensions
+  love.graphics.getDimensions = function() return 1280, 900 end
   App.load(tmpPath, { version = "red" })
   local S = App.getState()
   S.tab = "party"
@@ -1107,6 +1109,7 @@ do
   App.textinput("POKE@MON")
   App.draw()
   eq(S.nicknameDraft, "POKEMON", "the @ terminator is stripped at input")
+  love.graphics.getDimensions = stubDimensions
 
   os.remove(tmpPath)
   for _, bak in ipairs(FsIo.globPrefix(tmpPath .. ".bak-")) do os.remove(bak) end
@@ -1634,7 +1637,8 @@ end
 
 do
   local interp = arg and arg[-1] or "luajit"
-  for _, suite in ipairs({ "tests/save_editor_gen3_tests.lua", "tests/save_editor_gen3_persistence_tests.lua" }) do
+  for _, suite in ipairs({ "tests/save_editor_gen3_tests.lua", "tests/save_editor_gen3_persistence_tests.lua",
+      "tests/save_editor_split_stack_bug2671_test.lua" }) do
     local r = os.execute(interp .. " " .. suite)
     check(r == true or r == 0, suite .. " passes")
   end

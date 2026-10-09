@@ -5,9 +5,17 @@ local RomText = require("src.core.game3.rom_text")
 local FrlgFont = require("src.ui.game3.frlg_font")
 local Constants = require("src.core.game3.constants")
 local Pal = require("src.core.game3.pal_fade")
+local Stack = require("src.ui.game3.stack")
+local Screens = require("src.ui.game3.screens")
+local PixelCanvas = require("src.render.PixelCanvas")
 
 local MainMenu = {}
 MainMenu.__index = MainMenu
+
+local function childLayer()
+  local top = Stack.top()
+  if top and top.id ~= "option" and top.mod then return top end
+end
 
 -- pokeemerald/src/main_menu.c:512
 MainMenu.TYPE = {
@@ -388,8 +396,14 @@ function MainMenu:update(input, dt)
     return nil
   end
   if self.state == "options" and self.optionMenu then
-    self.optionMenu.handleInput(input)
-    if self.optionMenu.update then self.optionMenu.update() end
+    local child = childLayer()
+    if child then
+      Screens.handleInput(child.id, child.mod, input)
+      if child.mod.update then child.mod.update() end
+    else
+      self.optionMenu.handleInput(input)
+      if self.optionMenu.update then self.optionMenu.update() end
+    end
   end
   self.step:collect(input)
   return self.step:run(dt, function(inp) return self:frame(inp) end)
@@ -462,7 +476,7 @@ function MainMenu:draw()
   local darken = self.state == "input" or self.state == "a_pressed" or self.state == "b_pressed"
   local canvas
   if darken and love.graphics.newCanvas then
-    layerCanvas = layerCanvas or love.graphics.newCanvas(240, 160)
+    layerCanvas = layerCanvas or PixelCanvas.new(240, 160)
     layerCanvas:setFilter("nearest", "nearest")
     canvas = layerCanvas
     love.graphics.push("all")
@@ -495,7 +509,8 @@ function MainMenu:draw()
     self.errorPrinter:draw(e.left * 8, e.top * 8 + 1, { colors = c.error })
   end
   if self.state == "options" and self.optionMenu then
-    self.optionMenu.draw()
+    local child = childLayer()
+    if child then Screens.draw(child.id, child.mod) else self.optionMenu.draw() end
   end
   Kit.drawFade(self.pal, 0)
 end

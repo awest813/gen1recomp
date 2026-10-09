@@ -43,6 +43,8 @@ local function fullAssetName(version, osName, arch, port)
     return "gen1recomp-" .. version .. "-xbox-uwp.zip"
   elseif osName == "NX" then
     return "gen1recomp-" .. version .. "-switch.zip"
+  elseif osName == "PS4" then
+    return "gen1recomp-" .. version .. "-ps4.pkg"
   elseif osName == "Linux" and (port == "flatpak"
       or (type(os.getenv) == "function" and os.getenv("FLATPAK_ID"))) then
     return "gen1recomp-" .. version .. "-linux.flatpak"
@@ -203,6 +205,7 @@ if persistedRequirement then
 end
 
 local function ensureWorker()
+  if os.getenv("POKEPORT_PORTMASTER_MANAGED") == "1" then return false end
   if workerReady ~= nil then return workerReady end
   if not Platform.networkValidated() then
     workerReady = false
@@ -254,6 +257,8 @@ end
 -- once a check is in flight or has reached a terminal state it is a no-op unless
 -- force=true is passed (e.g. from an explicit button press).
 function Check.start(force)
+  -- Do not offer standalone SBC archives over a catalogue-managed install.
+  if os.getenv("POKEPORT_PORTMASTER_MANAGED") == "1" then return end
   drain()
   if cache.status == "checking" or cache.status == "downloading" then return end
   if not force and requested and cache.status ~= "error" and cache.status ~= "idle" then return end
@@ -271,6 +276,7 @@ end
 -- idle | checking | uptodate | available | downloading | ready | needs_full |
 -- full_downloading | full_ready | error.
 function Check.state()
+  if os.getenv("POKEPORT_PORTMASTER_MANAGED") == "1" then return { status = "idle" } end
   drain()
   return {
     status = cache.status or "idle",

@@ -2,6 +2,7 @@ local bit = require("bit")
 local band, rshift = bit.band, bit.rshift
 
 local Fx = require("src.ui.game3.rse.contest_image_fx")
+local PixelCanvas = require("src.render.PixelCanvas")
 
 local Painting = {}
 
@@ -171,11 +172,15 @@ function Painting.build(opts)
   local winner = assert(opts.winner, "contest painting needs a winner")
   local saveIdx = tonumber(opts.saveIdx) or 0
   local map, gfxPath, key = Painting.frameMap(saveIdx, winner, opts.isForArtist, man)
+  local caption
+  if opts.nativePolicy then caption = opts.nativePolicy.caption(saveIdx, winner, opts.isForArtist, man)
+  else caption = Painting.caption(saveIdx, winner, opts.isForArtist, man) end
   return {
     winner = winner, saveIdx = saveIdx, isForArtist = opts.isForArtist and true or false,
     map = map, gfx = assert(readCache(gfxPath)), frameKey = key,
     mon = Painting.processMon(winner, saveIdx, man),
-    caption = Painting.caption(saveIdx, winner, opts.isForArtist, man),
+    caption = caption,
+    nativePolicy = opts.nativePolicy,
     framePalette = man.framePalette,
   }
 end
@@ -351,7 +356,7 @@ end
 function Painting.draw()
   if not st or st.headless then return end
   local lg = love.graphics
-  st.canvas = st.canvas or lg.newCanvas(240, 160)
+  st.canvas = st.canvas or PixelCanvas.new(240, 160)
   st.canvas:setFilter("nearest", "nearest")
   lg.push("all")
   lg.setCanvas(st.canvas)
@@ -360,12 +365,15 @@ function Painting.draw()
   lg.draw(st.frameImage, 0, 0)
   lg.draw(st.monImage, Painting.MON_X, Painting.MON_Y)
   if st.caption then
-    local FrlgFont = require("src.ui.game3.frlg_font")
-    local W = Painting.WINDOW
-    local colors = kit().messageColors()
-    local w = FrlgFont.measure(st.caption)
-    local x = W.left * 8 + math.floor((W.width * 8 - w) / 2)
-    FrlgFont.draw(st.caption, x, W.top * 8 + 1, { colors = colors })
+    if st.nativePolicy then st.nativePolicy.drawCaption(st, Painting.manifest())
+    else
+      local FrlgFont = require("src.ui.game3.frlg_font")
+      local W = Painting.WINDOW
+      local colors = kit().messageColors()
+      local w = FrlgFont.measure(st.caption)
+      local x = W.left * 8 + math.floor((W.width * 8 - w) / 2)
+      FrlgFont.draw(st.caption, x, W.top * 8 + 1, { colors = colors })
+    end
   end
   lg.setCanvas()
   lg.pop()

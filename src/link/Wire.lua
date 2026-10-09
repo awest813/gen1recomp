@@ -332,6 +332,9 @@ local MAX_PLAZA = 40
 local MAX_DIRECT = 64
 local MAX_GROUPS = 64
 local MAX_AVATAR_NAME = 16
+local MAX_AVATAR_STYLE = 16
+local MAX_CAPS_FP = 64
+local MAX_CAPS_ENTRIES = 11
 local MAX_MON_TEXT = 32
 local MAX_CHAT_NAME = 7
 local MAX_CHAT_TEXT = 15
@@ -414,6 +417,13 @@ function Wire.mon3(v)
     otGender = Wire.num(v.otGender, 0, 0, 1),
     nature = Wire.num(v.nature, 0, 0, 255),
     ability = Wire.num(v.ability, 0, 0, 255),
+    abilityNum = Wire.num(v.abilityNum, nil, 0, 1),
+    language = Wire.num(v.language, nil, 0, 255),
+    contest = type(v.contest) == "table" and {
+      cool = Wire.num(v.contest.cool, 0, 0, 255), beauty = Wire.num(v.contest.beauty, 0, 0, 255),
+      cute = Wire.num(v.contest.cute, 0, 0, 255), smart = Wire.num(v.contest.smart, 0, 0, 255),
+      tough = Wire.num(v.contest.tough, 0, 0, 255), sheen = Wire.num(v.contest.sheen, 0, 0, 255),
+    } or nil,
     gender = gender,
     ivs = stat6(v.ivs, 255),
     evs = stat6(v.evs, 65535),
@@ -429,6 +439,7 @@ function Wire.mon3(v)
     markings = Wire.num(v.markings, 0, 0, 255),
     isEgg = Wire.bool(v.isEgg, false),
     fatefulEncounter = Wire.bool(v.fatefulEncounter, false),
+    modernFatefulEncounter = Wire.bool(v.modernFatefulEncounter, nil),
     eggCycles = Wire.num(v.eggCycles, 0, 0, 255),
   }
 end
@@ -439,6 +450,15 @@ end
 
 Wire.party3 = party3
 
+local function avatarStyle(v)
+  if type(v) ~= "string" or not v:match("^[a-z0-9:_%-]+$") or #v > MAX_AVATAR_STYLE then
+    return nil
+  end
+  return v
+end
+
+Wire.avatarStyle = avatarStyle
+
 function Wire.avatar(v)
   if type(v) ~= "table" then return nil end
   return {
@@ -446,6 +466,46 @@ function Wire.avatar(v)
     trainerId = Wire.num(v.trainerId, 0, 0, 65535),
     gender = Wire.num(v.gender, 0, 0, 1),
     version = Wire.str(v.version, nil, MAX_AVATAR_NAME),
+    style = avatarStyle(v.style),
+    gen = Wire.num(v.gen, nil, 1, 3),
+    canLinkNationally = Wire.bool(v.canLinkNationally, nil),
+  }
+end
+
+local function capsEntry(v)
+  if type(v) ~= "table" then return nil end
+  local version = Wire.str(v.version, nil, MAX_AVATAR_NAME)
+  local fp = type(v.fp) == "string" and v.fp:lower() or nil
+  if not version or not version:match("^[a-z]+$") or not fp
+     or #fp > MAX_CAPS_FP or not fp:match("^[0-9a-f]+$") then
+    return nil
+  end
+  return { version = version, fp = fp }
+end
+
+function Wire.caps(v)
+  if type(v) ~= "table" then return nil end
+  local gens, total = {}, 0
+  local src = type(v.gens) == "table" and v.gens or {}
+  for gen = 1, 3 do
+    local list = src[tostring(gen)]
+    if list == nil then list = src[gen] end
+    if type(list) == "table" then
+      local out = {}
+      for i = 1, math.min(#list, MAX_CAPS_ENTRIES) do
+        local entry = capsEntry(list[i])
+        if entry and total < MAX_CAPS_ENTRIES then
+          out[#out + 1] = entry
+          total = total + 1
+        end
+      end
+      gens[tostring(gen)] = out
+    end
+  end
+  return {
+    proto = Wire.num(v.proto, 1, 1, 1000),
+    policy = Wire.num(v.policy, 0, 0, 1000000),
+    gens = gens,
   }
 end
 
@@ -493,6 +553,7 @@ function Wire.member(v)
     recruiting = recruiting(v.recruiting),
     board = board(v.board),
     group = memberGroup(v.group),
+    caps = Wire.caps(v.caps),
   }
 end
 
@@ -627,8 +688,84 @@ local function playerEntry(v)
     seat = Wire.num(v.seat, nil, 0, MAX_SEAT),
     party = Wire.list(v.party, MAX_TEAM, mon),
     partyDigest = Wire.str(v.partyDigest, nil, MAX_STRING),
+    gen = Wire.num(v.gen, nil, 1, 3),
+    avatar = Wire.avatar(v.avatar),
   }
 end
+
+local XG_MODES = { battle = true, trade = true }
+
+local function xgMode(v)
+  return XG_MODES[v] and v or nil
+end
+
+local function xgGens(v)
+  if type(v) ~= "table" then return nil end
+  local a, b = Wire.num(v[1], nil, 1, 3), Wire.num(v[2], nil, 1, 3)
+  if not a or not b then return nil end
+  return { a, b }
+end
+
+local function xgRules(v)
+  if type(v) ~= "table" then return nil end
+  return {
+    mode = xgMode(v.mode),
+    ruleset = Wire.str(v.ruleset, nil, MAX_NAME),
+    gen = Wire.num(v.gen, nil, 1, 3),
+    dexMax = Wire.num(v.dexMax, nil, 1, 65535),
+    moveMax = Wire.num(v.moveMax, nil, 1, 65535),
+    moveGen = Wire.num(v.moveGen, nil, 1, 3),
+    policy = Wire.num(v.policy, nil, 0, 1000000),
+    gens = xgGens(v.gens),
+  }
+end
+
+Wire.xgRules = xgRules
+
+local function xgPair(v, fn)
+  local out = {}
+  if type(v) ~= "table" then return out end
+  for i = 1, 2 do
+    if v[i] ~= nil then out[i] = fn(v[i]) end
+  end
+  return out
+end
+
+local function xgRoster(v)
+  if type(v) ~= "table" then return nil end
+  local size, digest = Wire.num(v.size, nil, 1, MAX_TEAM), Wire.digest(v.digest16)
+  if not size or not digest then return nil end
+  return { size = size, digest16 = digest }
+end
+
+local function xgOfferMeta(v)
+  if type(v) ~= "table" then return nil end
+  local offerRev, digest = Wire.num(v.offerRev, nil, 0, MAX_INT), Wire.digest(v.digest16)
+  if not offerRev or not digest then return nil end
+  return { offerRev = offerRev, digest16 = digest }
+end
+
+local function xgSnapshot(v)
+  if type(v) ~= "table" then return nil end
+  local mode = xgMode(v.mode)
+  local rev = Wire.num(v.rev, nil, 0, MAX_INT)
+  if not mode or not rev then return nil end
+  return {
+    mode = mode,
+    rev = rev,
+    gens = xgGens(v.gens),
+    rules = xgRules(v.rules),
+    blocked = Wire.str(v.blocked, nil, MAX_NAME),
+    size = Wire.num(v.size, nil, 1, MAX_TEAM),
+    caps = xgPair(v.caps, function(x) return x == true end),
+    rosters = xgPair(v.rosters, xgRoster),
+    sizeReq = xgPair(v.sizeReq, function(x) return Wire.num(x, nil, 1, MAX_TEAM) end),
+    offers = xgPair(v.offers, xgOfferMeta),
+    ready = xgPair(v.ready, function(x) return x == true end),
+  }
+end
+
+Wire.xgSnapshot = xgSnapshot
 
 local function spectatorEntry(v)
   if type(v) ~= "table" then return nil end
@@ -696,6 +833,7 @@ SCHEMAS.lobby_hello = function(m)
     platform = Wire.str(m.platform, nil, MAX_NAME),
     profiles = Wire.list(m.profiles, MAX_PROFILES, profile),
     presence = presenceFields(m.presence),
+    xgen = Wire.num(m.xgen, nil, 0, 1),
   }
 end
 
@@ -867,6 +1005,8 @@ SCHEMAS.room_state = function(m)
     maxSpectators = Wire.num(m.maxSpectators, nil, 0, MAX_SPECTATORS),
     leader = Wire.num(m.leader, nil, 0, MAX_SEAT),
     deadlines = Wire.list(m.deadlines, MAX_DEADLINES, deadlineEntry),
+    mode = xgMode(m.mode),
+    xg = xgSnapshot(m.xg),
   }
 end
 
@@ -983,7 +1123,15 @@ SCHEMAS.plaza_join = function(m)
     cap = Wire.num(m.cap, nil, 1, MAX_PLAZA),
     profile = profile(m.profile),
     avatar = Wire.avatar(m.avatar),
+    xgen = Wire.num(m.xgen, nil, 0, 1),
+    caps = Wire.caps(m.caps),
   }
+end
+
+SCHEMAS.set_caps = function(m)
+  local caps = Wire.caps(m.caps)
+  if not caps then return nil end
+  return { caps = caps }
 end
 
 SCHEMAS.plaza_leave = function(m)
@@ -1029,12 +1177,14 @@ local function groupPerson(v)
   if type(v) ~= "table" then return nil end
   local id = Wire.playerId(v.id)
   if not id then return nil end
-  return {
+  local out = {
     id = id,
     name = displayName(v.name),
     avatar = Wire.avatar(v.avatar),
     seat = Wire.num(v.seat, nil, 0, MAX_SEAT),
   }
+  if type(v.online) == "boolean" then out.online = v.online end
+  return out
 end
 
 local function groupEntry(v)
@@ -1346,7 +1496,8 @@ local function g3extra(v)
     version = Wire.str(v.version, nil, MAX_NAME),
     family = Wire.str(v.family, nil, MAX_NAME),
     gameVersion = Wire.num(v.gameVersion, nil, 0, 65535),
-    progressFlags = Wire.num(v.progressFlags, nil, 0, 255),
+    language = Wire.num(v.language, nil, 0, 65535),
+    progressFlags = Wire.num(v.progressFlags, nil, 0, 65535),
     rules = Wire.str(v.rules, nil, 128),
     core = Wire.digest(v.core),
     moves = Wire.digest(v.moves),
@@ -1382,12 +1533,26 @@ end)
 
 SCHEMAS.game3_exit_link_room = inner3(function() return {} end)
 
+-- pokeruby/src/overworld.c:2282
+SCHEMAS.game3_link_player = inner3(function(m)
+  return {
+    map = Wire.str(m.map, nil, MAX_NAME),
+    x = Wire.num(m.x, nil, 0, 65535),
+    y = Wire.num(m.y, nil, 0, 65535),
+    tx = Wire.num(m.tx, nil, 0, 65535),
+    ty = Wire.num(m.ty, nil, 0, 65535),
+    facing = Wire.str(m.facing, nil, 8),
+    frames = Wire.num(m.frames, nil, 1, 64),
+    busy = Wire.bool(m.busy, nil),
+  }
+end)
+
 SCHEMAS.game3_battle_linkup = inner3(function(m)
   return {
     linkType = Wire.num(m.linkType, nil, 0, 65535),
     players = Wire.num(m.players, nil, 0, MAX_SEATS),
     version = Wire.num(m.version, nil, 0, 65535),
-    progressFlags = Wire.num(m.progressFlags, nil, 0, 255),
+    progressFlags = Wire.num(m.progressFlags, nil, 0, 65535),
   }
 end)
 
@@ -1580,6 +1745,7 @@ SCHEMAS.game3_trade_party = inner3(function(m)
     gender = Wire.num(m.gender, 0, 0, 1),
     version = Wire.num(m.version, nil, 0, 255) or Wire.str(m.version, nil, MAX_NAME),
     progressFlags = Wire.num(m.progressFlags, nil, 0, MAX_INT),
+    giftRibbons = m.giftRibbons ~= nil and Wire.list(m.giftRibbons, 11, function(v) return Wire.num(v, 0, 0, 255) end) or nil,
   }
 end)
 
@@ -1727,6 +1893,114 @@ SCHEMAS.game3_mg_leader = inner3(function(m)
   return {
     prev = Wire.num(m.prev, nil, -1, MAX_SEAT),
     epoch = Wire.num(m.epoch, 0, 0, MAX_INT),
+  }
+end)
+
+local XG_PAYLOAD_DEPTH = 8
+local XG_PAYLOAD_STRING = 256
+local XG_WHY = 40
+
+local function xgPayload(v, depth)
+  if type(v) ~= "table" or depth > XG_PAYLOAD_DEPTH then return nil end
+  local out = {}
+  for k, val in pairs(v) do
+    local kt, vt = type(k), type(val)
+    if (kt == "string" and #k <= MAX_STRING) or (kt == "number" and k == k) then
+      if vt == "string" then out[k] = Wire.str(val, nil, XG_PAYLOAD_STRING)
+      elseif vt == "number" then
+        if val == val then out[k] = val end
+      elseif vt == "boolean" then out[k] = val
+      elseif vt == "table" then out[k] = xgPayload(val, depth + 1) end
+    end
+  end
+  return out
+end
+
+local function xgInner(fn)
+  return function(m)
+    local out = fn(m)
+    if not out then return nil end
+    out.seat = seatNum(m.seat)
+    out.relay = Wire.bool(m.relay, nil)
+    return out
+  end
+end
+
+local function xgRev(v)
+  return Wire.num(v, nil, 0, MAX_INT)
+end
+
+SCHEMAS.xg_caps = xgInner(function(m)
+  return { caps = Wire.caps(m.caps) }
+end)
+
+SCHEMAS.xg_rules = xgInner(function(m)
+  local out = xgRules(m)
+  out.rev = xgRev(m.rev)
+  return out
+end)
+
+SCHEMAS.xg_blocked = xgInner(function(m)
+  return { rev = xgRev(m.rev), why = Wire.str(m.why, nil, MAX_NAME) }
+end)
+
+SCHEMAS.xg_counter = xgInner(function(m)
+  return { rev = xgRev(m.rev), gen = Wire.num(m.gen, nil, 1, 3) }
+end)
+
+SCHEMAS.xg_roster = xgInner(function(m)
+  return { rev = xgRev(m.rev), size = Wire.num(m.size, nil, 1, MAX_TEAM),
+           digest16 = Wire.digest(m.digest16) }
+end)
+
+SCHEMAS.xg_size = xgInner(function(m)
+  return { rev = xgRev(m.rev), size = Wire.num(m.size, nil, 1, MAX_TEAM) }
+end)
+
+SCHEMAS.xg_size_req = SCHEMAS.xg_size
+
+SCHEMAS.xg_offer = xgInner(function(m)
+  return { rev = xgRev(m.rev), offerRev = Wire.num(m.offerRev, nil, 0, MAX_INT),
+           payload = xgPayload(m.payload, 0), digest16 = Wire.digest(m.digest16) }
+end)
+
+SCHEMAS.xg_rev = xgInner(function(m)
+  return { rev = xgRev(m.rev), cause = Wire.str(m.cause, nil, MAX_NAME) }
+end)
+
+SCHEMAS.xg_ready = xgInner(function(m)
+  return { rev = xgRev(m.rev), digest16 = Wire.digest(m.digest16) }
+end)
+
+SCHEMAS.xg_go = xgInner(function(m)
+  return {
+    rev = xgRev(m.rev),
+    seed = Wire.num(m.seed, nil, 0, MAX_INT),
+    match = Wire.str(m.match, nil, MAX_NAME),
+    mode = xgMode(m.mode),
+    ruleset = Wire.str(m.ruleset, nil, MAX_NAME),
+    size = Wire.num(m.size, nil, 1, MAX_TEAM),
+    gen = Wire.num(m.gen, nil, 1, 3),
+    dexMax = Wire.num(m.dexMax, nil, 1, 65535),
+    moveMax = Wire.num(m.moveMax, nil, 1, 65535),
+    moveGen = Wire.num(m.moveGen, nil, 1, 3),
+  }
+end)
+
+SCHEMAS.xg_cancel = xgInner(function(m)
+  return { why = Wire.str(m.why, nil, XG_WHY) }
+end)
+
+SCHEMAS.xg_closed = xgInner(function(m)
+  return { why = Wire.str(m.why, nil, MAX_NAME), detail = Wire.str(m.detail, nil, XG_WHY) }
+end)
+
+SCHEMAS.xg_nack = xgInner(function(m)
+  return {
+    of = Wire.str(m.of, nil, MAX_NAME),
+    why = Wire.str(m.why, nil, MAX_NAME),
+    rev = xgRev(m.rev),
+    current = xgRev(m.current),
   }
 end)
 

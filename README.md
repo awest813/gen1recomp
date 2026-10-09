@@ -1,6 +1,6 @@
 # G1R Deluxe aka Gen1Recomp
 
-A native LÖVE2D recreation of Poke Red, Blue, Yellow, Gold, Silver, Crystal, FireRed, LeafGreen, and Emerald.
+A native LÖVE2D recreation of Poke Red, Blue, Yellow, Gold, Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald.
 The engine and map behavior are hand-written Lua; game data and graphics are 
 decoded from a ROM supplied by the player.
 
@@ -61,7 +61,7 @@ And before you say, "that's not a recomp", you're wrong. Recomp is an acronym. *
 ## What this is
 
 G1R Deluxe aka Gen1Recomp is a native LÖVE2D recreation of Pokemon Red, Blue, Yellow, Gold,
-Silver, Crystal, FireRed, LeafGreen, and Emerald. The engine and map behavior are
+Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald. The engine and map behavior are
 hand-written Lua, ported from the [pret](https://github.com/pret)
 disassemblies & C. Game data, graphics, and audio programs are decoded on first
 launch from a ROM you supply.
@@ -70,7 +70,7 @@ The project does not include a ROM, emulate the Game Boy, transpile assembly,
 or download a disassembly. Your ROM is verified, used during import, and
 released from memory. It is never copied into the cache, and later launches
 load the private generated cache without asking for it again. Music, sound
-effects, and cries are synthesized while the game runs. All nine games can be
+effects, and cries are synthesized while the game runs. All eleven games can be
 imported side by side. Gen 2 support is still under construction.
 
 ## Quick Start
@@ -79,12 +79,14 @@ imported side by side. Gen 2 support is still under construction.
    [latest release](https://github.com/bryanthaboi/gen1recomp/releases/latest).
 2. Launch it. The packaged app contains no ROM and no game data, so the
    launcher will ask for one.
-3. Choose your legally obtained `.gb` / `.gbc` / `.gba` file, or drop it onto
-   the window. Import takes a few seconds and the game starts automatically.
+3. Choose your legally obtained `.gb` / `.gbc` / `.gba` file, a `.zip` /
+   `.7z` that holds one (offered only where your platform's build supports
+   archives), or drop it onto the window. Import takes a few seconds and the
+   game starts automatically.
 4. Repeat for any other game you own. Each one gets its own tab in the launcher.
 
 Only the canonical US English ROMs below are accepted. The importer checks the
-SHA-1 before creating any game data. FireRed, LeafGreen, and Emerald support is in beta.
+SHA-1 before creating any game data. FireRed, LeafGreen, Ruby, Sapphire, and Emerald support is in beta.
 
 | Game | Revision | ROM size | SHA-1 |
 | --- | --- | --- | --- |
@@ -100,11 +102,18 @@ SHA-1 before creating any game data. FireRed, LeafGreen, and Emerald support is 
 | LeafGreen | 1.0 | 16 MiB | `574fa542ffebb14be69902d1d36f1ec0a4afd71e` |
 | LeafGreen | 1.1 | 16 MiB | `7862c67bdecbe21d1d69ce082ce34327e1c6ed5e` |
 | Emerald | 1.0 | 16 MiB | `f3ae088181bf583e55daf962a92bb46f4f1d07b7` |
+| Ruby | 1.0 | 16 MiB | `f28b6ffc97847e94a6c21a63cacf633ee5c8df1e` |
+| Ruby | 1.1 | 16 MiB | `610b96a9c9a7d03d2bafb655e7560ccff1a6d894` |
+| Ruby | 1.2 | 16 MiB | `5b64eacf892920518db4ec664e62a086dd5f5bc8` |
+| Sapphire | 1.0 | 16 MiB | `3ccbbd45f8553c36463f13b938e833f652b793e4` |
+| Sapphire | 1.1 | 16 MiB | `4722efb8cd45772ca32555b98fd3b9719f8e60a9` |
+| Sapphire | 1.2 | 16 MiB | `89b45fb172e6b55d51fc0e61989775187f6fe63c` |
 
 **Platform notes:** [Linux](docs/platforms/linux.md),
 [iOS](docs/platforms/ios.md), [Xbox Dev Mode](docs/platforms/xbox.md),
 [handhelds](docs/platforms/handhelds.md),
-[Nintendo Switch](docs/platforms/switch.md), and the
+[Nintendo Switch](docs/platforms/switch.md),
+[PlayStation 4](docs/platforms/ps4.md), and the
 [web browser](docs/platforms/web.md) (beta, Red/Blue/Yellow) each have their
 own install steps.
 
@@ -130,7 +139,7 @@ Rebind any of these in-game under **OPTIONS > CONTROLS**.
 | Key       | What it does                                           |
 | --------- | ------------------------------------------------------ |
 | `-` / `=` | Zoom out / in (overworld; also mouse wheel)            |
-| `1`       | Cycle GAME SPEED up (controller: R2 faster, L2 slower) |
+| `1` / `0` | GAME SPEED up / down (controller: R2 faster, L2 slower) |
 | `2`       | Cycle COLORS                                           |
 | `3`       | Cycle TILT (free-roam overworld)                       |
 | `4`       | Cycle ZOOM through every level (free-roam overworld)   |

@@ -1222,7 +1222,8 @@ local function monRecord(base, id)
   local entry = national and t.dex and t.dex[national]
   if entry then
     record.dexEntry = { kind = entry.category or "", height = entry.height or 0,
-                        weight = entry.weight or 0 }
+                        weight = entry.weight or 0, heightM = entry.heightM,
+                        weightKg = entry.weightKg }
   end
   return record
 end
@@ -1346,6 +1347,8 @@ local function writeMon(target, t, num, value)
       category = value.dexEntry.kind or old.category,
       height = value.dexEntry.height or old.height,
       weight = value.dexEntry.weight or old.weight,
+      heightM = value.dexEntry.heightM or old.heightM,
+      weightKg = value.dexEntry.weightKg or old.weightKg,
     }
   end
   local sprites = sideTable(target, "spriteOverrides")
@@ -1809,6 +1812,9 @@ R.pokemon = {
     genderRatio = f.opt(f.int(0, 255)),
     -- the two wild held items, in the ROM's own order (rare then common)
     items = f.opt(f.list(f.id("items"))),
+    dexEntry = f.opt(f.rec{ kind = f.opt(f.str), text = f.opt(f.str),
+                            text2 = f.opt(f.str), heightM = f.opt(f.num),
+                            weightKg = f.opt(f.num) }),
     spriteFront = f.path, spriteBack = f.path, picSize = f.int(1, 7),
     source = f.opt(f.str),
     cry = f.opt(f.id("cries")), trueColor = f.opt(f.bool),
@@ -1844,7 +1850,8 @@ R.pokemon = {
                                item = f.opt(f.id("items")),
                                param = f.opt(f.int(0)) }),
     dexEntry = f.opt(f.rec{ kind = f.str, height = f.int(0),
-                            weight = f.int(0) }),
+                            weight = f.int(0), heightM = f.opt(f.num),
+                            weightKg = f.opt(f.num) }),
     spriteFront = f.path, spriteBack = f.path,
     trueColor = f.opt(f.bool),
   },
@@ -1928,6 +1935,7 @@ R.maps = {
     width = f.int(1), height = f.int(1),
     blocks = f.list(f.int(0, 255)),
     borderBlock = f.opt(f.int(0, 255)),
+    outdoor = f.opt(f.bool),
     -- A named SGB palette, which wins over the field.palettes cascade
     -- (OverworldController.lua:506 reads map.def.palette first).  Deliberately
     -- a plain string rather than f.id("palettes"): the ROM-free fixture base

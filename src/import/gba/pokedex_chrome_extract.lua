@@ -8,6 +8,7 @@
 local Versions = require("src.import.gba.versions")
 local TextIR = require("src.core.game3.scripting.text_ir")
 local Lz77 = require("src.import.gba.lz77")
+local CacheBlob = require("src.import.CacheBlob")
 
 local PokedexChromeExtract = {}
 
@@ -152,6 +153,12 @@ function PokedexChromeExtract.extractEntries(rom, cache, root)
     end
   end
 
+  local syms = Versions.SYMS
+  local function symbolAt(ptr)
+    if not (syms and syms.namesAt and ptr and ptr >= 0x08000000 and ptr < 0x0A000000) then return nil end
+    return syms.namesAt(ptr - 0x08000000)[1]
+  end
+
   local entries = {}
   -- src/data/pokemon/pokedex_entries.h:3
   for nat = 0, natDexCount do
@@ -176,6 +183,8 @@ function PokedexChromeExtract.extractEntries(rom, cache, root)
       weight = weight,
       description = desc1,
       description2 = desc2,
+      descriptionLabel = symbolAt(descPtr1),
+      descriptionLabel2 = E.desc2 and symbolAt(descPtr2) or nil,
       pokemonScale = pokemonScale,
       pokemonOffset = pokemonOffset,
       trainerScale = trainerScale,
@@ -194,8 +203,12 @@ function PokedexChromeExtract.extractEntries(rom, cache, root)
   table.sort(ids)
   for _, id in ipairs(ids) do
     local e = entries[id]
+    local labels = ""
+    for _, field in ipairs({ "descriptionLabel", "descriptionLabel2" }) do
+      if e[field] then labels = labels .. string.format(", %s = \"%s\"", field, escape_lua(e[field])) end
+    end
     lines[#lines + 1] = string.format(
-      "  [%d] = { category = \"%s\", height = %d, weight = %d, description = \"%s\", description2 = \"%s\", pokemonScale = %d, pokemonOffset = %d, trainerScale = %d, trainerOffset = %d },",
+      "  [%d] = { category = \"%s\", height = %d, weight = %d, description = \"%s\", description2 = \"%s\", pokemonScale = %d, pokemonOffset = %d, trainerScale = %d, trainerOffset = %d%s },",
       id,
       escape_lua(e.category),
       e.height or 0,
@@ -205,7 +218,8 @@ function PokedexChromeExtract.extractEntries(rom, cache, root)
       e.pokemonScale or 256,
       e.pokemonOffset or 0,
       e.trainerScale or 256,
-      e.trainerOffset or 0
+      e.trainerOffset or 0,
+      labels
     )
   end
   lines[#lines + 1] = "}"
@@ -873,7 +887,7 @@ function PokedexChromeExtract.ready(cache, cacheRoot)
       if data and #data >= minSize then return true end
     end
     if love and love.filesystem and love.filesystem.read then
-      local ok, data = pcall(love.filesystem.read, rel)
+      local ok, data = pcall(CacheBlob.readFs, rel)
       if ok and data and #data >= minSize then return true end
     end
     local f = io.open(rel, "rb")
