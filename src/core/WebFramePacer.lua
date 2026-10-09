@@ -8,6 +8,18 @@ function WebFramePacer.new()
 end
 
 function WebFramePacer:due(now, cap)
+  -- Measure callbacks, including skipped draws. Fractional refresh rates need
+  -- a refresh-aligned cadence when the requested cap nearly divides the host.
+  if not self.hostStart or now < (self.last or now)
+      or now - (self.last or now) > 0.1 then
+    self.hostStart, self.hostSamples, self.hostPeriod = now, 0, nil
+  else
+    self.hostSamples = self.hostSamples + 1
+    if self.hostSamples >= 64 then
+      self.hostPeriod = (now - self.hostStart) / self.hostSamples
+      self.hostStart, self.hostSamples = now, 0
+    end
+  end
   if self.cap ~= cap or now < (self.last or now) then
     self.measureStart, self.frames, self.lastPresent = nil, 0, nil
     self.maxInterval, self.lateFrames = 0, 0
@@ -25,8 +37,15 @@ function WebFramePacer:due(now, cap)
   -- Small browser timestamp jitter must not halve a matching-refresh cap.
   local tolerance = math.min(0.002, period * 0.1)
   if now + tolerance < self.deadline then return false end
-  if now - self.deadline >= period then
-    -- A stalled frame renders once; never burst to repay missed presents.
+  local refreshAligned = false
+  if self.hostPeriod and self.hostPeriod > 0 then
+    local ratio = period / self.hostPeriod
+    local stride = math.floor(ratio + 0.5)
+    refreshAligned = stride >= 1 and math.abs(ratio - stride) <= stride * 0.005
+  end
+  if refreshAligned or now - self.deadline >= period then
+    -- Follow matching displays without periodic phase corrections. A stalled
+    -- frame also renders once; never burst to repay missed presents.
     self.deadline = now + period
   else
     self.deadline = self.deadline + period

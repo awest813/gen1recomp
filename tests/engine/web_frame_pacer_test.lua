@@ -33,6 +33,34 @@ for _, hz in ipairs({ 60, 120, 144, 240 }) do
   end
   T.eq(count(hz, 0), hz * 10, "unlocked uses every host callback")
 end
+-- Real displays and RAF clocks are often slightly off their nominal rate.
+-- A wall-clock-only deadline must not periodically add/drop a presentation
+-- when the desired cap divides that display's cadence almost exactly.
+for _, sample in ipairs({ { 59.94, 30, 2 }, { 60.15, 30, 2 },
+    { 119.88, 30, 4 }, { 120.12, 60, 2 }, { 239.76, 60, 4 } }) do
+  local hz, cap, stride = unpack(sample)
+  local stable, last = true, nil
+  local paced = Pacer.new()
+  for i = 0, math.floor(hz * 120) do
+    local now = i / hz + ((i % 3) - 1) * 0.0005
+    if paced:due(now, cap) and i >= 128 then
+      if last and i - last ~= stride then stable = false end
+      last = i
+    end
+  end
+  T.check(stable, ("%.2fHz / %d FPS holds a %d-callback cadence for two minutes")
+    :format(hz, cap, stride))
+end
+local changing, elapsed = Pacer.new(), 0
+for _, hz in ipairs({ 60, 144, 120 }) do
+  local draws = 0
+  for i = 1, hz * 10 do
+    elapsed = elapsed + 1 / hz
+    if changing:due(elapsed, 30) and i > hz * 2 then draws = draws + 1 end
+  end
+  T.check(math.abs(draws - 240) <= 1,
+    ("display change to %dHz preserves 30 FPS after settling (%d)"):format(hz, draws))
+end
 local p = Pacer.new()
 T.check(p:due(0, 60), "first present immediate")
 T.check(p:due(5, 60), "stall presents once")
