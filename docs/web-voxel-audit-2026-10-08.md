@@ -803,3 +803,32 @@ Safe mode was restored to OFF and visibly verified; individual mod toggles
 were not edited. The launcher still lists NICK at 255:39 with 8 badges and
 151 caught, matching the starting save. The rebuilt source is available on
 the next page reload; this live gameplay audit used the preceding build.
+
+## Post-merge integration audit (October 9)
+
+The merged dev build at ef3c60ff passed the real web build workflow. Its
+broader CI run exposed a missing LuaBitOp dependency in the PUC Lua 5.1
+gate, intentional browser persistence wrappers flagged as read-only writes,
+an unregistered frame-loop contract, and an outdated launcher-return check.
+
+The return-path audit also found a real integration regression: Web was
+treated as capable of native restart. HostShell now reports that Web cannot
+restart, routing EXIT GAME through the existing in-process launcher rebuild
+without ending the Emscripten loop. A regression suite exercises the actual
+return function with both old and current loop flags, preserving handoff
+options and rejecting process teardown or native relaunch-marker writes.
+
+The browser-aware loop is registered as shell 4 with a pinned fixture;
+historical shell 3 remains intact. The compatibility workflow installs the
+same bit API used by the browser, and persistence-wrapper lint exceptions
+are scoped to the three intentional assignments. Gen 2 naming-screen gender
+glyphs now use decimal UTF-8 escapes, preserving their bytes under PUC Lua
+5.1. Source-inspection tests normalize Windows line endings.
+
+Focused LuaJIT checks pass: shell matrix 1502/1502, worker shutdown 49/49,
+restart fallback 23/23, browser launcher return 13/13, browser profile 61/61,
+web frame pacing 45/45, web audio 39/39, and native prewarm queue 28/28.
+The browser launcher-return suite also passes under PUC Lua 5.1.
+These changes address integration stability;
+steady 30/60 FPS and complete Red/Blue/Yellow voxel accuracy still require
+live verification on the merged runtime.

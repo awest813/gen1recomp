@@ -83,17 +83,23 @@ end
 
 local function wrapWrites()
   if io and io.open then
+    -- Intentional persistence wrapper for the browser filesystem.
+    -- luacheck: push ignore 122
     io.open = dirtying(io.open, function(path, mode)
       return writesMode(mode) and persistent(path)
     end)
+    -- luacheck: pop
   end
   if os then
+    -- Intentional persistence wrappers for the browser filesystem.
+    -- luacheck: push ignore 122
     if os.remove then os.remove = dirtying(os.remove, persistent) end
     if os.rename then
       os.rename = dirtying(os.rename, function(from, to)
         return persistent(from) or persistent(to)
       end)
     end
+    -- luacheck: pop
   end
   local fs = love.filesystem
   if fs then

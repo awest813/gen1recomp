@@ -107,9 +107,14 @@ osName = "iOS"
 check(HostShell.canRestart and HostShell.canRestart(),"iOS keeps its bare-quit restart")
 osName = "OS X"
 check(HostShell.canRestart and HostShell.canRestart(),"desktop keeps quit(\"restart\")")
+osName = "Web"
+check(not HostShell.canRestart(), "browser uses an in-process launcher return on older shells")
+_G.POKEPORT_LOOP_RESTART = true
+check(not HostShell.canRestart(), "browser cannot native-restart even with the current loop flag")
+_G.POKEPORT_LOOP_RESTART = nil
 
 local f = assert(io.open("main.lua", "rb"))
-local mainSrc = f:read("*a")
+local mainSrc = f:read("*a"):gsub("\r\n", "\n")
 f:close()
 local runBody = mainSrc:match("\nfunction love%.run%(%)(.-)\nend\n") or ""
 local flagAt = runBody:find("_G.POKEPORT_LOOP_RESTART = true", 1, true)

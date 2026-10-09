@@ -22,6 +22,7 @@ local SHELLS = {
   { file = "v0.2.51", last = "v0.3.57", shell = 2, legacy = true },
   { file = "v0.3.58", last = "v0.3.58", shell = 2, legacy = true },
   { file = "shell3", shell = 3, shipped = { { first = "v0.3.59", last = "v0.3.59", declared = 2 } } },
+  { file = "shell4", shell = 4 },
 }
 
 local function readFile(path)
@@ -29,7 +30,7 @@ local function readFile(path)
   if not f then return nil end
   local s = f:read("*a")
   f:close()
-  return s
+  return (s:gsub("\r\n", "\n"))
 end
 
 local function stripComments(src)
@@ -228,6 +229,7 @@ local function loadShell(fx)
     pacingEnabled = function() return true end,
     checkEmergencyQuit = noop,
     idlePresentationCap = function() return nil end,
+    WebHost = require("src.core.WebHost"),
   }, { __index = _G, __newindex = _G })
   setfenv(chunk, env)
   local saved = love.run

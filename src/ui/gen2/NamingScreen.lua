@@ -188,8 +188,8 @@ end
 
 -- engine/menus/naming_screen.asm:107-114
 function NamingScreen:genderGlyph()
-  if self.monGender == "male" then return "\xe2\x99\x82" end
-  if self.monGender == "female" then return "\xe2\x99\x80" end
+  if self.monGender == "male" then return "\226\153\130" end
+  if self.monGender == "female" then return "\226\153\128" end
   return nil
 end
 

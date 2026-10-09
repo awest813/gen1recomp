@@ -704,8 +704,8 @@ jobs:
       # love.js runs PUC Lua 5.1, not LuaJIT: this gate keeps goto, 5.2+
       # syntax and \x / \u{} escapes (silently wrong under 5.1) out of the
       # shipped tree.  See docs/proposals/web-port.md.
-      - name: install lua5.1
-        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: install lua5.1 and browser bit operations
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 lua-bitop
 
       - name: Lua 5.1 compat gate
         run: ./scripts/ci/lua51_compat.sh

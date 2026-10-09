@@ -243,6 +243,9 @@ end
 
 function HostShell.canRestart()
   local osName = love and love.system and love.system.getOS and love.system.getOS()
+  -- love.js cannot recreate its runtime with LOVE's native restart event.
+  -- Keep the browser alive and rebuild the launcher in the current session.
+  if osName == "Web" then return false end
   return osName ~= "Android" or HostShell.loopRestarts()
 end
 

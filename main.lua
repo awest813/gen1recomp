@@ -1697,11 +1697,11 @@ function love.quit()
   -- real -- endProcess joins them, then the native restart still blows up.
   -- love.js too: love.event.quit("restart") ends the Emscripten main loop
   -- for good, so the browser can only return to the launcher in-process.
-  local inProcessReturn = (osName == "Android" or osName == "iOS"
+  local mobileOrWebReturn = (osName == "Android" or osName == "iOS"
     or osName == "Web")
   local wouldReturnToLauncher = PlatformHooks.quitToLauncher(function()
     return Game and not Importer and not quitToLauncher and not scripted
-      and (inProcessReturn or not launchedIntoGame)
+      and (mobileOrWebReturn or not launchedIntoGame)
   end)
   if wouldReturnToLauncher then
     local HostShell = require("src.core.HostShell")

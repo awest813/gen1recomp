@@ -15,7 +15,7 @@
 #      load(), and the Web platform-profile suite (which loads main.lua and
 #      drives love.run) passes under the interpreter the browser runs.
 #
-#   scripts/ci/lua51_compat.sh        (needs luac5.1 + lua5.1 on PATH)
+#   scripts/ci/lua51_compat.sh        (needs lua5.1 + lua-bitop installed)
 
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -32,10 +32,16 @@ fail=0
 
 for tool in "$LUAC" "$LUA"; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "missing $tool (apt-get install lua5.1)" >&2
+    echo "missing $tool (apt-get install lua5.1 lua-bitop)" >&2
     exit 2
   fi
 done
+
+# The browser build ships LuaBitOp; exercise the same bit API on the host.
+if ! "$LUA" -e 'require("bit")'; then
+  echo "missing LuaBitOp (apt-get install lua-bitop)" >&2
+  exit 2
+fi
 
 echo "-- luac5.1 -p over shipped Lua"
 total=0
@@ -68,6 +74,7 @@ fi
 echo "-- suites under lua5.1"
 "$LUA" tests/engine/lua_compat_test.lua || fail=1
 "$LUA" tests/engine/web_profile_test.lua || fail=1
+"$LUA" tests/engine/web_launcher_return_test.lua || fail=1
 "$LUA" tests/engine/chip_audio_web_test.lua || fail=1
 "$LUA" tests/engine/touch_web_activation_test.lua || fail=1
 "$LUA" tests/engine/gen3_sequential_version_pin_test.lua || fail=1

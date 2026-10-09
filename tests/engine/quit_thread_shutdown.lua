@@ -178,7 +178,7 @@ local function source(path)
   check(f ~= nil, path .. " is readable")
   local text = f and f:read("*a") or ""
   if f then f:close() end
-  return text
+  return (text:gsub("\r\n", "\n"))
 end
 
 local chipSrc = source("src/core/chip_worker.lua")
@@ -224,8 +224,9 @@ local platformAt = quitHook:find("PlatformHooks.quitToLauncher", 1, true)
 check(nxAt ~= nil and editorAt ~= nil and platformAt ~= nil
       and nxAt < editorAt and nxAt < platformAt,
       "NX application exit precedes editor and platform quit vetoes")
-check(quitHook:find("inProcessReturn", 1, true) == nil,
-      "no platform keeps the old in-process launcher swap")
+check(returnBody:find("canRestart()", 1, true) ~= nil
+      and returnBody:find("rebuildLauncherInProcess(opts)", 1, true) ~= nil,
+      "hosts without native restart retain the launcher without ending the runtime")
 local joinAt = returnBody:find("endProcessOnce()", 1, true)
 local restartAt = returnBody:find('require("src.core.HostShell").restart()', 1, true)
 check(joinAt ~= nil and restartAt ~= nil and joinAt < restartAt,
