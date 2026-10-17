@@ -51,6 +51,28 @@ for _, sample in ipairs({ { 59.94, 30, 2 }, { 60.15, 30, 2 },
   T.check(stable, ("%.2fHz / %d FPS holds a %d-callback cadence for two minutes")
     :format(hz, cap, stride))
 end
+-- A late callback whose lateness persists (the clock does not jump backwards)
+-- used to miss the 2ms deadline tolerance and skip the next refresh.
+local function hitchCadence(hz, cap, stride)
+  local paced, offset, last, stable = Pacer.new(), 0, nil, true
+  local every = math.floor(hz + 0.5)
+  for i = 0, math.floor(hz * 20) do
+    if i > 0 and i % every == 0 then offset = offset + 0.012 end
+    local now = i / hz + offset + ((i % 5) - 2) * 0.001
+    if paced:due(now, cap) and i >= 400 then
+      if last and i - last ~= stride then stable = false end
+      last = i
+    end
+  end
+  return stable
+end
+for _, sample in ipairs({ { 59.94, 30, 2 }, { 59.94, 60, 1 }, { 60, 30, 2 },
+    { 119.88, 60, 2 }, { 120, 30, 4 }, { 239.76, 60, 4 } }) do
+  local hz, cap, stride = unpack(sample)
+  T.check(hitchCadence(hz, cap, stride),
+    ("%.2fHz / %d FPS keeps a %d-callback cadence through 12ms hitches")
+      :format(hz, cap, stride))
+end
 local changing, elapsed = Pacer.new(), 0
 for _, hz in ipairs({ 60, 144, 120 }) do
   local draws = 0
