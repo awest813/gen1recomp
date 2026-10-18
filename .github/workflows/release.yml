@@ -174,7 +174,7 @@ jobs:
           path: dist/payload
       # the same version-stamped game.love every other platform ships
       - name: Build the web site
-        run: ./scripts/build_web.sh --love dist/payload/game.love --out dist/web
+        run: ./scripts/build_web.sh --pages --love dist/payload/game.love --out dist/web
       - name: Browser smoke (ROM-free)
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.56.1

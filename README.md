@@ -1,92 +1,70 @@
-# G1R Deluxe aka Gen1Recomp
+# G1R Deluxe
 
-A native LÖVE2D recreation of Poke Red, Blue, Yellow, Gold, Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald.
-The engine and map behavior are hand-written Lua; game data and graphics are 
-decoded from a ROM supplied by the player.
+G1R Deluxe (Gen1Recomp) is a native [LÖVE](https://love2d.org) recreation of Pokémon Red, Blue, Yellow, Gold, Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald. The engine is hand-written Lua, ported from the [pret](https://github.com/pret) disassemblies. Graphics, audio programs, and game data are decoded on your machine from a ROM you already own. This repository does not include a ROM, does not emulate the Game Boy, and does not download a disassembly.
 
-And before you say, "that's not a recomp", you're wrong. Recomp is an acronym. ***Reverse Engineering Causes Obsessive Mental Problems***
-
-[Click Here for the AI Use Disclosure!](AIDisclosure.md)
+<p align="center"><img src="assets/logo/logo.png" alt="G1R Deluxe"></p>
 
 > [!CAUTION]
-> **We are NOT affiliated with the website `gen1recomp[.]com`** That website is not run by this project, was not authorized by us, and we have no idea who operates it. It is impersonating this project; do not download anything from it, and treat anything it hosts or claims as untrustworthy. Even if the site currently links back to this repository, the people behind it can change its content at any time, so nothing on it should ever be trusted. This GitHub repository, the Discord, and https://gen1re.com are the only official sources for this project. Also, as I assumed would eventually happen, the idiot that made that website now pumped it full of adware. Please stay away from that website.
-
-<p align="center"><img src="https://raw.githubusercontent.com/bryanthaboi/gen1recomp/refs/heads/dev/assets/logo/logo.png"></p>
-
-# [SUPPORT / ANNOUNCEMENTS / MODS ALL FOUND ON THE DISCORD](https://bois.icu)
+> This project is not affiliated with `gen1recomp.com`. That site is not run by this project, was not authorized to speak for it, and has hosted adware. Do not download anything from it. The official sources are this GitHub repository, the [Discord](https://bois.icu), and <https://gen1re.com>.
 
 <p align="center">
 
-<a href="https://www.youtube.com/@bryanthaboi">
-  <img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube">
-</a>
-<a href="https://www.tiktok.com/@bryanthaboi">
-  <img src="https://img.shields.io/badge/TikTok-000000?style=for-the-badge&logo=tiktok&logoColor=white" alt="TikTok">
-</a>
-<a href="https://x.com/bryanthaboi">
-  <img src="https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white" alt="X">
-</a>
-<a href="https://bsky.app/profile/bryanthaboi.live">
-  <img src="https://img.shields.io/badge/Bluesky-0285FF?style=for-the-badge&logo=bluesky&logoColor=white" alt="Bluesky">
-</a>
-<a href="https://www.instagram.com/bryanthaboi">
-  <img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram">
-</a>
+<a href="https://bois.icu"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+<a href="https://www.youtube.com/@bryanthaboi"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
+<a href="https://www.tiktok.com/@bryanthaboi"><img src="https://img.shields.io/badge/TikTok-000000?style=for-the-badge&logo=tiktok&logoColor=white" alt="TikTok"></a>
+<a href="https://x.com/bryanthaboi"><img src="https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white" alt="X"></a>
+<a href="https://bsky.app/profile/bryanthaboi.live"><img src="https://img.shields.io/badge/Bluesky-0285FF?style=for-the-badge&logo=bluesky&logoColor=white" alt="Bluesky"></a>
+<a href="https://www.instagram.com/bryanthaboi"><img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram"></a>
 
 </p>
 
-
-<p align="center"> <a href="https://www.polygon.com/pokemon-red-blue-3d-voxel-mod-battle-pixels-gameplay-footage-remake/"> <img src="https://img.shields.io/badge/AS%20SEEN%20ON-POLYGON-ea2e49?style=for-the-badge" alt="As seen on Polygon"> </a> 
-<a href="https://kotaku.com/pokemon-red-blue-recompilation-project-voxel-3d-mod-2000720281"> <img src="https://img.shields.io/badge/AS%20SEEN%20ON-KOTAKU-ea2e49?style=for-the-badge" alt="As seen on KOTAKU"> </a> 
-
-  <a href="https://www.digitalfoundry.net/news/2026/07/pokemon-yellow-voxel-mod-turns-the-original-gameboy-code-into-a-stunning-world">
-    <img src="https://img.shields.io/badge/AS%20SEEN%20ON-DIGITAL%20FOUNDRY-ea2e49?style=for-the-badge" alt="As seen on Digital Foundry">
-  </a>
-  <a href="https://www.androidauthority.com/unofficial-android-port-pokemon-red-blue-yellow-3692724/">
-  <img src="https://img.shields.io/badge/AS%20SEEN%20ON-ANDROID%20AUTHORITY-ea2e49?style=for-the-badge" alt="As seen on Android Authority">
-</a>
-
-<a href="https://www.xda-developers.com/this-amazing-pokemon-red-and-blue-voxel-mod-adds-a-3d-perspective-without-an-emulator/">
-  <img src="https://img.shields.io/badge/AS%20SEEN%20ON-XDA%20DEVELOPERS-ea2e49?style=for-the-badge" alt="As seen on XDA Developers">
-</a>
+<p align="center">
+<a href="https://www.polygon.com/pokemon-red-blue-3d-voxel-mod-battle-pixels-gameplay-footage-remake/"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-POLYGON-ea2e49?style=for-the-badge" alt="As seen on Polygon"></a>
+<a href="https://kotaku.com/pokemon-red-blue-recompilation-project-voxel-3d-mod-2000720281"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-KOTAKU-ea2e49?style=for-the-badge" alt="As seen on Kotaku"></a>
+<a href="https://www.digitalfoundry.net/news/2026/07/pokemon-yellow-voxel-mod-turns-the-original-gameboy-code-into-a-stunning-world"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-DIGITAL%20FOUNDRY-ea2e49?style=for-the-badge" alt="As seen on Digital Foundry"></a>
+<a href="https://www.androidauthority.com/unofficial-android-port-pokemon-red-blue-yellow-3692724/"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-ANDROID%20AUTHORITY-ea2e49?style=for-the-badge" alt="As seen on Android Authority"></a>
+<a href="https://www.xda-developers.com/this-amazing-pokemon-red-and-blue-voxel-mod-adds-a-3d-perspective-without-an-emulator/"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-XDA%20DEVELOPERS-ea2e49?style=for-the-badge" alt="As seen on XDA Developers"></a>
 </p>
 
-### Watch the latest update video
+AI use on this project is disclosed in [AIDisclosure.md](AIDisclosure.md).
 
-<a href="https://youtu.be/Q87iK8u_52o">
-  <img src="https://img.youtube.com/vi/Q87iK8u_52o/maxresdefault.jpg" width="320" alt="Watch the latest update video">
-</a>
+## Play in the browser
 
+The web port is the same engine, compiled to WebAssembly with [love.js](https://github.com/Davidobot/love.js) in compatibility mode. Compatibility mode is what GitHub Pages can host: the page needs no `SharedArrayBuffer` and no COOP/COEP headers. Threaded love.js games (Forgotten Saga, 2dengine, LoveIDE) add a service worker to fake those headers. This build does not, because its workers already run on the main thread.
 
-## What this is
+Red, Blue, and Yellow are supported. Gold, Silver, and Crystal import and play (beta). Emerald imports and plays its intro; some Gen 3 screens still need LuaJIT's FFI. Details and controls are in [docs/platforms/web.md](docs/platforms/web.md).
 
-G1R Deluxe aka Gen1Recomp is a native LÖVE2D recreation of Pokemon Red, Blue, Yellow, Gold,
-Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald. The engine and map behavior are
-hand-written Lua, ported from the [pret](https://github.com/pret)
-disassemblies & C. Game data, graphics, and audio programs are decoded on first
-launch from a ROM you supply.
+Publishing this repository:
 
-The project does not include a ROM, emulate the Game Boy, transpile assembly,
-or download a disassembly. Your ROM is verified, used during import, and
-released from memory. It is never copied into the cache, and later launches
-load the private generated cache without asking for it again. Music, sound
-effects, and cries are synthesized while the game runs. All eleven games can be
-imported side by side. Gen 2 support is still under construction.
+1. **Settings > Pages > Source**: GitHub Actions. Do this once.
+2. **Actions > web > Run workflow**, tick **deploy**, and run it. The workflow has to be on the default branch before GitHub will show it.
 
-## Quick Start
+After that deploy, the game is at:
 
-1. Download the build for your platform from the
-   [latest release](https://github.com/bryanthaboi/gen1recomp/releases/latest).
-2. Launch it. The packaged app contains no ROM and no game data, so the
-   launcher will ask for one.
-3. Choose your legally obtained `.gb` / `.gbc` / `.gba` file, a `.zip` /
-   `.7z` that holds one (offered only where your platform's build supports
-   archives), or drop it onto the window. Import takes a few seconds and the
-   game starts automatically.
-4. Repeat for any other game you own. Each one gets its own tab in the launcher.
+**https://awest813.github.io/gen1recomp/**
 
-Only the canonical US English ROMs below are accepted. The importer checks the
-SHA-1 before creating any game data. FireRed, LeafGreen, Ruby, Sapphire, and Emerald support is in beta.
+Open the page, press **Start** (browsers block sound until you do), then **Import ROM** and choose your legally obtained `.gb` / `.gbc` / `.gba` file. The file is read in the browser and is never uploaded. Saves stay in that browser's storage. Use **Export save** on the launcher if you want a `.sav` you can keep.
+
+A second tab shows "Already open" so two copies cannot overwrite one save. `?game=blue` boots Blue directly. `?fps=1` shows the frame rate.
+
+The site artifact is also attached to every **web** workflow run as `gen1recomp-web`, and release builds ship `gen1recomp-<version>-web.zip`. Unzip either one and serve the directory over HTTP. `file://` will not load the wasm.
+
+## Play on a computer or phone
+
+1. Download the build for your platform from the [latest release](https://github.com/bryanthaboi/gen1recomp/releases/latest).
+2. Launch it. The package contains no ROM, so the launcher asks for one.
+3. Choose a legally obtained `.gb`, `.gbc`, or `.gba` file, a `.zip` / `.7z` that holds one (where that build supports archives), or drop the file onto the window. Import takes a few seconds and the game starts.
+4. Repeat for any other game you own. Each one gets its own launcher tab.
+
+Your ROM is checked, used during import, and released from memory. It is never copied into the cache. Later launches load the generated cache. Music, sound effects, and cries are synthesized while the game runs. All eleven games can be imported side by side. Gen 2 support is still under construction. FireRed, LeafGreen, Ruby, Sapphire, and Emerald are in beta.
+
+Install notes: [Linux](docs/platforms/linux.md), [iOS](docs/platforms/ios.md), [Xbox Dev Mode](docs/platforms/xbox.md), [handhelds](docs/platforms/handhelds.md), [Nintendo Switch](docs/platforms/switch.md), [PlayStation 4](docs/platforms/ps4.md).
+
+**Windows Defender** sometimes flags the Windows build with a generic detection such as `Trojan:Win32/Wacatac!ml`. That is a known false positive: the exe is the official LÖVE runtime with the game archive appended, and Defender distrusts unsigned executables with appended data. Every release publishes `sha256sums.txt`. You can also check a flagged file on [VirusTotal](https://www.virustotal.com).
+
+## Accepted ROMs
+
+Only these canonical US English revisions are accepted. The importer checks the SHA-1 before it creates any game data.
 
 | Game | Revision | ROM size | SHA-1 |
 | --- | --- | --- | --- |
@@ -109,83 +87,58 @@ SHA-1 before creating any game data. FireRed, LeafGreen, Ruby, Sapphire, and Eme
 | Sapphire | 1.1 | 16 MiB | `4722efb8cd45772ca32555b98fd3b9719f8e60a9` |
 | Sapphire | 1.2 | 16 MiB | `89b45fb172e6b55d51fc0e61989775187f6fe63c` |
 
-**Platform notes:** [Linux](docs/platforms/linux.md),
-[iOS](docs/platforms/ios.md), [Xbox Dev Mode](docs/platforms/xbox.md),
-[handhelds](docs/platforms/handhelds.md),
-[Nintendo Switch](docs/platforms/switch.md),
-[PlayStation 4](docs/platforms/ps4.md), and the
-[web browser](docs/platforms/web.md) (beta, Red/Blue/Yellow) each have their
-own install steps.
-
-**Windows Defender:** it sometimes flags the Windows build with a generic
-detection such as `Trojan:Win32/Wacatac!ml` (#621). This is a known false
-positive: the exe is the official LÖVE runtime with the game archive appended,
-and Defender distrusts unsigned executables with appended data. Every release
-publishes `sha256sums.txt` so you can verify your download, and you can check
-a flagged file on [VirusTotal](https://www.virustotal.com).
-
 ## Controls
 
-| Action | Keyboard          | Controller         |
-| ------ | ----------------- | ------------------ |
-| Move   | Arrow keys / WASD | D-pad / left stick |
-| A      | Z / Enter / Space | A                  |
-| B      | X / Backspace     | B                  |
-| Start  | Escape            | Start              |
-| Select | Tab / Shift       | Back / Select      |
+| Action | Keyboard | Controller |
+| --- | --- | --- |
+| Move | Arrow keys / WASD | D-pad / left stick |
+| A | Z / Enter / Space | A |
+| B | X / Backspace | B |
+| Start | Escape | Start |
+| Select | Tab / Shift | Back / Select |
 
-Rebind any of these in-game under **OPTIONS > CONTROLS**.
+Rebind these in-game under **OPTIONS > CONTROLS**.
 
-| Key       | What it does                                           |
-| --------- | ------------------------------------------------------ |
-| `-` / `=` | Zoom out / in (overworld; also mouse wheel)            |
-| `1` / `0` | GAME SPEED up / down (controller: R2 faster, L2 slower) |
-| `2`       | Cycle COLORS                                           |
-| `3`       | Cycle TILT (free-roam overworld)                       |
-| `4`       | Cycle ZOOM through every level (free-roam overworld)   |
-| `F1`      | Save                                                   |
-| `F2`      | Load                                                   |
-| `F10`     | Open / close the mod manager                           |
+| Key | What it does |
+| --- | --- |
+| `-` / `=` | Zoom out / in (overworld; also the mouse wheel) |
+| `1` / `0` | Game speed up / down (controller: R2 faster, L2 slower) |
+| `2` | Cycle colors |
+| `3` | Cycle tilt (free-roam overworld) |
+| `4` | Cycle zoom through every level (free-roam overworld) |
+| `F1` | Save |
+| `F2` | Load |
+| `F10` | Open / close the mod manager |
 
-COLORS, TILT, ZOOM, SHADER FX, GAME SPEED, and VOID FILL are also in the
-Options menu and persist in `options.lua`.
+Colors, tilt, zoom, shader FX, game speed, and void fill are also in the Options menu and persist in `options.lua`.
 
-**Low-end devices:** **OPTIONS > PERFORMANCE** scales the optional extras for
-weaker hardware (HIGH, BALANCED, LOW, or AUTO, the default). It only changes
-presentation; game logic is identical on every tier. Details in
-[docs/new-features.md](docs/new-features.md).
+**OPTIONS > PERFORMANCE** scales optional extras for weaker hardware (HIGH, BALANCED, LOW, or AUTO). It changes presentation only. Details are in [docs/new-features.md](docs/new-features.md).
+
+On a phone, the browser build shows on-screen buttons the first time you touch the game. iPhone browsers have no page fullscreen; use **Share > Add to Home Screen** instead.
 
 ## Documentation
 
-Everything else lives in the [docs folder](docs/README.md) or on the
-[project wiki](https://github.com/bryanthaboi/gen1recomp/wiki), which has the
-modding book, link play, save editor, and developer setup guides:
+Guides, platform notes, and the engine map live in [docs](docs/README.md). The [wiki](https://github.com/bryanthaboi/gen1recomp/wiki) has the modding book, link play, the save editor, and developer setup.
 
-- [Rulesets](docs/guides/rulesets.md): faithful Gen 1 quirks or modern cleanups
-- [Online play](docs/guides/online-play.md): lobby, battles, tournaments, trading
-- [Launch options](docs/guides/launch-options.md): one-click shortcuts and URLs
-- [Portable mode](docs/guides/portable-mode.md): run from a USB drive
+- [Rulesets](docs/guides/rulesets.md)
+- [Online play](docs/guides/online-play.md)
+- [Launch options](docs/guides/launch-options.md)
+- [Portable mode](docs/guides/portable-mode.md)
 - [Running from source](docs/guides/running-from-source.md)
-- [Modding](docs/modding-overview.md): mod platform, example mods, Tiled map editing
+- [Modding](docs/modding-overview.md)
 - [Architecture](docs/architecture.md)
+- [Browser build](ports/web/BUILD.md)
 
 ## Bugs
 
-Found a bug? A warp dropping you somewhere it shouldn't, a battle doing math
-that looks wrong, text in the wrong box, anything that does not match the
-original game.
-[Open a bug report](https://github.com/bryanthaboi/gen1recomp/issues/new?template=bug_report.yml).
-Attach a screenshot if you can. It saves a lot of back and forth, and if you
-can't get one, the form asks you to describe what you saw instead.
+A warp that drops you in the wrong place, battle math that does not match the original, text in the wrong box: [open a bug report](https://github.com/bryanthaboi/gen1recomp/issues/new?template=bug_report.yml). A screenshot saves a round trip. If you cannot get one, the form asks you to describe what you saw.
 
 ## License
 
 See [LICENSE.MD](LICENSE.MD).
 
-## Special Thanks
+## Special thanks
 
-This project would not be possible without [pret](https://github.com/pret) >
-the pret band of decompiling maniacs > and their
-[pokered](https://github.com/pret/pokered) disassembly.
+This project depends on [pret](https://github.com/pret) and the [pokered](https://github.com/pret/pokered) disassembly.
 
-<p align="center"><a href="https://boisclub.games"><img src="https://raw.githubusercontent.com/bryanthaboi/gen1recomp/refs/heads/dev/assets/logo/bcg.png"></a></p>
+<p align="center"><a href="https://boisclub.games"><img src="assets/logo/bcg.png" alt="Bois Club Games"></a></p>

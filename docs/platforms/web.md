@@ -94,4 +94,9 @@ how a heavy mod (the voxel mods) runs on your device.
 
 Build instructions, the smoke test and the GitHub Pages workflow are in
 [ports/web/BUILD.md](../../ports/web/BUILD.md). The site is static (any web
-server works) and needs no special headers.
+server works) and needs no special headers. `scripts/build_web.sh --pages`
+is the layout GitHub Pages expects: relative asset URLs, `.nojekyll`, a
+404 that returns to the game, and a split when `game.data` would pass the
+100 MiB file limit. Threaded love.js ports add a COOP/COEP service worker
+for `SharedArrayBuffer`; this build does not, because it runs without
+pthreads.

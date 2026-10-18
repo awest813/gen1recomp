@@ -4,8 +4,8 @@
 #
 # Usage:
 #   scripts/build_web.sh [--emsdk DIR] [--work DIR] [--out DIR]
-#                        [--memory BYTES] [--split-mb N] [--skip-native]
-#                        [--love FILE]
+#                        [--memory BYTES] [--split-mb N] [--pages]
+#                        [--skip-native] [--love FILE]
 #
 #   --emsdk DIR     emsdk checkout with 2.0.0 installed + activated
 #                   (default: $EMSDK, else <work>/emsdk, installed on demand)
@@ -14,6 +14,9 @@
 #   --memory BYTES  initial wasm heap (default 268435456; it grows on demand)
 #   --split-mb N    split game.data into N MB parts for hosts with a per-file
 #                   cap (scripts/split_web_build.py); 0 = off (default)
+#   --pages         publish layout for GitHub Pages: .nojekyll, a project-site
+#                   404, and an automatic 90 MB split when game.data would
+#                   pass 95 MiB. Refuses any file over 100 MiB.
 #   --skip-native   reuse the love.js/love.wasm already in <work>/native-out
 #   --love FILE     package this game.love (e.g. the release workflow's
 #                   version-stamped payload) instead of running pack_love.sh;
@@ -22,9 +25,10 @@
 # G1R_WEB_LDFLAGS=--profiling-funcs keeps wasm function names, so a trap's
 # stack trace names the C++ function (debugging only; ~16% larger wasm).
 #
-# Output: <out>/index.html, game.js, game.data, love.js, love.wasm.  Serve it
-# over http(s) (python3 -m http.server -d dist/web) -- file:// will not load
-# the wasm.  The compat (no-pthreads) build needs no COOP/COEP headers.
+# Output: <out>/index.html, game.js, game.data, love.js, love.wasm, .nojekyll,
+# 404.html.  Serve it over http(s) (python3 -m http.server -d dist/web) --
+# file:// will not load the wasm.  The compat (no-pthreads) build needs no
+# COOP/COEP headers, which is what makes GitHub Pages a valid host.
 #
 # Everything third-party is pinned below; the build verifies each checkout
 # is at its pinned commit before using it.
@@ -36,6 +40,7 @@ WORK="$ROOT/.bazinga/work/web"
 OUT="$ROOT/dist/web"
 MEMORY=268435456
 SPLIT_MB=0
+PAGES=0
 SKIP_NATIVE=0
 LOVE_INPUT=""
 EMSDK_DIR="${EMSDK:-}"
@@ -68,9 +73,10 @@ while [ $# -gt 0 ]; do
     --out) OUT="$2"; shift 2 ;;
     --memory) MEMORY="$2"; shift 2 ;;
     --split-mb) SPLIT_MB="$2"; shift 2 ;;
+    --pages) PAGES=1; shift ;;
     --skip-native) SKIP_NATIVE=1; shift ;;
     --love) LOVE_INPUT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
 done
@@ -214,13 +220,29 @@ rm -rf "$OUT/theme"
 sed "s/__G1R_MEMORY__/$MEMORY/" "$ROOT/ports/web/shell/index.html" > "$OUT/index.html"
 cp "$ROOT/ports/web/shell/manifest.webmanifest" "$ROOT/ports/web/shell/"*.png "$OUT/"
 
+# GitHub Pages serves one static file per URL and rejects a file at 100 MiB.
+# Forgotten Saga ships a single ~95 MiB game.data; past that, split before
+# stamping so every part keeps the same cache-busting query.
+if [ "$PAGES" -eq 1 ] && [ "$SPLIT_MB" -eq 0 ] && [ -f "$OUT/game.data" ]; then
+  DATA_BYTES=$(wc -c < "$OUT/game.data" | tr -d ' ')
+  if [ "$DATA_BYTES" -gt 99614720 ]; then
+    say "game.data is ${DATA_BYTES} bytes; splitting into 90 MB parts for Pages"
+    SPLIT_MB=90
+  fi
+fi
+
 if [ "$SPLIT_MB" -gt 0 ]; then
   python3 "$ROOT/scripts/split_web_build.py" "$OUT" --chunk-size-mb "$SPLIT_MB"
 fi
 python3 "$ROOT/scripts/stamp_web_assets.py" "$OUT"
+if [ "$PAGES" -eq 1 ]; then
+  python3 "$ROOT/scripts/prepare_pages_site.py" "$OUT" --max-bytes 104857600
+else
+  python3 "$ROOT/scripts/prepare_pages_site.py" "$OUT"
+fi
 
 # --- verify ---------------------------------------------------------------
-for f in index.html game.js love.js love.wasm manifest.webmanifest icon-192.png; do
+for f in index.html game.js love.js love.wasm manifest.webmanifest icon-192.png .nojekyll 404.html; do
   [ -f "$OUT/$f" ] || fail "site is missing $f"
 done
 grep -q "__G1R_MEMORY__" "$OUT/index.html" && fail "index.html memory placeholder not rendered"

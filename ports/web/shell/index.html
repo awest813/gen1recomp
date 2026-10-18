@@ -43,6 +43,9 @@
       color: var(--text);
       font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       overflow: hidden;
+      /* love.js shells on phones: stop the browser rubber-banding the page
+         over the canvas (Forgotten Saga and the window-kit demo do the same). */
+      overscroll-behavior: none;
     }
     /* The canvas must have no border or padding, or mouse coordinates drift. */
     #canvas {
@@ -270,6 +273,7 @@
         <span>Save</span><div><kbd>F1</kbd></div>
       </div>
       <p class="note">Gamepads work. On a phone, touch the screen for on-screen buttons.</p>
+      <p class="note" id="homescreen" hidden>On iPhone and iPad, use Share, then Add to Home Screen. The icon opens full screen and keeps its own saves.</p>
       <button id="go" type="button" disabled aria-busy="true">Loading...</button>
       <p id="status" role="status"></p>
     </div>
@@ -389,6 +393,22 @@
         goButton.removeAttribute("aria-busy");
         showError(text, true);
       }
+
+      var ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+        || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (ios) document.getElementById("homescreen").hidden = false;
+
+      // A two-finger gesture would zoom the page instead of the game. Other
+      // love.js hosts block that on the document once the canvas is running.
+      window.addEventListener("touchmove", function (e) {
+        if (started && e.touches && e.touches.length > 1) e.preventDefault();
+      }, { passive: false });
+      window.addEventListener("pointerdown", function (e) {
+        if (!started || document.activeElement === canvas) return;
+        var el = e.target;
+        if (el && el.closest && el.closest("#pickprompt, #error, #fullscreen, button, a, input")) return;
+        canvas.focus();
+      });
 
       window.addEventListener("keydown", function (e) {
         // keep the page from scrolling / navigating on game keys
