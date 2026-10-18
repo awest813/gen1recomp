@@ -112,13 +112,12 @@ require. There is no `<base href>`.
 larger file. `scripts/prepare_pages_site.py` writes `.nojekyll` (so a branch
 deploy does not run Jekyll) and the project-site `404.html`.
 
-To publish on GitHub Pages:
-
-1. Set **Settings > Pages > Source** to **GitHub Actions** (once).
-2. Go to **Actions > web > Run workflow**, tick **deploy**, and run it. The
-   workflow must exist on the default branch to be runnable by hand.
-   `actions/configure-pages` checks that Pages is enabled before the artifact
-   is published.
+A push to `dev` or `main` publishes the site. Pull requests build and
+smoke-test only. **Settings > Pages > Source** has to be **GitHub Actions**
+once; `actions/configure-pages` checks that before the artifact is published.
+**Actions > web > Run workflow** with **deploy** ticked publishes the same
+build by hand. The workflow must exist on the default branch to be runnable
+that way.
 
 The published URL is `https://<owner>.github.io/<repo>/`. For this checkout
 that is `https://awest813.github.io/gen1recomp/` after the first successful

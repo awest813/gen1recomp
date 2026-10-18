@@ -386,7 +386,8 @@ Original list:
 
 - **`.github/workflows/web.yml`** builds the site on pushes and PRs, runs the
   ROM-free browser smoke test, uploads the site as an artifact, and deploys to
-  GitHub Pages on a manual run with "deploy" ticked (see ports/web/BUILD.md).
+  GitHub Pages on a push to `dev` or `main` (a manual run with "deploy" ticked
+  still publishes; see ports/web/BUILD.md).
 - **The `web` job in `release.yml`** builds from the same version-stamped
   `game.love` every other platform ships (`build_web.sh --love`), smoke-tests
   it, and publishes `gen1recomp-<version>-web.zip` with the release, covered

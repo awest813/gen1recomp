@@ -38,10 +38,7 @@ Red, Blue, and Yellow are supported. Gold, Silver, and Crystal import and play (
 
 The build is the compatibility love.js runtime: no `SharedArrayBuffer`, and no COOP/COEP headers. Threaded love.js games add a service worker to fake those headers. This one does not, because its workers already run on the main thread. That is what lets GitHub Pages host it.
 
-To publish:
-
-1. Set **Settings > Pages > Source** to **GitHub Actions** once.
-2. Run **Actions > web** with **deploy** ticked. The workflow has to be on the default branch before GitHub will show it.
+A push to `dev` publishes that URL. **Settings > Pages > Source** has to be **GitHub Actions** (already set for this repository). **Actions > web** with **deploy** ticked publishes the same build by hand.
 
 Every **web** workflow run also uploads `gen1recomp-web`, and releases ship `gen1recomp-<version>-web.zip`. Unzip either one and serve the directory over HTTP. `file://` will not load the wasm.
 
