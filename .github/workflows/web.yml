@@ -8,13 +8,14 @@ name: web
 # artifact, so a run is playable locally with
 #   python3 -m http.server -d <unzipped artifact> 8000
 #
-# Deploying to GitHub Pages is opt-in: run this workflow by hand
-# (Actions > web > Run workflow) with "deploy" ticked, after setting
-# Settings > Pages > Source to "GitHub Actions".  The site ships engine code
-# only -- no ROM, no generated game data; players import their own ROM in
-# the browser.  --pages writes .nojekyll and a project-site 404, and splits
-# game.data before it can hit Pages' 100 MiB file limit.  Asset URLs stay
-# relative, so the same build works at /<repo>/ and at a custom domain.
+# A push to dev or main publishes the site.  Pull requests only build and
+# smoke-test.  A hand-started run publishes when "deploy" is ticked.  Pages
+# must be set to "GitHub Actions" once (Settings > Pages > Source).  The
+# site ships engine code only -- no ROM, no generated game data; players
+# import their own ROM in the browser.  --pages writes .nojekyll and a
+# project-site 404, and splits game.data before it can hit Pages' 100 MiB
+# file limit.  Asset URLs stay relative, so the same build works at
+# /<repo>/ and at a custom domain.
 
 on:
   push:
@@ -62,8 +63,9 @@ on:
 
 concurrency:
   group: web-${{ github.ref }}
-  # a hand-started run (possibly a deploy) is never cancelled by a push
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  # Pull requests cancel a stale run.  A push or a hand-started deploy
+  # finishes, so a newer commit cannot abort a publish halfway through.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -127,11 +129,15 @@ jobs:
           path: dist/web
 
       - name: configure GitHub Pages
-        if: github.event_name == 'workflow_dispatch' && inputs.deploy
+        if: >-
+          (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
+          || (github.event_name == 'workflow_dispatch' && inputs.deploy)
         uses: actions/configure-pages@v5
 
       - name: upload the Pages artifact
-        if: github.event_name == 'workflow_dispatch' && inputs.deploy
+        if: >-
+          (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
+          || (github.event_name == 'workflow_dispatch' && inputs.deploy)
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist/web
@@ -139,7 +145,9 @@ jobs:
   deploy:
     name: deploy to GitHub Pages
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
+      || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     runs-on: ubuntu-latest
     permissions:
       pages: write
