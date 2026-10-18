@@ -22,7 +22,7 @@ local PAL = {
   detail      = { 200, 200, 200 },
   muted       = { 161, 172, 187 },
   caption     = { 170, 170, 170 }, -- letterspaced section captions
-  faint       = { 110, 110, 110 }, -- slot indices, hints
+  faint       = { 146, 152, 158 }, -- hints; still quieter than muted, readable on raised rows
   inverse     = { 0, 0, 0 },       -- ink on a white (selected/focused) fill
   -- Action colors and status accents.
   green       = { 85, 232, 135 },   -- safe / confirmed / installed

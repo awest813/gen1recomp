@@ -1630,7 +1630,16 @@ local function headerTabMetrics(m)
   for _, label in pairs(TAB_LABELS) do
     width = math.max(width, Kit.textWidth("micro", Strings(label)) + 4)
   end
-  local dropW = width + math.floor(24 * m.s)
+  -- The game control names the cartridge. A single initial collides
+  -- (Red/Ruby, Silver/Sapphire) and the full-bleed cartridge fill fails
+  -- contrast on the darker shells.
+  local nameW = 0
+  for _, g in ipairs(GAME_TABS) do
+    nameW = math.max(nameW, Kit.textWidth("tab", Strings(g.label)))
+  end
+  local pip = math.floor(m.chip * 0.42)
+  local dropW = math.max(width + math.floor(24 * m.s),
+    math.floor(10 * m.s) + pip + math.floor(8 * m.s) + nameW + math.floor(22 * m.s))
   local used, rows = dropW, 1
   for _ = 1, #HEADER_TABS do
     if used + gap + width > m.contentW then rows, used = rows + 1, width
@@ -1825,10 +1834,21 @@ local function buildHeader(imp, m)
   local chrome0 = headerChrome(imp)
   local game = currentGame(imp)
   dropW = math.min(tabRight - tabLeft, dropW)
-  chrome0.game.color = game.color
-  chrome0.game.letter = game.letter
-  chrome0.game.letterBold = true
+  chrome0.game.color = nil
+  chrome0.game.letter = nil
   chrome0.game.active = imp.tab == game.id
+  chrome0.game.drawFn = function(x, y, w, h, invert)
+    local g = currentGame(imp)
+    local pip = math.floor(h * 0.42)
+    local px = x + math.floor(10 * m.s)
+    local py = y + (h - pip) / 2
+    Theme.fillRounded(px, py, pip, pip, g.color, 1, math.floor(pip / 2))
+    local ink = invert and PAL.inverse or PAL.text
+    local lx = px + pip + math.floor(8 * m.s)
+    local maxW = math.max(0, w - (lx - x) - math.floor(22 * m.s))
+    local name = Kit.ellipsize("tab", Strings(g.label), maxW)
+    Kit.textBold("tab", name, lx, y + (h - Kit.textHeight("tab")) / 2, ink)
+  end
   local gameHot = Kit.hover(tx, ty, dropW, tabH)
   local gameDown = gameHot and Kit.mouseDown
   local gameInvert = chrome0.game.active
@@ -2149,7 +2169,7 @@ local function buildSlotCard(imp, x, y, w, availH, m, version, ready)
   cy = cy + headH + gap
   Kit.card(px, cy, iw, rowH, "row")
   if slot then
-    Theme.strokeRounded(px, cy, iw, rowH, PAL.green, 0.65, 1, Theme.cardRadius())
+    Theme.strokeRounded(px, cy, iw, rowH, PAL.green, 0.65, 1, Theme.radius())
     local tx, ty = px + gap, cy + gap
     local tagW = chipWidth(Strings("LOADED"), m)
     local titleW = math.max(0, textW - tagW - gap)
@@ -4126,7 +4146,7 @@ local function buildSavePicker(imp, m)
       local hot = Kit.hover(x, ry, rw, rowH)
       Kit.card(x, ry, rw, rowH, (selected or hot) and "rowHover" or "row")
       if loaded then
-        Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.cardRadius())
+        Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.radius())
       end
       local label = loaded and Strings("LOADED") or Strings("Load")
       local labelW = Kit.textWidth("micro", label) + gap
@@ -4898,7 +4918,7 @@ local function buildCartModal(imp, m)
     local ry = listY + (i - 1) * (rowH + gap)
     local key = "cartpop-id-" .. row.id
     Kit.card(x, ry, rw, rowH, "row")
-    if active == row.id then Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.cardRadius()) end
+    if active == row.id then Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.radius()) end
     local tx, ty = x + gap, ry + gap
     Kit.textBold("button", Kit.ellipsize("button", row.title or row.id, rw - 2 * gap), tx, ty, PAL.heading)
     ty = ty + Kit.textHeight("button") + 4 * m.s

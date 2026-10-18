@@ -129,7 +129,11 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     ink = (enabled and opts.ink) or kind.ink
     doEmboss = (opts.kind == "primary" or opts.kind == "good" or opts.kind == "accent")
     stroke = kind.stroke
-    strokeA = stroke and Theme.A.hover or nil
+    -- Resting ghost and disabled faces use the same hairline as cards.
+    -- Danger stays stronger so a destructive action is obvious before hover.
+    local kindName = enabled and (opts.kind or "ghost") or "disabled"
+    strokeA = stroke and ((kindName == "danger" or hot or focused)
+      and Theme.A.hover or Theme.A.hairline) or nil
     doRing = hot or focused
     if opts.glow and enabled and not doRing then
       glowA = B.glowBase + B.glowAmp * (0.5 + 0.5 * math.sin(Kit.time * B.glowHz))
