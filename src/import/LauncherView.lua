@@ -2240,10 +2240,23 @@ local function sealSlotName(slot)
   return tostring(slot.id):match("^slot(%d+)$") or tostring(slot.id)
 end
 
-local function buildCartCard(imp, x, y, w, m, version)
-  if not imp.cartPlan then return 0 end
+-- Geometry shared by the fit check and the draw.  lead is the gap above a
+-- GBA cart; cartH is the button height.  Their sum is the vertical space
+-- the shell takes before the Custom Carts row.
+local function cartridgeBox(playH, cartAreaW, shape)
+  if shape == "gba" then
+    local targetH = playH * 0.62
+    local cartW = math.min(cartAreaW * 0.72, targetH * CartShape.GBA_ASPECT)
+    local cartH = cartW / CartShape.GBA_ASPECT
+    return math.floor((playH - cartH) * 0.35), cartW, cartH
+  end
+  return 0, math.min(cartAreaW, math.floor(playH * 0.88)), playH
+end
+
+local function cartCardSpec(imp, w, m, version)
+  if not imp.cartPlan then return nil end
   local report, slot = imp:cartPlan(version)
-  if not report then return 0 end
+  if not report then return nil end
   local title = tostring(report.title or report.id or "")
   local broken = (slot and slot.sealBroken == true) or false
   local fillCount = imp.cartFillRows and #imp:cartFillRows(version) or 0
@@ -2289,7 +2302,6 @@ local function buildCartCard(imp, x, y, w, m, version)
       PAL.yellow }
     body[#body + 1] = { Strings("Press Break it again to do it."), PAL.yellow }
   end
-  -- What the last install run managed, and per mod what it could not.
   local fillNotice = imp.cartFillNotice
   if fillNotice then
     body[#body + 1] = { fillNotice.text,
@@ -2304,13 +2316,10 @@ local function buildCartCard(imp, x, y, w, m, version)
   local fillLabel = FILL_LABEL(fillCount)
   local chipGap = math.floor(8 * m.s)
   local chipH = math.max(Kit.tapMin(), math.floor(30 * m.s))
-  local fillW = fillCount > 0
-    and math.min(iw, chipWidth(fillLabel, m)) or 0
+  local fillW = fillCount > 0 and math.min(iw, chipWidth(fillLabel, m)) or 0
   local sealW = offer and math.min(iw, math.max(chipWidth(SEAL_LABEL(false), m),
     chipWidth(SEAL_LABEL(true), m))) or 0
-  -- Both chips share a row when they fit; a narrow card stacks them instead.
-  local sideBySide = fillW > 0 and sealW > 0
-    and (fillW + chipGap + sealW) <= iw
+  local sideBySide = fillW > 0 and sealW > 0 and (fillW + chipGap + sealW) <= iw
   local chipRows = 0
   if fillW > 0 then chipRows = chipRows + 1 end
   if sealW > 0 then chipRows = chipRows + 1 end
@@ -2324,36 +2333,44 @@ local function buildCartCard(imp, x, y, w, m, version)
   if chipRows > 0 then
     h = h + math.floor(8 * m.s) + chipRows * chipH + (chipRows - 1) * chipGap
   end
-  h = h + pad
-  if y == nil then return h end
+  return {
+    h = h + pad, pad = pad, iw = iw, body = body, state = state, stateCol = stateCol,
+    scope = scope, armed = armed, fillLabel = fillLabel, fillW = fillW,
+    sealW = sealW, chipH = chipH, chipGap = chipGap, chipRows = chipRows,
+    sideBySide = sideBySide,
+  }
+end
 
-  Kit.card(x, y, w, h)
-  local cy = y + pad
-  Kit.text("button", Kit.ellipsize("button", state, iw), x + pad, cy, stateCol)
+local function buildCartCard(imp, x, y, w, m, version)
+  local spec = cartCardSpec(imp, w, m, version)
+  if not spec then return 0 end
+  Kit.card(x, y, w, spec.h)
+  local cy = y + spec.pad
+  Kit.text("button", Kit.ellipsize("button", spec.state, spec.iw), x + spec.pad, cy, spec.stateCol)
   cy = cy + Kit.textHeight("button") + math.floor(4 * m.s)
-  for _, line in ipairs(body) do
-    cy = cy + Kit.textWrapped("small", line[1] or "", x + pad, cy, iw,
+  for _, line in ipairs(spec.body) do
+    cy = cy + Kit.textWrapped("small", line[1] or "", x + spec.pad, cy, spec.iw,
       line[2], 3)
   end
-  if chipRows > 0 then
+  if spec.chipRows > 0 then
     cy = cy + math.floor(8 * m.s)
-    local bx = x + pad
-    if fillW > 0 then
-      btn(imp, bx, cy, fillW, chipH, "cart-fill-" .. scope, fillLabel, {
+    local bx = x + spec.pad
+    if spec.fillW > 0 then
+      btn(imp, bx, cy, spec.fillW, spec.chipH, "cart-fill-" .. spec.scope, spec.fillLabel, {
         kind = "primary", font = "small",
         action = function() imp:pressInstallCartMods(version) end,
       })
-      if sideBySide then bx = bx + fillW + chipGap
-      else cy = cy + chipH + chipGap end
+      if spec.sideBySide then bx = bx + spec.fillW + spec.chipGap
+      else cy = cy + spec.chipH + spec.chipGap end
     end
-    if sealW > 0 then
-      btn(imp, bx, cy, sealW, chipH, "seal-" .. scope, SEAL_LABEL(armed), {
+    if spec.sealW > 0 then
+      btn(imp, bx, cy, spec.sealW, spec.chipH, "seal-" .. spec.scope, SEAL_LABEL(spec.armed), {
         kind = "danger", font = "small", keepArm = true,
         action = function() imp:pressBreakSeal(version) end,
       })
     end
   end
-  return h
+  return spec.h
 end
 
 local function buildGamePanel(imp, x, y, w, availH, m, version, budgetH)
@@ -2430,44 +2447,31 @@ local function buildGamePanel(imp, x, y, w, availH, m, version, budgetH)
     -- the cap is the real window bottom (or the footer, when that is higher).
     local _, winH = love.graphics.getDimensions()
     local limitBottom = math.min(y + availH, winH)
-    local sealReserve = buildCartCard(imp, nil, nil, lw, m, version)
+    local sealSpec = cartCardSpec(imp, lw, m, version)
+    local sealReserve = sealSpec and sealSpec.h or 0
     local mgW = math.max(Kit.tapMin(), math.floor(34 * m.s))
     local bgap = math.floor(8 * m.s)
     local cartAreaW = lw - mgW - bgap
     local tail = gap + m.btnH + gap + sealReserve
-    local function cartridgeAdvance(playH)
-      if skin.shape == "gba" then
-        local targetH = playH * 0.62
-        local cartW = math.min(cartAreaW * 0.72, targetH * CartShape.GBA_ASPECT)
-        local cartH = cartW / CartShape.GBA_ASPECT
-        return math.floor((playH - cartH) * 0.35) + cartH
-      end
-      return playH
+    local function advance(candidate)
+      local lead, _, cartH = cartridgeBox(candidate, cartAreaW, skin.shape)
+      return lead + cartH
     end
     local playH = math.floor(clamp(remaining * 0.52, 112 * m.s, 260 * m.s))
-    local function stackFits(candidate)
-      return cy + cartridgeAdvance(candidate) + tail <= limitBottom + 0.5
-    end
-    if sealReserve > 0 and not stackFits(playH) then
-      local lo, hi = 0, playH
-      for _ = 1, 14 do
-        local mid = (lo + hi) / 2
-        if stackFits(mid) then lo = mid else hi = mid end
+    if sealReserve > 0 and cy + advance(playH) + tail > limitBottom + 0.5 then
+      if skin.shape == "gba" then
+        local lo, hi = 0, playH
+        for _ = 1, 14 do
+          local mid = (lo + hi) / 2
+          if cy + advance(mid) + tail <= limitBottom + 0.5 then lo = mid else hi = mid end
+        end
+        playH = math.floor(lo)
+      else
+        playH = math.max(0, math.floor(limitBottom - cy - tail))
       end
-      playH = math.floor(lo)
     end
-    local cartH = playH
-    local cartW
-    if skin.shape == "gba" then
-      -- GBA carts are wider (aspect 1.74:1) but have a smaller physical footprint than GB carts.
-      -- Scale height to ~62% of column height budget so visual mass is balanced and doesn't overwhelm the column.
-      local targetH = playH * 0.62
-      cartW = math.min(cartAreaW * 0.72, targetH * CartShape.GBA_ASPECT)
-      cartH = cartW / CartShape.GBA_ASPECT
-      ly = ly + math.floor((playH - cartH) * 0.35)
-    else
-      cartW = math.min(cartAreaW, math.floor(playH * 0.88))
-    end
+    local lead, cartW, cartH = cartridgeBox(playH, cartAreaW, skin.shape)
+    ly = ly + lead
     local cartX = lx + math.floor((cartAreaW - cartW) / 2)
     cartridgeButton(imp, cartX, ly, cartW, cartH, "play-" .. version,
       skin, function() imp:play(version, true) end, version)

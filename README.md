@@ -30,24 +30,20 @@ AI use on this project is disclosed in [AIDisclosure.md](AIDisclosure.md).
 
 ## Play in the browser
 
-The web port is the same engine, compiled to WebAssembly with [love.js](https://github.com/Davidobot/love.js) in compatibility mode. Compatibility mode is what GitHub Pages can host: the page needs no `SharedArrayBuffer` and no COOP/COEP headers. Threaded love.js games (Forgotten Saga, 2dengine, LoveIDE) add a service worker to fake those headers. This build does not, because its workers already run on the main thread.
+The browser build is the same engine, compiled to WebAssembly with [love.js](https://github.com/Davidobot/love.js). Once this repository's Pages site is published, it is at **https://awest813.github.io/gen1recomp/**.
 
-Red, Blue, and Yellow are supported. Gold, Silver, and Crystal import and play (beta). Emerald imports and plays its intro; some Gen 3 screens still need LuaJIT's FFI. Details and controls are in [docs/platforms/web.md](docs/platforms/web.md).
+Press **Start** (browsers block sound until you do), then **Import ROM** and choose your legally obtained `.gb` / `.gbc` / `.gba` file. The file is read in the browser and is never uploaded. Saves stay in that browser's storage. Use **Export save** on the launcher if you want a `.sav` you can keep.
 
-Publishing this repository:
+Red, Blue, and Yellow are supported. Gold, Silver, and Crystal import and play (beta). Emerald imports and plays its intro; some Gen 3 screens still need LuaJIT's FFI. A second tab shows "Already open" so two copies cannot overwrite one save. `?game=blue` boots Blue directly. `?fps=1` shows the frame rate. Details are in [docs/platforms/web.md](docs/platforms/web.md).
 
-1. **Settings > Pages > Source**: GitHub Actions. Do this once.
-2. **Actions > web > Run workflow**, tick **deploy**, and run it. The workflow has to be on the default branch before GitHub will show it.
+The build is the compatibility love.js runtime: no `SharedArrayBuffer`, and no COOP/COEP headers. Threaded love.js games add a service worker to fake those headers. This one does not, because its workers already run on the main thread. That is what lets GitHub Pages host it.
 
-After that deploy, the game is at:
+To publish:
 
-**https://awest813.github.io/gen1recomp/**
+1. Set **Settings > Pages > Source** to **GitHub Actions** once.
+2. Run **Actions > web** with **deploy** ticked. The workflow has to be on the default branch before GitHub will show it.
 
-Open the page, press **Start** (browsers block sound until you do), then **Import ROM** and choose your legally obtained `.gb` / `.gbc` / `.gba` file. The file is read in the browser and is never uploaded. Saves stay in that browser's storage. Use **Export save** on the launcher if you want a `.sav` you can keep.
-
-A second tab shows "Already open" so two copies cannot overwrite one save. `?game=blue` boots Blue directly. `?fps=1` shows the frame rate.
-
-The site artifact is also attached to every **web** workflow run as `gen1recomp-web`, and release builds ship `gen1recomp-<version>-web.zip`. Unzip either one and serve the directory over HTTP. `file://` will not load the wasm.
+Every **web** workflow run also uploads `gen1recomp-web`, and releases ship `gen1recomp-<version>-web.zip`. Unzip either one and serve the directory over HTTP. `file://` will not load the wasm.
 
 ## Play on a computer or phone
 

@@ -21,12 +21,12 @@
 <body>
   <p>That page is not part of G1R Deluxe. <a id="home" href="./">Back to the game</a>.</p>
   <script>
-    // GitHub Pages serves this file for a missing path and keeps the broken
-    // URL in the address bar. Step up to the nearest directory that can hold
-    // index.html (project sites live at /<repo>/, not at the domain root).
+    // GitHub Pages keeps the missing path in the address bar. Step up one
+    // directory so /<repo>/missing and /<repo>/missing/ both return to the game.
     var home = document.getElementById("home");
-    var path = location.pathname.replace(/[^/]*$/, "");
-    if (path && path !== "/") home.setAttribute("href", path);
+    var path = location.pathname.replace(/\/+$/, "");
+    var slash = path.lastIndexOf("/");
+    if (slash > 0) home.setAttribute("href", path.slice(0, slash + 1));
   </script>
 </body>
 </html>

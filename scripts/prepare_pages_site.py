@@ -23,20 +23,19 @@ def prepare(directory, max_bytes=None):
     source = SHELL / "404.html"
     if not source.is_file():
         raise ValueError("ports/web/shell/404.html is missing")
+    if max_bytes is not None:
+        too_big = []
+        for path in sorted(directory.iterdir()):
+            if path.is_file() and path.name != "404.html" and path.stat().st_size > max_bytes:
+                too_big.append(path.name)
+        if too_big:
+            raise ValueError(
+                "GitHub Pages file limit exceeded (%d bytes): %s"
+                % (max_bytes, ", ".join(too_big))
+            )
     (directory / ".nojekyll").write_bytes(b"")
     (directory / "404.html").write_bytes(source.read_bytes())
-    if max_bytes is None:
-        return []
-    too_big = []
-    for path in sorted(directory.iterdir()):
-        if path.is_file() and path.stat().st_size > max_bytes:
-            too_big.append(path.name)
-    if too_big:
-        names = ", ".join(too_big)
-        raise ValueError(
-            "GitHub Pages file limit exceeded (%d bytes): %s" % (max_bytes, names)
-        )
-    return too_big
+    return []
 
 
 def main(argv):
