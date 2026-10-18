@@ -795,7 +795,7 @@ end
 
 -- A status label with no interaction: outlined text, the "INSTALLED"/"UPDATE"
 -- markers on mod rows.  Pass opts.fill for a solid chip (BETA badges); ink
--- then defaults to PAL.inverse so the label stays readable on the fill.
+-- then follows the fill so the label stays readable.
 function Kit.tag(x, y, w, h, label, color, opts)
   if not G then return end
   opts = opts or {}
@@ -804,7 +804,7 @@ function Kit.tag(x, y, w, h, label, color, opts)
   else
     Theme.strokeRounded(x, y, w, h, color or PAL.line, 0.7, 1)
   end
-  local ink = opts.ink or (opts.fill and PAL.inverse) or color or PAL.muted
+  local ink = opts.ink or (opts.fill and Theme.inkOn(color or PAL.yellow)) or color or PAL.muted
   local ty = y + (h - Kit.textHeight("micro")) / 2
   if opts.bold then
     Kit.textCenterBold("micro", label, x, ty, w, ink)
@@ -1193,8 +1193,18 @@ function Kit.scrollEnd(x, y, w, h, offset, maxScroll, background)
   local thumbH = math.max(math.floor(20 * Kit.scale),
     math.floor(h * (h / (h + maxScroll))))
   local thumbY = y + (h - thumbH) * (at / maxScroll)
-  Theme.fill(barX, y, barW, h, PAL.bg, 0.35)
-  Theme.fill(barX, thumbY, barW, thumbH, PAL.muted, 0.7)
+  Kit.scrollBar(barX, y, barW, h, thumbY, thumbH)
+end
+
+-- Track and thumb share a capsule so a list scroller matches the meters.
+function Kit.scrollBar(x, y, w, h, thumbY, thumbH, trackA, thumbA)
+  if w <= 0 or h <= 0 then return end
+  Theme.fillRounded(x, y, w, h, PAL.bg, trackA or 0.35, math.min(w, h) / 2)
+  local th = thumbH or 0
+  if th > 0 then
+    Theme.fillRounded(x, thumbY, w, th, PAL.muted, thumbA or 0.7,
+      math.min(w, th) / 2)
+  end
 end
 
 -- ------------------------------------------------------------------ spinner

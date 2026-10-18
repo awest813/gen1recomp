@@ -29,6 +29,19 @@ eq(Kit.scrollClamp(-10, 300), 0, "an offset above the top clamps to it")
 eq(Kit.scrollClamp(5000, 300), 300, "an offset past the end clamps to it")
 eq(Kit.scrollClamp(120, 0), 0, "a region with no travel sits at the top")
 
+local Theme = require("src.ui.kit.Theme")
+local scrollRadii = {}
+local realFillRounded = Theme.fillRounded
+Theme.fillRounded = function(x, y, w, h, c, a, r)
+  scrollRadii[#scrollRadii + 1] = r
+  return realFillRounded(x, y, w, h, c, a, r)
+end
+Kit.scrollBar(0, 0, 4, 120, 8, 24)
+Theme.fillRounded = realFillRounded
+eq(#scrollRadii, 2, "a scrollbar paints a track and a thumb")
+eq(scrollRadii[1], 2, "the track is a capsule")
+eq(scrollRadii[2], 2, "the thumb is a capsule")
+
 local at, left = Kit.scrollHandoff(0, 300, 120)
 eq(at, 120, "a move inside the extent is taken in full")
 eq(left, 0, "and hands nothing on")

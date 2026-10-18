@@ -210,4 +210,16 @@ for _, size in ipairs(SIZES) do
   Kit.audit = nil
 end
 
+window(1280, 720)
+for _, game in ipairs({ { "ruby", "Ruby" }, { "sapphire", "Sapphire" } }) do
+  local imp = freshLauncher()
+  imp.tab = game[1]
+  local header = drawAndCapture(imp)
+  local named = false
+  for line in header:gmatch("[^\n]+") do
+    if line == game[2] then named = true break end
+  end
+  check(named, "the game control names " .. game[2] .. " instead of a shared initial")
+end
+
 T.finish("launcher panel reflow")

@@ -565,17 +565,18 @@ LauncherView.queueAction = queueAction
 local function textField(imp, x, y, w, h, key, rawText, placeholder, focused, action)
   Kit._audit("control", x, y, w, h, key)
   local isFocused = Kit.focusable(key, x, y, w, h)
-  Theme.fill(x, y, w, h, PAL.bg, 1)
+  local fieldR = Theme.radius()
+  Theme.fillRounded(x, y, w, h, PAL.bg, 1, fieldR)
   if isFocused then
     local glowPulse = 0.5 + 0.5 * math.sin(Kit.time * 5)
-    Theme.strokeRounded(x - 3, y - 3, w + 6, h + 6, PAL.ink, 0.35 + 0.25 * glowPulse, 2.5, 4)
-    Theme.strokeRounded(x, y, w, h, PAL.ink, 0.95 + 0.05 * glowPulse, 2, 2)
-    Theme.fillRounded(x, y, w, h, PAL.ink, 0.12 + 0.06 * glowPulse, 2)
+    Theme.strokeRounded(x - 3, y - 3, w + 6, h + 6, PAL.ink, 0.35 + 0.25 * glowPulse, 2.5, fieldR + 3)
+    Theme.strokeRounded(x, y, w, h, PAL.ink, 0.95 + 0.05 * glowPulse, 2, fieldR)
+    Theme.fillRounded(x, y, w, h, PAL.ink, 0.12 + 0.06 * glowPulse, fieldR)
   else
-    Theme.stroke(x, y, w, h, PAL.line,
+    Theme.strokeRounded(x, y, w, h, PAL.line,
       focused and Theme.A.focus or
         (Kit.hover(x, y, w, h) and Theme.A.hover or Theme.A.hairline),
-      focused and 2 or 1)
+      focused and 2 or 1, fieldR)
   end
   local pad = math.floor(10 * Kit.scale)
   local ty = y + (h - Kit.textHeight("button")) / 2
@@ -1630,7 +1631,16 @@ local function headerTabMetrics(m)
   for _, label in pairs(TAB_LABELS) do
     width = math.max(width, Kit.textWidth("micro", Strings(label)) + 4)
   end
-  local dropW = width + math.floor(24 * m.s)
+  -- The game control names the cartridge. A single initial collides
+  -- (Red/Ruby, Silver/Sapphire) and the full-bleed cartridge fill fails
+  -- contrast on the darker shells.
+  local nameW = 0
+  for _, g in ipairs(GAME_TABS) do
+    nameW = math.max(nameW, Kit.textWidth("tab", Strings(g.label)))
+  end
+  local pip = math.floor(m.chip * 0.42)
+  local dropW = math.max(width + math.floor(24 * m.s),
+    math.floor(10 * m.s) + pip + math.floor(8 * m.s) + nameW + math.floor(22 * m.s))
   local used, rows = dropW, 1
   for _ = 1, #HEADER_TABS do
     if used + gap + width > m.contentW then rows, used = rows + 1, width
@@ -1825,10 +1835,21 @@ local function buildHeader(imp, m)
   local chrome0 = headerChrome(imp)
   local game = currentGame(imp)
   dropW = math.min(tabRight - tabLeft, dropW)
-  chrome0.game.color = game.color
-  chrome0.game.letter = game.letter
-  chrome0.game.letterBold = true
+  chrome0.game.color = nil
+  chrome0.game.letter = nil
   chrome0.game.active = imp.tab == game.id
+  chrome0.game.drawFn = function(x, y, w, h, invert)
+    local g = currentGame(imp)
+    local pip = math.floor(h * 0.42)
+    local px = x + math.floor(10 * m.s)
+    local py = y + (h - pip) / 2
+    Theme.fillRounded(px, py, pip, pip, g.color, 1, math.floor(pip / 2))
+    local ink = invert and PAL.inverse or PAL.text
+    local lx = px + pip + math.floor(8 * m.s)
+    local maxW = math.max(0, w - (lx - x) - math.floor(22 * m.s))
+    local name = Kit.ellipsize("tab", Strings(g.label), maxW)
+    Kit.textBold("tab", name, lx, y + (h - Kit.textHeight("tab")) / 2, ink)
+  end
   local gameHot = Kit.hover(tx, ty, dropW, tabH)
   local gameDown = gameHot and Kit.mouseDown
   local gameInvert = chrome0.game.active
@@ -2149,7 +2170,7 @@ local function buildSlotCard(imp, x, y, w, availH, m, version, ready)
   cy = cy + headH + gap
   Kit.card(px, cy, iw, rowH, "row")
   if slot then
-    Theme.strokeRounded(px, cy, iw, rowH, PAL.green, 0.65, 1, Theme.cardRadius())
+    Theme.strokeRounded(px, cy, iw, rowH, PAL.green, 0.65, 1, Theme.radius())
     local tx, ty = px + gap, cy + gap
     local tagW = chipWidth(Strings("LOADED"), m)
     local titleW = math.max(0, textW - tagW - gap)
@@ -3668,7 +3689,8 @@ local function buildFindPanel(imp, x, y, w, availH, m)
       love.graphics.setColor(1, 1, 1, 1)
       love.graphics.draw(image, Theme.snap(px), Theme.snap(ly), 0, s, s)
     else
-      Theme.stroke(px, ly, thumb, thumb, PAL.line, Theme.A.hairline, 1)
+      Theme.strokeRounded(px, ly, thumb, thumb, PAL.line, Theme.A.hairline, 1,
+        math.min(Theme.radius(), thumb / 4))
       -- A thumbnail still downloading and one that will never arrive drew the
       -- same dead box, so a slow index looked broken.  Spin while it is in
       -- flight; only fall back to the wordmark once it has resolved.
@@ -4126,7 +4148,7 @@ local function buildSavePicker(imp, m)
       local hot = Kit.hover(x, ry, rw, rowH)
       Kit.card(x, ry, rw, rowH, (selected or hot) and "rowHover" or "row")
       if loaded then
-        Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.cardRadius())
+        Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.radius())
       end
       local label = loaded and Strings("LOADED") or Strings("Load")
       local labelW = Kit.textWidth("micro", label) + gap
@@ -4178,7 +4200,8 @@ local function buildModGamesPicker(imp, m)
       x + 2 * gap + sw, ry + (rowH - Kit.textHeight("button")) / 2, PAL.text)
     local box = math.floor(22 * m.s)
     local bx, by = x + rw - gap - box, ry + (rowH - box) / 2
-    Theme.strokeRounded(bx, by, box, box, on and PAL.green or PAL.line, 0.8, 1, 4)
+    Theme.strokeRounded(bx, by, box, box, on and PAL.green or PAL.line, 0.8, 1,
+      math.min(Theme.radius(), box / 3))
     if on then
       require("src.ui.kit.Icons").draw("check", bx + 2, by + 2, box - 4, PAL.green)
     end
@@ -4279,7 +4302,8 @@ local function buildConfirmModal(imp, m, spec)
     })
     local box = math.floor(22 * m.s)
     local bx, by = px + pad + gap, cy + (m.btnH - box) / 2
-    Theme.strokeRounded(bx, by, box, box, t.on and PAL.green or PAL.line, 0.8, 1, 4)
+    Theme.strokeRounded(bx, by, box, box, t.on and PAL.green or PAL.line, 0.8, 1,
+      math.min(Theme.radius(), box / 3))
     if t.on then
       require("src.ui.kit.Icons").draw("check", bx + 2, by + 2, box - 4, PAL.green)
     end
@@ -4403,7 +4427,8 @@ local function buildVersionsModal(imp, m)
   for i = first, last do
     local rel = v.releases[i]
     local ry = cy + (i - first) * (rowH + gap)
-    Theme.stroke(px + pad, ry, pw - 2 * pad, rowH, PAL.line, Theme.A.hairline, 1)
+    Theme.strokeRounded(px + pad, ry, pw - 2 * pad, rowH, PAL.line, Theme.A.hairline, 1,
+      Theme.radius())
     local ix = px + pad + math.floor(10 * m.s)
     local inner = pw - 2 * pad - math.floor(20 * m.s)
     local text = "v" .. rel.version
@@ -4898,7 +4923,7 @@ local function buildCartModal(imp, m)
     local ry = listY + (i - 1) * (rowH + gap)
     local key = "cartpop-id-" .. row.id
     Kit.card(x, ry, rw, rowH, "row")
-    if active == row.id then Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.cardRadius()) end
+    if active == row.id then Theme.strokeRounded(x, ry, rw, rowH, PAL.green, 0.65, 1, Theme.radius()) end
     local tx, ty = x + gap, ry + gap
     Kit.textBold("button", Kit.ellipsize("button", row.title or row.id, rw - 2 * gap), tx, ty, PAL.heading)
     ty = ty + Kit.textHeight("button") + 4 * m.s
@@ -6106,8 +6131,7 @@ local function buildDepResolverModal(imp, m)
     local barX = px + pw - pad - barW
     local thumbH = math.max(math.floor(20 * m.s), math.floor(listH * (listH / totalContentH)))
     local thumbY = cy + (listH - thumbH) * ((imp._depScrollOffset or 0) / scrollMax)
-    Theme.fill(barX, cy, barW, listH, PAL.bg, 0.4)
-    Theme.fill(barX, thumbY, barW, thumbH, PAL.muted, 0.7)
+    Kit.scrollBar(barX, cy, barW, listH, thumbY, thumbH)
   end
 
   cy = cy + listH + math.floor(10 * m.s)
