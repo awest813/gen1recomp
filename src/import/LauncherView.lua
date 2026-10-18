@@ -2325,6 +2325,7 @@ local function buildCartCard(imp, x, y, w, m, version)
     h = h + math.floor(8 * m.s) + chipRows * chipH + (chipRows - 1) * chipGap
   end
   h = h + pad
+  if y == nil then return h end
 
   Kit.card(x, y, w, h)
   local cy = y + pad
@@ -2423,11 +2424,38 @@ local function buildGamePanel(imp, x, y, w, availH, m, version, budgetH)
   local ly = cy
 
   if ready then
-    -- Preserve shell proportions.
-    local playH = math.floor(clamp(remaining * 0.52, 112 * m.s, 260 * m.s))
+    -- Preserve shell proportions, then give back cart height when the seal
+    -- chips would land past the first screen.  A short window lays the panel
+    -- out at minPanelHeight and scrolls, which is taller than the window, so
+    -- the cap is the real window bottom (or the footer, when that is higher).
+    local _, winH = love.graphics.getDimensions()
+    local limitBottom = math.min(y + availH, winH)
+    local sealReserve = buildCartCard(imp, nil, nil, lw, m, version)
     local mgW = math.max(Kit.tapMin(), math.floor(34 * m.s))
     local bgap = math.floor(8 * m.s)
     local cartAreaW = lw - mgW - bgap
+    local tail = gap + m.btnH + gap + sealReserve
+    local function cartridgeAdvance(playH)
+      if skin.shape == "gba" then
+        local targetH = playH * 0.62
+        local cartW = math.min(cartAreaW * 0.72, targetH * CartShape.GBA_ASPECT)
+        local cartH = cartW / CartShape.GBA_ASPECT
+        return math.floor((playH - cartH) * 0.35) + cartH
+      end
+      return playH
+    end
+    local playH = math.floor(clamp(remaining * 0.52, 112 * m.s, 260 * m.s))
+    local function stackFits(candidate)
+      return cy + cartridgeAdvance(candidate) + tail <= limitBottom + 0.5
+    end
+    if sealReserve > 0 and not stackFits(playH) then
+      local lo, hi = 0, playH
+      for _ = 1, 14 do
+        local mid = (lo + hi) / 2
+        if stackFits(mid) then lo = mid else hi = mid end
+      end
+      playH = math.floor(lo)
+    end
     local cartH = playH
     local cartW
     if skin.shape == "gba" then
