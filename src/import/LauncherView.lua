@@ -2445,8 +2445,15 @@ local function buildGamePanel(imp, x, y, w, availH, m, version, budgetH)
     -- chips would land past the first screen.  A short window lays the panel
     -- out at minPanelHeight and scrolls, which is taller than the window, so
     -- the cap is the real window bottom (or the footer, when that is higher).
+    -- One column keeps scrolling under the cart, and the scroller's fade sits
+    -- on that same edge; reserve it so the chips are not painted under it.
     local _, winH = love.graphics.getDimensions()
     local limitBottom = math.min(y + availH, winH)
+    if not m.twoCol then
+      local clipH = math.max(0, limitBottom - y)
+      local fadeH = math.min(math.floor(24 * m.s), math.floor(clipH / 4))
+      limitBottom = limitBottom - fadeH
+    end
     local sealSpec = cartCardSpec(imp, lw, m, version)
     local sealReserve = sealSpec and sealSpec.h or 0
     local mgW = math.max(Kit.tapMin(), math.floor(34 * m.s))
@@ -7019,7 +7026,10 @@ local function drawTabLayer(imp, tabId, x, contentY, w, viewH, availH, m, dx)
     love.graphics.translate(dx, 0)
   end
   local py = Kit.scrollBegin(x, contentY, w, viewH, at, maxAt)
-  local budgetH = math.floor(viewH * (1 + PANEL_OVERSCAN))
+  -- Budget follows the layout height, not the on-screen clip.  A short
+  -- window clips viewH to the glass while availH stays minPanelHeight, and
+  -- shrinking the budget with the clip would reflow the stack as it scrolls.
+  local budgetH = math.floor(availH * (1 + PANEL_OVERSCAN))
   local panelW = math.max(0, w - Kit.scrollGutter(m.s))
   local contentH = buildTabPanel(imp, x, py + 5, panelW, availH - 5, budgetH - 5, m)
   contentH = (contentH or (availH - 5)) + 10
@@ -7147,7 +7157,14 @@ function LauncherView.draw(imp)
   end
 
   local x, w = m.contentX, m.contentW
-  local viewH = math.max(0, availH)
+  -- availH is the layout budget (minPanelHeight on a short window).  The
+  -- scroller only covers the part of that budget that is on the glass: the
+  -- window bottom while the footer is still below the fold, then the footer
+  -- once page scroll brings it up.  Clipping to availH parked the fade and
+  -- the scrollbar past the window.
+  local screenBottom = m.top + m.h
+  local visibleBottom = math.min(screenBottom, footY)
+  local viewH = math.max(0, math.min(availH, visibleBottom - contentY))
   local rect = imp._tabRegionRect
   if not rect then rect = {}; imp._tabRegionRect = rect end
   rect.x, rect.y, rect.w, rect.h = x, contentY, w, viewH
