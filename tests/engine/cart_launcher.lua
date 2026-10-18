@@ -1099,6 +1099,42 @@ for _, size in ipairs(SIZES) do
         check(sawFill,
           ("%dx%d cart card: drew Install required mods"):format(W, H))
       end
+      local region = page._tabRegionRect
+      check(region and region.h > 0 and region.y + region.h <= H + 0.5,
+        ("%dx%d tab scroller stays inside the window"):format(W, H))
+      -- Phone, ready cart: the slot card sits under the cart, so "+ New save
+      -- slot" starts below the fold.  A drag scrolls the tab first.  The
+      -- scroller's clip has to end on the glass (the fade lives on that edge).
+      if W == 360 and H == 780 and cart then
+        check(region.y + region.h >= H - 2,
+          "360x780 tab scroller reaches the window edge")
+        local function slotOnScreen()
+          for _, r in ipairs(Kit.audit or {}) do
+            if tostring(r.label) == "+ New save slot" then
+              local y1, y2 = r.y, r.y + r.h
+              if r.clip then
+                y1 = math.max(y1, r.clip.y)
+                y2 = math.min(y2, r.clip.y + r.clip.h)
+              end
+              y1 = math.max(y1, 0)
+              y2 = math.min(y2, H)
+              return (y2 - y1) > 1
+            end
+          end
+          return false
+        end
+        page._tabScroll = page._tabScroll or {}
+        page._tabScroll.red = 1e6
+        Kit.audit = {}
+        LauncherView.draw(page)
+        if not slotOnScreen() then
+          page._pageScroll = 1e6
+          Kit.audit = {}
+          LauncherView.draw(page)
+        end
+        check(slotOnScreen(),
+          "360x780 cart reaches + New save slot by scrolling")
+      end
     end
     Kit.audit = nil
 

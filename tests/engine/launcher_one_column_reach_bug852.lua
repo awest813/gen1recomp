@@ -79,8 +79,9 @@ local function newSlotRect(imp)
 end
 
 -- The control is reachable when its rect, intersected with whatever clip
--- bounds it, still has real area inside the window -- either straight away or
--- after the page is scrolled to the bottom.
+-- bounds it, still has real area inside the window.  A drag scrolls the tab
+-- before the page, so try that order: on screen already, then the tab, then
+-- the page.
 local function reachable(imp, H)
   local function visible()
     local r = newSlotRect(imp)
@@ -93,6 +94,10 @@ local function reachable(imp, H)
     y1, y2 = math.max(y1, 0), math.min(y2, H)
     return (y2 - y1) > 1
   end
+  if visible() then return true end
+  local tab = imp.tab or "red"
+  imp._tabScroll = imp._tabScroll or {}
+  imp._tabScroll[tab] = 1e6
   if visible() then return true end
   imp._pageScroll = 1e6          -- clamps to the extent inside draw()
   return visible()

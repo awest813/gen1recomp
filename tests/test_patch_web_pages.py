@@ -26,6 +26,7 @@ class PagesSiteTest(unittest.TestCase):
             page = (base / "404.html").read_text(encoding="utf-8")
             self.assertIn('id="home"', page)
             self.assertIn("location.pathname", page)
+            self.assertIn("lastIndexOf", page)
 
     def test_pages_limit_names_the_oversized_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -33,7 +34,8 @@ class PagesSiteTest(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 prepare_pages.prepare(base, max_bytes=16)
             self.assertIn("game.data", str(caught.exception))
-            self.assertTrue((base / ".nojekyll").is_file())
+            self.assertFalse((base / ".nojekyll").exists())
+            self.assertFalse((base / "404.html").exists())
 
     def test_missing_index_does_not_write_a_partial_site(self):
         with tempfile.TemporaryDirectory() as directory:
