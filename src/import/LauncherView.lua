@@ -565,17 +565,18 @@ LauncherView.queueAction = queueAction
 local function textField(imp, x, y, w, h, key, rawText, placeholder, focused, action)
   Kit._audit("control", x, y, w, h, key)
   local isFocused = Kit.focusable(key, x, y, w, h)
-  Theme.fill(x, y, w, h, PAL.bg, 1)
+  local fieldR = Theme.radius()
+  Theme.fillRounded(x, y, w, h, PAL.bg, 1, fieldR)
   if isFocused then
     local glowPulse = 0.5 + 0.5 * math.sin(Kit.time * 5)
-    Theme.strokeRounded(x - 3, y - 3, w + 6, h + 6, PAL.ink, 0.35 + 0.25 * glowPulse, 2.5, 4)
-    Theme.strokeRounded(x, y, w, h, PAL.ink, 0.95 + 0.05 * glowPulse, 2, 2)
-    Theme.fillRounded(x, y, w, h, PAL.ink, 0.12 + 0.06 * glowPulse, 2)
+    Theme.strokeRounded(x - 3, y - 3, w + 6, h + 6, PAL.ink, 0.35 + 0.25 * glowPulse, 2.5, fieldR + 3)
+    Theme.strokeRounded(x, y, w, h, PAL.ink, 0.95 + 0.05 * glowPulse, 2, fieldR)
+    Theme.fillRounded(x, y, w, h, PAL.ink, 0.12 + 0.06 * glowPulse, fieldR)
   else
-    Theme.stroke(x, y, w, h, PAL.line,
+    Theme.strokeRounded(x, y, w, h, PAL.line,
       focused and Theme.A.focus or
         (Kit.hover(x, y, w, h) and Theme.A.hover or Theme.A.hairline),
-      focused and 2 or 1)
+      focused and 2 or 1, fieldR)
   end
   local pad = math.floor(10 * Kit.scale)
   local ty = y + (h - Kit.textHeight("button")) / 2
@@ -3688,7 +3689,8 @@ local function buildFindPanel(imp, x, y, w, availH, m)
       love.graphics.setColor(1, 1, 1, 1)
       love.graphics.draw(image, Theme.snap(px), Theme.snap(ly), 0, s, s)
     else
-      Theme.stroke(px, ly, thumb, thumb, PAL.line, Theme.A.hairline, 1)
+      Theme.strokeRounded(px, ly, thumb, thumb, PAL.line, Theme.A.hairline, 1,
+        math.min(Theme.radius(), thumb / 4))
       -- A thumbnail still downloading and one that will never arrive drew the
       -- same dead box, so a slow index looked broken.  Spin while it is in
       -- flight; only fall back to the wordmark once it has resolved.
@@ -4198,7 +4200,8 @@ local function buildModGamesPicker(imp, m)
       x + 2 * gap + sw, ry + (rowH - Kit.textHeight("button")) / 2, PAL.text)
     local box = math.floor(22 * m.s)
     local bx, by = x + rw - gap - box, ry + (rowH - box) / 2
-    Theme.strokeRounded(bx, by, box, box, on and PAL.green or PAL.line, 0.8, 1, 4)
+    Theme.strokeRounded(bx, by, box, box, on and PAL.green or PAL.line, 0.8, 1,
+      math.min(Theme.radius(), box / 3))
     if on then
       require("src.ui.kit.Icons").draw("check", bx + 2, by + 2, box - 4, PAL.green)
     end
@@ -4299,7 +4302,8 @@ local function buildConfirmModal(imp, m, spec)
     })
     local box = math.floor(22 * m.s)
     local bx, by = px + pad + gap, cy + (m.btnH - box) / 2
-    Theme.strokeRounded(bx, by, box, box, t.on and PAL.green or PAL.line, 0.8, 1, 4)
+    Theme.strokeRounded(bx, by, box, box, t.on and PAL.green or PAL.line, 0.8, 1,
+      math.min(Theme.radius(), box / 3))
     if t.on then
       require("src.ui.kit.Icons").draw("check", bx + 2, by + 2, box - 4, PAL.green)
     end
@@ -4423,7 +4427,8 @@ local function buildVersionsModal(imp, m)
   for i = first, last do
     local rel = v.releases[i]
     local ry = cy + (i - first) * (rowH + gap)
-    Theme.stroke(px + pad, ry, pw - 2 * pad, rowH, PAL.line, Theme.A.hairline, 1)
+    Theme.strokeRounded(px + pad, ry, pw - 2 * pad, rowH, PAL.line, Theme.A.hairline, 1,
+      Theme.radius())
     local ix = px + pad + math.floor(10 * m.s)
     local inner = pw - 2 * pad - math.floor(20 * m.s)
     local text = "v" .. rel.version
@@ -6126,8 +6131,7 @@ local function buildDepResolverModal(imp, m)
     local barX = px + pw - pad - barW
     local thumbH = math.max(math.floor(20 * m.s), math.floor(listH * (listH / totalContentH)))
     local thumbY = cy + (listH - thumbH) * ((imp._depScrollOffset or 0) / scrollMax)
-    Theme.fill(barX, cy, barW, listH, PAL.bg, 0.4)
-    Theme.fill(barX, thumbY, barW, thumbH, PAL.muted, 0.7)
+    Kit.scrollBar(barX, cy, barW, listH, thumbY, thumbH)
   end
 
   cy = cy + listH + math.floor(10 * m.s)

@@ -102,7 +102,7 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     invert = active and true or false
     local tint = opts.color or opts.fill or PAL.ink
     fill = invert and tint or PAL.surface
-    ink = invert and PAL.inverse or (opts.color or PAL.text)
+    ink = invert and Theme.inkOn(tint) or (opts.color or PAL.text)
     if not invert then
       stroke = tint
       strokeA = (focused or hot) and Theme.A.focus
@@ -114,7 +114,7 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     invert = active and true or false
     if active then
       fill = c
-      ink = PAL.inverse
+      ink = Theme.inkOn(c)
       doEmboss = true
     else
       fill = PAL.bg

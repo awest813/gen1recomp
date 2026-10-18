@@ -106,4 +106,14 @@ r = tabFace({ face = "tab", id = "tab-face", color = PAL.railRed,
 check(filledWith(r, PAL.railRed),
   "tab face: the active row is filled with its cart colour")
 
+check(Theme.inkOn(PAL.railRuby) == PAL.heading, "Ruby labels use light ink")
+check(Theme.inkOn(PAL.railSapphire) == PAL.heading, "Sapphire labels use light ink")
+check(Theme.inkOn(PAL.railRed) == PAL.inverse, "Red labels use dark ink")
+check(Theme.inkOn(PAL.railGold) == PAL.inverse, "Gold labels use dark ink")
+check(Theme.inkOn(PAL.railFireRed) == PAL.inverse, "FireRed labels use dark ink")
+check(Theme.inkOn(PAL.railSilver) == PAL.inverse, "Silver labels use dark ink")
+check(Theme.inkOn(PAL.railBlue) == PAL.inverse, "Blue labels use dark ink")
+check(Theme.CARD_VARIANT.badge.radius == "ctl",
+  "badge chips use the same corner as other controls")
+
 print("ok   launcher choose-game fill vs focus")

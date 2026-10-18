@@ -269,12 +269,13 @@ local function art(entry, x, y, size, small, s)
 end
 
 local function checkBadge(x, y, size, checked, accent)
+  local r = math.min(Theme.radius(), size / 3)
   if checked then
-    Theme.fillRounded(x, y, size, size, accent or PAL.green, 1, 4)
+    Theme.fillRounded(x, y, size, size, accent or PAL.green, 1, r)
     Icons.draw("check", x + 2, y + 2, size - 4, PAL.inverse, 1)
   else
-    Theme.fillRounded(x, y, size, size, PAL.bg, 0.95, 4)
-    Theme.strokeRounded(x, y, size, size, PAL.line, 0.6, 1, 4)
+    Theme.fillRounded(x, y, size, size, PAL.bg, 0.95, r)
+    Theme.strokeRounded(x, y, size, size, PAL.line, 0.6, 1, r)
   end
 end
 

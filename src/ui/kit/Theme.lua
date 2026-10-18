@@ -119,7 +119,7 @@ Theme.CARD_VARIANT = {
   },
   badge = {
     fill = PAL.bg, stroke = PAL.yellow, strokeA = Theme.A.hover,
-    shadow = false, radius = 0,
+    shadow = false, radius = "ctl",
   },
 }
 
@@ -131,6 +131,26 @@ local function probe(name)
   return has[name]
 end
 Theme.probe = probe
+
+-- Black or near-white, whichever reads on this fill. Bright shells (Red,
+-- Gold) want dark labels; dark shells (Ruby, Sapphire) want light ones.
+function Theme.inkOn(color)
+  local function channel(v)
+    v = v / 255
+    if v <= 0.04045 then return v / 12.92 end
+    return ((v + 0.055) / 1.055) ^ 2.4
+  end
+  local function lum(c)
+    return 0.2126 * channel(c[1]) + 0.7152 * channel(c[2]) + 0.0722 * channel(c[3])
+  end
+  local L = lum(color)
+  local black = (L + 0.05) / 0.05
+  local whiteL = lum(PAL.heading)
+  local hi, lo = math.max(whiteL, L), math.min(whiteL, L)
+  local white = (hi + 0.05) / (lo + 0.05)
+  if black >= white then return PAL.inverse end
+  return PAL.heading
+end
 
 function Theme.col(c, a)
   if not G then return end

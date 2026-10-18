@@ -40,11 +40,20 @@ end
 function Ui.field(imp, x, y, w, h, key, text, placeholder, focused, set, opts)
   Kit._audit("control", x, y, w, h, key)
   local ring = Kit.focusable(key, x, y, w, h)
-  Theme.fill(x, y, w, h, PAL.bg, 1)
-  Theme.stroke(x, y, w, h, PAL.line,
-    (focused or ring) and Theme.A.focus
-      or (Kit.hover(x, y, w, h) and Theme.A.hover or Theme.A.hairline),
-    focused and 2 or 1)
+  local fieldR = Theme.radius()
+  Theme.fillRounded(x, y, w, h, PAL.bg, 1, fieldR)
+  if ring then
+    local glowPulse = 0.5 + 0.5 * math.sin((Kit.time or 0) * 5)
+    Theme.strokeRounded(x - 3, y - 3, w + 6, h + 6, PAL.ink,
+      0.35 + 0.25 * glowPulse, 2.5, fieldR + 3)
+    Theme.strokeRounded(x, y, w, h, PAL.ink, 0.95 + 0.05 * glowPulse, 2, fieldR)
+    Theme.fillRounded(x, y, w, h, PAL.ink, 0.12 + 0.06 * glowPulse, fieldR)
+  else
+    Theme.strokeRounded(x, y, w, h, PAL.line,
+      focused and Theme.A.focus
+        or (Kit.hover(x, y, w, h) and Theme.A.hover or Theme.A.hairline),
+      focused and 2 or 1, fieldR)
+  end
   local pad = math.floor(10 * Kit.scale)
   local ty = y + (h - Kit.textHeight("button")) / 2
   if (text or "") == "" and not focused then

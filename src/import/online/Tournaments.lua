@@ -47,7 +47,8 @@ function Tournaments.bracket(imp, x, y, w, m, tour)
     for _, entry in ipairs(column.matches) do
       Kit.card(cx, cy, colW, cardH, entry.live and "badge" or nil)
       if entry.live then
-        Theme.stroke(cx, cy, colW, cardH, PAL.green, Theme.A.focus, 2)
+        Theme.strokeRounded(cx, cy, colW, cardH, PAL.green, Theme.A.focus, 2,
+          Theme.radius())
       end
       local pad = math.floor(6 * m.s)
       local ink = PAL.text
