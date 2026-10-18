@@ -25,7 +25,7 @@ reconciliation and actual writes still use the runtime's existing sync path.
 ## Build
 
 ```sh
-scripts/build_web.sh            # first run installs emsdk 2.0.0 and builds love.js
+scripts/build_web.sh --pages     # first run installs emsdk 2.0.0 and builds love.js
 python3 -m http.server -d dist/web 8000
 ```
 
@@ -89,35 +89,56 @@ Screenshots and the console log go to `dist/web-smoke/`.
 ## CI and GitHub Pages
 
 `.github/workflows/web.yml` runs on pushes to `dev`/`main` and on pull requests
-that touch the engine or the web port. Each run builds the site, runs the
-ROM-free smoke test, and uploads two artifacts:
+that touch the engine or the web port. Each run builds the site with
+`--pages`, runs the ROM-free smoke test, and uploads two artifacts:
 
-- **`gen1recomp-web`**: the site. Unzip it and serve it to play.
+- **`gen1recomp-web`**: the site. Unzip it and serve it to play. It already
+  contains `.nojekyll` and `404.html`.
 - **`gen1recomp-web-smoke`**: the smoke screenshots and console log.
 
 The emsdk and love.js build tree are cached between runs.
+
+This build stays on love.js **compatibility** mode (no pthreads). Forgotten
+Saga, 2dengine/love.js, and LoveIDE enable `SharedArrayBuffer` with
+`coi-serviceworker.js` because GitHub Pages cannot set COOP/COEP headers.
+That service worker is for threaded runtimes. This port's workers already
+fall back to the main thread, so the page does not register one and does not
+need those headers. Asset URLs are relative to `index.html`, which is what
+project sites (`https://<owner>.github.io/<repo>/`) and custom domains both
+require. There is no `<base href>`.
+
+`--pages` also splits `game.data` into 90 MB parts when the file would pass
+95 MiB, then refuses anything still over 100 MiB. Pages will not publish a
+larger file. `scripts/prepare_pages_site.py` writes `.nojekyll` (so a branch
+deploy does not run Jekyll) and the project-site `404.html`.
 
 To publish on GitHub Pages:
 
 1. Set **Settings > Pages > Source** to **GitHub Actions** (once).
 2. Go to **Actions > web > Run workflow**, tick **deploy**, and run it. The
    workflow must exist on the default branch to be runnable by hand.
+   `actions/configure-pages` checks that Pages is enabled before the artifact
+   is published.
 
-The page carries no ROM and no game data. Each player imports their own ROM,
-which stays in their browser.
+The published URL is `https://<owner>.github.io/<repo>/`. For this checkout
+that is `https://awest813.github.io/gen1recomp/` after the first successful
+deploy. The page carries no ROM and no game data. Each player imports their
+own ROM, which stays in their browser.
 
 ### Releases
 
 `release.yml`'s `web` job builds from the release's own version-stamped
-`game.love` (`scripts/build_web.sh --love dist/payload/game.love`) and runs
-the smoke test. The site is published as `gen1recomp-<version>-web.zip`,
-ready to unzip onto any static host.
+`game.love` (`scripts/build_web.sh --pages --love dist/payload/game.love`)
+and runs the smoke test. The site is published as
+`gen1recomp-<version>-web.zip`, ready to unzip onto any static host,
+including GitHub Pages.
 
 ## How it fits together
 
 | Piece | What it does |
 |---|---|
-| `scripts/build_web.sh` | Pins and fetches the love.js sources. Patches, builds, packs `game.love` and packages the site. |
+| `scripts/build_web.sh` | Pins and fetches the love.js sources. Patches, builds, packs `game.love` and packages the site. `--pages` is the GitHub Pages layout. |
+| `scripts/prepare_pages_site.py` | Writes `.nojekyll` and `404.html`, and rejects a file over the Pages limit. |
 | `scripts/patch_web_openal.py` | Repairs the pinned Emscripten runtime's vector audio-source dispatch after packaging, including cached native builds. |
 | `scripts/patch_web_gl.py` | Preserves status and diagnostic queries for shader programs that fail to link. |
 | `ports/web/patch_terrarium_mod.py` | Makes a separate Terrarium 1.30.1 ZIP with legacy effect, shared shader precision, protected-coroutine build-budget, cached tree-analysis, sliced tree/vertex-upload, roamer PNG cache fixes, shader uniform presence caching, and enemy HUD padding; import the output in MODS. |

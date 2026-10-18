@@ -12,7 +12,9 @@ name: web
 # (Actions > web > Run workflow) with "deploy" ticked, after setting
 # Settings > Pages > Source to "GitHub Actions".  The site ships engine code
 # only -- no ROM, no generated game data; players import their own ROM in
-# the browser.
+# the browser.  --pages writes .nojekyll and a project-site 404, and splits
+# game.data before it can hit Pages' 100 MiB file limit.  Asset URLs stay
+# relative, so the same build works at /<repo>/ and at a custom domain.
 
 on:
   push:
@@ -28,6 +30,7 @@ on:
       - "scripts/patch_web_*.py"
       - "scripts/split_web_build.py"
       - "scripts/stamp_web_assets.py"
+      - "scripts/prepare_pages_site.py"
       - "tests/test_patch_*.py"
       - "tests/test_split_web_build.py"
       - "scripts/pack_love.sh"
@@ -45,6 +48,7 @@ on:
       - "scripts/patch_web_*.py"
       - "scripts/split_web_build.py"
       - "scripts/stamp_web_assets.py"
+      - "scripts/prepare_pages_site.py"
       - "tests/test_patch_*.py"
       - "tests/test_split_web_build.py"
       - "scripts/pack_love.sh"
@@ -68,6 +72,10 @@ jobs:
   build:
     name: build + browser smoke
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v7
 
@@ -94,7 +102,7 @@ jobs:
           restore-keys: web-native-
 
       - name: build the site
-        run: ./scripts/build_web.sh
+        run: ./scripts/build_web.sh --pages
 
       - name: install Playwright Chromium
         run: |
@@ -117,6 +125,10 @@ jobs:
         with:
           name: gen1recomp-web
           path: dist/web
+
+      - name: configure GitHub Pages
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy
+        uses: actions/configure-pages@v5
 
       - name: upload the Pages artifact
         if: github.event_name == 'workflow_dispatch' && inputs.deploy
