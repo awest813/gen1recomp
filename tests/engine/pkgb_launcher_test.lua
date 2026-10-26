@@ -1033,4 +1033,19 @@ do
   love.timer.getTime = realTimer
 end
 
+-- ------------------------------------------------ pad moves by column
+do
+  window(1280, 720)
+  local m = fresh()
+  drawText(m)
+  local function step(dir) Kit.navigate(dir) drawText(m) drawText(m) return Kit.focusId end
+  Kit.focusId = "game-gold"
+  eq(step("right"), "slot-" .. m:currentSave("gold").id, "Right from the game list lands on the chosen save")
+  check(not tostring(step("left")):match("^game%-import"), "and Left goes back without stopping on an Import chip")
+  Kit.focusId = "game-gold"
+  eq(step("left"), "nav-games", "Left from the list lands on the current section in the rail")
+  eq(step("down"), "nav-box", "and Down walks the rail")
+  check(Kit.navColumn == nil, "the column rules are cleared when the launcher's frame ends")
+end
+
 T.finish("pkgb launcher")

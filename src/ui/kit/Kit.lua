@@ -458,6 +458,69 @@ function Kit.pointerUsed()
   Kit._ringShown = false
 end
 
+-- Column navigation, for a host that lays its screen out in columns (the
+-- launcher: rail | game list | content).  The host sets, for its own frame
+-- only:
+--   Kit.navColumn(slot) -> column name, or "skip" to leave a control out
+--   Kit.navColumnOrder  -> column names left to right
+--   Kit.navAnchor(col)  -> optional id to land on when entering that column
+-- Left/Right stay in the row they are in, else step to the next column;
+-- Up/Down stay in the column, crossing only when nothing is left that way.
+function Kit._resolveColumns(cur, dir, n)
+  local colOf = Kit.navColumn
+  local curCol = colOf(cur)
+  local cx, cy = cur.x + cur.w / 2, cur.y + cur.h / 2
+  local function each(fn)
+    for i = 1, n do
+      local c = Kit._nav[i]
+      if c.id ~= cur.id and colOf(c) ~= "skip" then fn(c, colOf(c)) end
+    end
+  end
+  local best, bestScore
+  local function offer(c, score)
+    if not bestScore or score < bestScore then best, bestScore = c, score end
+  end
+  if dir == "left" or dir == "right" then
+    each(function(c, col)
+      local dx = c.x + c.w / 2 - cx
+      local dy = math.abs(c.y + c.h / 2 - cy)
+      local forward = dir == "right" and dx or -dx
+      if col == curCol and forward > 1 and dy < math.max(cur.h, c.h) / 2 then offer(c, forward) end
+    end)
+    if best then Kit.focusId = best.id return end
+    local order, at = Kit.navColumnOrder or {}, nil
+    for i, name in ipairs(order) do if name == curCol then at = i end end
+    if not at then return end
+    local step = dir == "right" and 1 or -1
+    local i = at + step
+    while order[i] do
+      local target = order[i]
+      local anchor = Kit.navAnchor and Kit.navAnchor(target)
+      each(function(c, col)
+        if col == target then offer(c, c.id == anchor and -1 or math.abs(c.y + c.h / 2 - cy)) end
+      end)
+      if best then Kit.focusId = best.id return end
+      i = i + step
+    end
+    return
+  end
+  local function vertical(sameColumn)
+    each(function(c, col)
+      if (col == curCol) == sameColumn then
+        local dy = (c.y + c.h / 2) - cy
+        local forward = dir == "down" and dy or -dy
+        if forward > 1 then
+          local gap = math.max(0, c.x - (cur.x + cur.w), cur.x - (c.x + c.w))
+          offer(c, forward + gap * 2)
+        end
+      end
+    end)
+  end
+  vertical(true)
+  if not best then vertical(false) end
+  if best then Kit.focusId = best.id end
+end
+
 function Kit._resolveNav()
   local dir = Kit._navQueue
   Kit._navQueue = nil
@@ -471,6 +534,8 @@ function Kit._resolveNav()
     Kit.focusId = Kit._nav[1].id
     return
   end
+
+  if Kit.navColumn then return Kit._resolveColumns(cur, dir, n) end
 
   local curLayer = getNavLayer(cur)
   local cx, cy = cur.x + cur.w / 2, cur.y + cur.h / 2

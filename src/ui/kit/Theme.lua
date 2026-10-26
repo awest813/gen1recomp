@@ -66,6 +66,34 @@ function Theme.gameColor(version)
   return GAME_COLORS[version] or PAL.blue
 end
 
+-- WCAG contrast between two 0-255 colours.
+local function luminance(c)
+  local t = {}
+  for i = 1, 3 do
+    local v = (c[i] or 0) / 255
+    t[i] = v <= 0.03928 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4
+  end
+  return 0.2126 * t[1] + 0.7152 * t[2] + 0.0722 * t[3]
+end
+function Theme.contrast(a, b)
+  local x, y = luminance(a), luminance(b)
+  if x < y then x, y = y, x end
+  return (x + 0.05) / (y + 0.05)
+end
+
+-- `c` lightened toward white until small text in it reads on `bg`
+-- (4.5:1), for a game colour used as a label.
+function Theme.readable(c, bg)
+  bg = bg or PAL.bg
+  local out = { c[1], c[2], c[3] }
+  local k = 0
+  while Theme.contrast(out, bg) < 4.5 and k < 1 do
+    k = k + 0.05
+    for i = 1, 3 do out[i] = c[i] + (255 - c[i]) * k end
+  end
+  return out
+end
+
 -- The spacing scale, in unscaled pixels: every gap and inset is one of
 -- these, multiplied by Kit.scale (Theme.space).
 Theme.SPACE = { xxs = 2, xs = 4, s = 8, m = 12, l = 16, xl = 24, xxl = 32 }

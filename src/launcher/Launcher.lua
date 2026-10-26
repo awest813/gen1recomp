@@ -1455,6 +1455,7 @@ function Launcher:drawGameList(x, y, w, h, s)
   local py = Kit.scrollBegin(x, y, w, h, self.listScroll, maxAt)
   local rw = w - Kit.scrollGutter(s)
   local inset = Theme.space("m", s)
+  local shortNames = false
   for i, it in ipairs(items) do
     if it.header then
       Kit.caption(x + Theme.space("xs", s), py + (i > 1 and Theme.space("s", s) or 0), it.header, PAL.caption)
@@ -1479,10 +1480,12 @@ function Launcher:drawGameList(x, y, w, h, s)
         Kit.text("micro", note, x + rw - rightW, py + (rowH - Kit.textHeight("micro")) / 2, PAL.yellow)
       elseif not ready then
         local cw = Kit.textWidth("micro", "Import") + Theme.BUTTON.labelInset * s + Theme.space("s", s)
-        local ch = math.max(Kit.tapMin() * 0.7, math.floor(24 * s))
+        -- a full tap target where the row has room for one
+        local ch = math.min(rowH - Theme.space("s", s), math.max(Kit.tapMin(), math.floor(28 * s)))
         rightW = cw + inset
         if Kit.button(x + rw - cw - inset, py + (rowH - ch) / 2, cw, ch, "Import",
-            { id = "game-import-" .. v, face = "chip", active = chosen, color = color }) then
+            { id = "game-import-" .. v, face = "chip", active = chosen,
+              color = Theme.readable(color, PAL.bg) }) then
           self:queue(function()
             self.selected, self.page = v, nil
             self:pickRom()
@@ -1490,9 +1493,11 @@ function Launcher:drawGameList(x, y, w, h, s)
         end
       end
       local nameW = rw - (tx - x) - rightW - inset
-      -- "Pokemon Red" when it fits, else "Red": the part that tells them apart
+      -- "Pokemon Red" when every row fits it, else "Red" on every row: the
+      -- part that tells them apart (decided from the frame before)
       local name = info.displayName
-      if Kit.textWidth("button", name) > nameW then name = info.label or name end
+      if Kit.textWidth("button", name) > nameW then shortNames = true end
+      if self.shortNames then name = info.label or name end
       local line = ready and (saveLine(self:currentSave(v)) or "No saves yet") or nil
       if line then
         local top = py + (rowH - Kit.textHeight("button") - Kit.textHeight("micro")) / 2
@@ -1512,6 +1517,7 @@ function Launcher:drawGameList(x, y, w, h, s)
       py = py + rowH + gap
     end
   end
+  self.shortNames = shortNames
   Kit.scrollEnd(x, y, w, h, self.listScroll, maxAt)
 end
 
@@ -2532,6 +2538,17 @@ function Launcher:draw()
   if love.mouse and love.mouse.getPosition then mx, my = love.mouse.getPosition() end
   local click = self.click
   if click then mx, my = click.x, click.y end
+  -- the pad moves between the launcher's columns (Kit._resolveColumns);
+  -- set for this frame only, so another screen keeps the kit's own rules
+  Kit.navColumn, Kit.navColumnOrder = Launcher.navColumn, Launcher.NAV_COLUMNS
+  Kit.navAnchor = function(col)
+    if col == "list" then return self.selected and ("game-" .. self.selected) end
+    if col == "rail" then return "nav-" .. self:section() end
+    if col == "content" and not self.page and self.selected then
+      local save = self:currentSave(self.selected)
+      return save and ("slot-" .. save.id) or "continue"
+    end
+  end
   Kit.beginFrame(mx, my, click ~= nil, self.wheel or 0)
   self.click, self.wheel = nil, 0
   Theme.field()
@@ -2629,6 +2646,18 @@ function Launcher:draw()
     self:drawBoxOverlays(s)
   end
   Kit.endFrame()
+  Kit.navColumn, Kit.navColumnOrder, Kit.navAnchor = nil, nil, nil
+end
+
+Launcher.NAV_COLUMNS = { "rail", "list", "content" }
+
+function Launcher.navColumn(slot)
+  local id = tostring(slot.id or "")
+  if id:match("^nav%-") then return "rail" end
+  if id:match("^tab%-") then return "tabs" end
+  if id:match("^game%-import%-") then return "skip" end
+  if id:match("^game%-") then return "list" end
+  return "content"
 end
 
 return Launcher
