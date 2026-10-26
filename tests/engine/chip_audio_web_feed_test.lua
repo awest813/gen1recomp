@@ -5,6 +5,8 @@
 --     instead of growing a fresh one (~500 KB of dead arrays per 1 s effect)
 --   * a play with nothing prewarmed renders through the same job, on the
 --     same table, with renderEffectData's exact PCM
+--   * the synchronous music fill queues the same buffers, in order, from
+--     one recycled SoundData instead of a new one per buffer
 --   luajit tests/engine/chip_audio_web_feed_test.lua
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
@@ -62,9 +64,33 @@ function Source:getVolume() return self.volume or 1 end
 function Source:setPitch() end
 function Source:setLooping() end
 function Source:release() end
+-- queueable: copies each buffer's hash out at queue time (OpenAL's
+-- alBufferData copies the PCM) and plays it back at the sample rate
+function Source:queue(sd)
+  self.hashes[#self.hashes + 1] = sd.hash
+  self.lengths[#self.lengths + 1] = sd.samples
+  sd.hash = 0
+  self.free = self.free - 1
+  return true
+end
+function Source:getFreeBufferCount() return self.free end
+function Source:advance(samples)
+  if not self.playing then return end
+  self.position = self.position + samples
+  while self.head <= #self.lengths and self.position >= self.lengths[self.head] do
+    self.position = self.position - self.lengths[self.head]
+    self.head = self.head + 1
+    self.free = self.free + 1
+  end
+  if self.head > #self.lengths then self.underruns = self.underruns + 1 end
+end
 local savedAudio = love.audio
 love.audio = {
   newSource = function(sd) return setmetatable({ sd = sd }, Source) end,
+  newQueueableSource = function(_, _, _, count)
+    return setmetatable({ hashes = {}, lengths = {}, head = 1, position = 0,
+      underruns = 0, free = count or 32 }, Source)
+  end,
   getActiveSourceCount = function() return 0 end,
 }
 
@@ -181,6 +207,58 @@ do
   check(src and src.sd and reference and src.sd.hash == reference.hash,
     "sample-identical to renderEffectData")
   eq(src and src.sd and src.sd:getSampleCount(), reference:getSampleCount(), "same length")
+end
+
+-- ---------------------------------------------------------------- music feed
+do
+  local song = ChipAsm.song{
+    tempo = 0x90,
+    channels = {
+      { hw = 1, program = {
+        { duty = 2 }, { notetype = { speed = 12, volume = 13, fade = 3 } }, { octave = 4 },
+        { label = "body" }, { vibrato = { delay = 6, depth = 3, rate = 2 } },
+        { note = "C", len = 8 }, { note = "E", len = 6 }, { note = "G", len = 4 },
+        { loop = { count = 0, to = "body" } },
+      } },
+      { hw = 4, program = {
+        { label = "body" },
+        { noiseNote = { len = 4, volume = 14, fade = 2, parameter = 0x33 } },
+        { loop = { count = 0, to = "body" } },
+      } },
+    },
+  }
+  local before = soundDatas
+  local source = ChipAudio.playMusic(data, song, true)
+  check(source ~= nil, "web music starts on the synchronous path")
+  local rate = ChipSynth.SAMPLE_RATE
+  local FRAMES = 600
+  for _ = 1, FRAMES do
+    now = now + 1 / 60
+    source:advance(rate / 60)
+    ChipAudio.beginFrame()
+    ChipAudio.update()
+    ChipAudio.ensureMusicPlaying()
+  end
+  ChipAudio.stopMusic()
+  local queued = #source.hashes
+  check(queued > 100, "10 s of web music queued " .. queued .. " buffers")
+  eq(source.underruns, 0, "without running dry")
+  check(soundDatas - before <= 1,
+    ("from one SoundData (%d made for %d buffers)"):format(soundDatas - before, queued))
+
+  -- the same engine stream in whole 2048-sample buffers, rendered fresh
+  local engine = ChipSynth.newEngine(data, song, { allowLoops = true })
+  local same = true
+  for index = 1, queued do
+    local sd = ChipSynth.newBuffer(2048, 2)
+    ChipSynth.renderInto(engine, sd, 0, 2048, 2)
+    if source.lengths[index] ~= 2048 or source.hashes[index] ~= sd.hash then
+      same = false
+      check(false, "buffer " .. index .. " differs from a fresh render")
+      break
+    end
+  end
+  check(same, "every queued buffer is sample-identical, in order")
 end
 
 love.audio, love.timer = savedAudio, savedTimer

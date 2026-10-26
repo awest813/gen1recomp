@@ -256,13 +256,19 @@ end
 -- render up to `budget` samples of the fallback song, queueing each staging
 -- buffer as it fills.  A new buffer is only begun while the Source has a free
 -- slot and the song has not finished (the old whole-buffer loop's gates).
+-- Source:queue copies the PCM into an OpenAL buffer (alBufferData), so the
+-- SoundData just queued is free again and becomes the next staging buffer:
+-- every one of its samples is rewritten before it is queued again.  A fresh
+-- SoundData per buffer was ~11 a second on Web, 8 KB each of native heap
+-- that only went back when the Lua GC got round to the userdata.
 local function renderSync(music, budget)
   while budget > 0 do
     if not music.staging then
       if music.engine:finished() then return end
       local ok, free = pcall(music.source.getFreeBufferCount, music.source)
       if not ok or type(free) ~= "number" or free <= 0 then return end
-      music.staging = ChipSynth.newBuffer(syncBufferSamples(), 2)
+      music.staging = music.spare or ChipSynth.newBuffer(syncBufferSamples(), 2)
+      music.spare = nil
       music.stagingFill = 0
     end
     local count = math.min(budget, syncBufferSamples() - music.stagingFill)
@@ -274,6 +280,7 @@ local function renderSync(music, budget)
       local sd = music.staging
       music.staging, music.stagingFill = nil, 0
       if not pcall(music.source.queue, music.source, sd) then return end
+      music.spare = sd
     end
   end
 end
