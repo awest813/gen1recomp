@@ -902,3 +902,5 @@ tests/engine/pkgb_launcher_test.lua
 tests/engine/mod_library_test.lua
 tests/engine/import_job_coroutine_test.lua
 tests/engine/relay_address_test.lua
+tests/engine/online_page_test.lua
+tests/engine/online_page_relay_test.lua

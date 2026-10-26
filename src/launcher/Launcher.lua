@@ -90,6 +90,11 @@ function Launcher.new(onLaunch, opts)
     local okC, Check = pcall(require, "src.update.Check")
     if okC then pcall(Check.start) end
   end
+  -- back from an online battle: reopen Online and sign back in
+  if opts.initialGame == "online" then
+    self:openOnline()
+    self:queue(function() self.online:connect() end)
+  end
   -- keyboard and pad focus start on the chosen game, ring hidden until used
   if self.selected then
     Kit.focusId = "game-" .. self.selected
@@ -794,6 +799,10 @@ function Launcher:update(dt)
     local ok, err = pcall(require("src.import.BoxPanel").update, self, dt)
     if not ok then self:say(tostring(err), "error") end
   end
+  if self.online then
+    local ok, err = pcall(self.online.update, self.online, dt)
+    if not ok then self:say(tostring(err), "error") end
+  end
   if self.job then
     local state = self.job:step(0.008)
     if state == "done" then
@@ -830,6 +839,24 @@ end
 function Launcher:back()
   if self.page == "box" then return self:closeBox() end
   self.page = nil
+end
+
+-- --------------------------------------------------------------- online
+
+function Launcher:openOnline()
+  if self.page == "box" then self:closeBox() end
+  self.online = self.online or require("src.launcher.OnlinePage").new(self)
+  self.page = "online"
+end
+
+-- The relay started a battle (src/launcher/OnlinePage.lua): boot the game
+-- straight into it.
+function Launcher:launchArena(version, spec)
+  if self:importing() then return self:say("Wait for the import to finish.", "error") end
+  pcall(function() require("src.import.BoxHost").use(nil) end)
+  if self.online then self.online:close() end
+  self.launched = version
+  if self.onLaunch then self.onLaunch(version, nil, { arena = spec }) end
 end
 
 function Launcher:mousepressed(x, y, button)
@@ -1131,13 +1158,19 @@ function Launcher:drawSettings(x, y, w, h, s)
   cy = cy + rowH + math.floor(10 * s)
   -- a narrow window drops Box / What's new from the header; reach them here
   local hidden = self.headerHidden or {}
-  if hidden.box or hidden.notes then
-    local n = (hidden.box and 1 or 0) + (hidden.notes and 1 or 0)
+  if hidden.box or hidden.notes or hidden.online then
+    local n = (hidden.box and 1 or 0) + (hidden.notes and 1 or 0) + (hidden.online and 1 or 0)
     local bw2 = math.floor((cw - (n - 1) * math.floor(10 * s)) / n)
     local bx = cx
     if hidden.box then
       if Kit.button(bx, cy, bw2, rowH, "Pokemon Box", { id = "settings-box" }) then
         self:queue(function() self.page = nil; self:openBox() end)
+      end
+      bx = bx + bw2 + math.floor(10 * s)
+    end
+    if hidden.online then
+      if Kit.button(bx, cy, bw2, rowH, "Online", { id = "settings-online" }) then
+        self:queue(function() self:openOnline() end)
       end
       bx = bx + bw2 + math.floor(10 * s)
     end
@@ -1750,6 +1783,16 @@ function Launcher:draw()
       end)
     end
   end
+  local ow = math.max(Kit.tapMin(), Kit.textWidth("button", "Online") + math.floor(28 * s))
+  self.headerHidden.online = rx - hgap - ow < titleRight
+  if not self.headerHidden.online then
+    rx = rx - hgap - ow
+    if Kit.button(rx, by, ow, bh, "Online", { id = "online", active = self.page == "online" }) then
+      self:queue(function()
+        if self.page == "online" then self.page = nil else self:openOnline() end
+      end)
+    end
+  end
   local nw = math.max(Kit.tapMin(), Kit.textWidth("small", "What's new") + math.floor(28 * s))
   self.headerHidden.notes = rx - hgap - nw < titleRight
   if rx - hgap - nw >= titleRight then
@@ -1785,6 +1828,8 @@ function Launcher:draw()
   local wide = w >= 700 * s or (w >= 520 and w >= H * 1.3)
   if self.page == "box" then
     self:drawBox(x, y, w, bodyH, s)
+  elseif self.page == "online" and self.online then
+    self:drawFitted("online", x, y, w, bodyH, s, function(l, ...) return l.online:draw(...) end)
   elseif self.page and not wide then
     -- stacked, a page (settings, mods, carts, notes) takes the whole body;
     -- its Back / Close goes back to the game list
