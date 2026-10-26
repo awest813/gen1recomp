@@ -294,6 +294,14 @@ function LaunchOptions.tasks(argv, rawArgv, uri)
   }
 end
 
+-- --relay=host:port: the online relay for this run only.  nil when absent
+-- or not a usable address.
+function LaunchOptions.relayAddress(argv, rawArgv)
+  local value = argValue(argv, "relay") or argValue(rawArgv, "relay")
+  if not value then return nil end
+  return (require("src.link.Net").normalizeRelayAddress(value))
+end
+
 -- Which launcher to open: "new" (src/launcher/) or "classic".  --ui=new on
 -- the command line (?ui=new on the web build) is a choice the player made and
 -- is remembered; POKEPORT_LAUNCHER=new is for scripted runs and is not.

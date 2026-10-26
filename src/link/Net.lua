@@ -55,8 +55,52 @@ function Net.defaultPort()
   return tonumber(os.getenv("POKEPORT_LINK_PORT") or "") or Net.DEFAULT_PORT
 end
 
+Net.DEFAULT_RELAY_PORT = 7778
+
+-- "host:port" from what a player typed, or nil plus why not.  A bare host
+-- gets the relay's default port; a pasted scheme (ws://, tcp://) and
+-- trailing slash are dropped.  Hosts are names or IPv4 addresses.
+function Net.normalizeRelayAddress(text)
+  text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  text = text:gsub("^%a[%w+.-]*://", ""):gsub("/+$", "")
+  if text == "" then return nil, "enter a relay address" end
+  local host, port = text:match("^([%w.-]+):(%d+)$")
+  if not host then
+    host = text:match("^([%w.-]+)$")
+    port = tostring(Net.DEFAULT_RELAY_PORT)
+  end
+  if not host or host:sub(1, 1) == "." or host:sub(1, 1) == "-" or #host > 253 then
+    return nil, "use host:port, like relay.example.com:7778"
+  end
+  local n = tonumber(port)
+  if not n or n < 1 or n > 65535 then return nil, "the port must be 1 to 65535" end
+  return host:lower() .. ":" .. n
+end
+
+-- Set for this run only by --relay= (?relay= on the web build); main.lua.
+Net.relayOverride = nil
+
+-- The relay online play connects to, and where that answer came from:
+-- POKEPORT_RELAY_ADDR (scripted runs) wins, then this run's --relay, then
+-- the address saved in Settings (options.relayAddress), then the default.
+function Net.relaySetting()
+  local env = os.getenv("POKEPORT_RELAY_ADDR")
+  if env and env ~= "" then return env, "env" end
+  if Net.relayOverride then return Net.relayOverride, "launch" end
+  local ok, SaveData = pcall(require, "src.core.SaveData")
+  if ok and type(SaveData) == "table" and SaveData.loadOptions then
+    local okL, opts = pcall(SaveData.loadOptions)
+    local saved = okL and type(opts) == "table" and opts.relayAddress or nil
+    if type(saved) == "string" then
+      local address = Net.normalizeRelayAddress(saved)
+      if address then return address, "saved" end
+    end
+  end
+  return Net.DEFAULT_RELAY_ADDRESS, "default"
+end
+
 function Net.defaultRelayAddress()
-  return os.getenv("POKEPORT_RELAY_ADDR") or Net.DEFAULT_RELAY_ADDRESS
+  return (Net.relaySetting())
 end
 
 -- monotonic-ish clock for the join timeout

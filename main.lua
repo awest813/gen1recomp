@@ -938,6 +938,11 @@ function love.load(args)
   local RomImporter = require("src.import.RomImporter")
   local resolvedLaunch = LaunchOptions.resolveRequest(arg, args)
   do
+    -- --relay=host:port: the online relay for this run (src/link/Net.lua)
+    local relay = LaunchOptions.relayAddress(arg, args)
+    if relay then require("src.link.Net").relayOverride = relay end
+  end
+  do
     local choice, remember = LaunchOptions.launcherUi(arg, args)
     launcherUiChoice = choice
     if choice and remember then

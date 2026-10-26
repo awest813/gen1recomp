@@ -728,6 +728,22 @@ function Launcher:setOption(key, value)
   end
 end
 
+-- Save the online relay address; an empty one goes back to the default.
+function Launcher:setRelay(text)
+  local Net = require("src.link.Net")
+  text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if text == "" then
+    self:setOption("relayAddress", nil)
+    self.relayDraft = ""
+    return self:say("Online play uses the default relay, " .. Net.DEFAULT_RELAY_ADDRESS .. ".", "info")
+  end
+  local address, why = Net.normalizeRelayAddress(text)
+  if not address then return self:say("That relay address won't work: " .. tostring(why), "error") end
+  self:setOption("relayAddress", address)
+  self.relayDraft = address
+  self:say("Online play will connect to " .. address .. ".", "info")
+end
+
 -- ---------------------------------------------------------------- updates
 
 -- What the update chip says and does right now, or nil when there is nothing
@@ -1078,6 +1094,27 @@ function Launcher:drawSettings(x, y, w, h, s)
     self:queue(function() self:openStudio(self:activeSkin()) end)
   end
   cy = cy + rowH + math.floor(10 * s)
+  -- the online relay (src/link/Net.lua): typed here, saved on Save
+  label("Online relay", cy)
+  local Net = require("src.link.Net")
+  local current, source = Net.relaySetting()
+  if self.relayDraft == nil then
+    self.relayDraft = type(opts.relayAddress) == "string" and opts.relayAddress or ""
+  end
+  local saveW = math.max(Kit.tapMin(), Kit.textWidth("small", "Save") + math.floor(28 * s))
+  local fieldW = math.floor(math.min(cw * 0.5, 300 * s))
+  self.relayDraft = Kit.textfield("relay-field", cx + cw - fieldW, cy,
+    fieldW - saveW - math.floor(8 * s), rowH, self.relayDraft, Net.DEFAULT_RELAY_ADDRESS)
+  if Kit.button(cx + cw - saveW, cy, saveW, rowH, "Save", { id = "relay-save", font = "small" }) then
+    local draft = self.relayDraft
+    self:queue(function() self:setRelay(draft) end)
+  end
+  cy = cy + rowH + math.floor(4 * s)
+  local why = ({ env = " (POKEPORT_RELAY_ADDR)", launch = " (--relay, this run only)",
+    saved = "", default = " (default)" })[source] or ""
+  Kit.text("micro", Kit.ellipsize("micro", "Connecting to " .. tostring(current) .. why, cw),
+    cx, cy, PAL.faint)
+  cy = cy + Kit.textHeight("micro") + math.floor(10 * s)
   -- this launcher is opt-in for now (--ui=new); offer the way back
   label("Launcher", cy)
   local classic = opts.launcherUi == "classic"
