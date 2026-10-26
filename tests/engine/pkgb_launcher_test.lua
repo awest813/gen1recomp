@@ -546,4 +546,49 @@ drawText(l)
 l.page = nil
 drawText(l)
 
+-- -------------------------------------------------------------------- box
+-- the Box reads real save files, so it runs on the real SaveData (over the
+-- stubbed love.filesystem) rather than the stub the sections above use
+local stubSaveData = package.loaded["src.core.SaveData"]
+package.loaded["src.core.SaveData"] = nil
+require("src.core.SaveData")
+window(1280, 720)
+l = fresh()
+local ht = drawText(l)
+check(ht:find("Box", 1, true) ~= nil, "the header offers the Box")
+l:openBox()
+eq(l.page, "box", "the Box opens as a page")
+eq(l.tab, "box", "and tells the Box UI it is showing")
+check(l._boxState ~= nil, "the Box state is loaded: " .. tostring(l.message and l.message.text))
+local bt = drawText(l)
+check(bt:find("BOX", 1, true) ~= nil or bt:find("Box", 1, true) ~= nil, "the Box draws")
+check(bt:find("BOIS CLUB", 1, true) ~= nil, "with the credit still on screen")
+check(l.boxContentH ~= nil, "and reports its height for scrolling")
+require("src.import.BoxUI").open(l, "Pick", { { id = 1, label = "One" }, { id = 2, label = "Two" } }, 1,
+  function() end)
+local pop = drawText(l)
+check(pop:find("Pick", 1, true) ~= nil, "a Box popup draws over the page")
+check(Kit.blockClicks == false, "and the frame ends with clicks unblocked for the next one")
+l:keypressed("escape")
+check(l._boxPopup == nil, "Escape closes the popup first")
+local renamed
+require("src.import.BoxPrompt").open(l, "Rename box", "BOX 1", 8, function(t) renamed = t end)
+check(l._boxPrompt ~= nil, "a Box rename opens a prompt here (no on-screen keyboard)")
+check(drawText(l):find("Rename box", 1, true) ~= nil, "the Box rename prompt draws")
+l._boxPrompt.text = "PARTY"
+l:keypressed("return")
+l:update(0)
+eq(renamed, "PARTY", "Enter saves the prompt")
+l:importBox("short", nil)
+for _, size in ipairs({ { 390, 844 }, { 800, 600 } }) do
+  window(size[1], size[2])
+  drawText(l)
+end
+window(1280, 720)
+l:keypressed("escape")
+l:update(0)
+eq(l.page, nil, "Escape leaves the Box")
+eq(l.tab, nil, "and the Box UI knows it is hidden")
+package.loaded["src.core.SaveData"] = stubSaveData
+
 T.finish("pkgb launcher")

@@ -13,7 +13,7 @@ local UI = require("src.import.BoxUI")
 
 local PAL = Theme.PAL
 local BoxPanel = {}
-local function LV() return require("src.import.LauncherView") end
+local function LV() return require("src.import.BoxHost") end
 
 local function readPC(s)
   s.pcRows, s.pcBody, s.pcSave = {}, nil, nil

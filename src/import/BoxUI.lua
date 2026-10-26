@@ -26,7 +26,7 @@ UI.HELP = {
 }
 local HELP_TITLES = { Box = "Box storage",
   Backup = "Restore backup", MigrationPolicy = "Conversion rules" }
-local function view() return require("src.import.LauncherView") end
+local function view() return require("src.import.BoxHost") end
 function UI.button(imp, x, y, w, h, id, label, action, opts)
   opts = opts or {}; opts.action, opts.font = action, opts.font or "small"
   view().btn(imp, x, y, w, h, "box-" .. id, Strings(label), opts)

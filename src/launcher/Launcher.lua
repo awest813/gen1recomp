@@ -321,7 +321,9 @@ local function hostPicker()
   return nil
 end
 
-function Launcher:requestHostPick(kind)
+-- `as` names what the picked file is for when it differs from the picker's
+-- filter (a Box save is picked with the "sav" filter).
+function Launcher:requestHostPick(kind, as)
   local sys = hostPicker()
   if not sys then return false end
   local ok, started = pcall(sys.pickFile, kind)
@@ -329,7 +331,7 @@ function Launcher:requestHostPick(kind)
     self:say("The file picker could not open.", "error")
     return true
   end
-  self.pendingPick = kind
+  self.pendingPick = as or kind
   return true
 end
 
@@ -343,6 +345,11 @@ function Launcher:pollHostPick()
     self.pendingPick = nil
     local FilePicker = require("src.core.FilePicker")
     local name = FilePicker.basename(path)
+    if kind == "box" then
+      local data, err = FilePicker.read(path)
+      pcall(os.remove, path)
+      return self:importBox(data, err)
+    end
     if kind == "cart" then
       local data, err = FilePicker.read(path)
       pcall(os.remove, path)
@@ -466,6 +473,66 @@ function Launcher:pickMod()
   local data, err = FilePicker.read(path)
   if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
   self:installMod(data, FilePicker.basename(path))
+end
+
+-- -------------------------------------------------------------------- box
+
+-- The Pokemon Box (src/import/BoxPanel.lua and src/box/) runs as a page of
+-- this launcher.  It draws through src/import/BoxHost.lua, which this
+-- launcher points at the shared UI kit, and reads a few host fields:
+-- tab == "box" while it is showing, _tabScroll.box, _tabRegionRect.
+function Launcher:openBox()
+  require("src.import.BoxHost").use(require("src.import.BoxHost").kit)
+  self.page, self.tab = "box", "box"
+  self._tabScroll = { box = 0 }
+  local ok, err = pcall(require("src.import.BoxPanel").refresh, self)
+  if not ok then
+    self.page, self.tab = nil, nil
+    self:say("The Box could not open: " .. tostring(err), "error")
+  end
+end
+
+function Launcher:closeBox()
+  pcall(require("src.import.BoxUI").close, self)
+  if self._boxPrompt then pcall(require("src.import.BoxPrompt").close, self, false) end
+  pcall(function()
+    local Showcase = require("src.box.Showcase")
+    local _, owner = Showcase.currentMusic()
+    if owner == "box" then Showcase.stopMusic() end
+  end)
+  self.page, self.tab = nil, nil
+  self.slots = {}
+end
+
+-- BoxPrompt asks its host to take typed text for its rename field.
+function Launcher:_armTextInput()
+  Kit.setFocus("box-prompt")
+  if love.keyboard and love.keyboard.setTextInput then pcall(love.keyboard.setTextInput, true) end
+end
+function Launcher:_disarmTextInput() Kit.blur() end
+
+local BOX_KIND = { label = "Pokemon Box save", exts = { "gci", "sav" } }
+local BOX_SIZES = { [0x76040] = true, [0x76000] = true }
+
+function Launcher:importBox(data, why)
+  local BoxPanel = require("src.import.BoxPanel")
+  if data and not BOX_SIZES[#data] then
+    data, why = nil, "Choose a native Box GCI (0x76040 bytes) or raw save (0x76000 bytes)."
+  end
+  return BoxPanel.importGCI(self, data, why)
+end
+
+-- BoxTools' "Import Box save" button.
+function Launcher:chooseBoxImport()
+  if self:requestHostPick("sav", "box") then return end
+  local ok, FilePicker = pcall(require, "src.core.FilePicker")
+  if not (ok and FilePicker.available()) then
+    return self:importBox(nil, "Drop the Box .gci or .sav onto this window.")
+  end
+  local path = FilePicker.open("Choose a Pokemon Box save", BOX_KIND)
+  if not path then return end
+  local data, err = FilePicker.read(path)
+  self:importBox(data, err)
 end
 
 function Launcher:play(version, slotId)
@@ -635,6 +702,10 @@ end
 
 function Launcher:update(dt)
   self:pollHostPick()
+  if self.page == "box" then
+    local ok, err = pcall(require("src.import.BoxPanel").update, self, dt)
+    if not ok then self:say(tostring(err), "error") end
+  end
   if self.job then
     local state = self.job:step(0.008)
     if state == "done" then
@@ -660,21 +731,40 @@ function Launcher:update(dt)
   end
 end
 
+-- On the Box page the showcase editor owns drags that start on its stage.
+local function showcase(self, method, ...)
+  if self.page ~= "box" then return false end
+  local ok, took = pcall(require("src.import.ShowcaseEditor")[method], self, ...)
+  return ok and took and true or false
+end
+
 function Launcher:mousepressed(x, y, button)
+  if button == 1 and showcase(self, "pointerPressed", "mouse", x, y) then return end
   if button == 1 or button == nil then self.pressAt = { x = x, y = y } end
 end
 
 function Launcher:mousereleased(x, y, button)
+  if button == 1 and showcase(self, "pointerReleased", "mouse") then
+    self.pressAt = nil
+    return
+  end
   if (button == 1 or button == nil) and self.pressAt then
     self.click = { x = x, y = y }
     self.pressAt = nil
   end
 end
 
-function Launcher:mousemoved() end
-function Launcher:touchpressed(_, x, y) self.pressAt = { x = x, y = y } end
-function Launcher:touchmoved() end
-function Launcher:touchreleased(_, x, y)
+function Launcher:mousemoved(x, y) showcase(self, "pointerMoved", "mouse", x, y) end
+function Launcher:touchpressed(id, x, y)
+  if showcase(self, "pointerPressed", id, x, y) then return end
+  self.pressAt = { x = x, y = y }
+end
+function Launcher:touchmoved(id, x, y) showcase(self, "pointerMoved", id, x, y) end
+function Launcher:touchreleased(id, x, y)
+  if showcase(self, "pointerReleased", id) then
+    self.pressAt = nil
+    return
+  end
   if self.pressAt then self.click = { x = x, y = y } end
   self.pressAt = nil
 end
@@ -682,6 +772,22 @@ end
 function Launcher:wheelmoved(_, dy) self.wheel = (self.wheel or 0) + dy end
 
 function Launcher:keypressed(key)
+  if self._boxPrompt then
+    if key == "escape" then
+      self:queue(function() require("src.import.BoxPrompt").close(self, false) end)
+    elseif key == "return" or key == "kpenter" then
+      self:queue(function() require("src.import.BoxPrompt").close(self, true) end)
+    else
+      Kit.keypressed(key)
+    end
+    return true
+  end
+  if self._boxPopup and require("src.import.BoxUI").keypressed(self, key) then return true end
+  if self.page == "box" and require("src.import.BoxPanel").keypressed(self, key) then return true end
+  if key == "escape" and self.page == "box" then
+    self:queue(function() self:closeBox() end)
+    return true
+  end
   if Kit.keypressed(key) then return true end
   if key == "escape" and self.renaming then
     self:queue(function() self.renaming = nil end)
@@ -705,7 +811,13 @@ function Launcher:joystickhat(_, _, direction)
   local map = { u = "up", d = "down", l = "left", r = "right" }
   if map[direction] then Kit.navigate(map[direction]) end
 end
-function Launcher:textinput(text) return Kit.textinput(text) end
+function Launcher:textinput(text)
+  if self.page == "box" and not self._boxPrompt
+      and require("src.import.BoxPanel").textinput(self, text) then
+    return true
+  end
+  return Kit.textinput(text)
+end
 
 local SAVE_EXTS = { sav = true, srm = true, sa1 = true, dsv = true, sgm = true }
 
@@ -717,6 +829,16 @@ Launcher.isSaveName = isSaveName
 
 function Launcher:filedropped(file)
   local fname = file.getFilename and file:getFilename() or ""
+  local lower = fname:lower()
+  if self.page == "box" and (lower:match("%.gci$") or lower:match("%.sav$")) then
+    local ok, data = pcall(function()
+      file:open("r")
+      local bytes = file:read()
+      file:close()
+      return bytes
+    end)
+    return self:importBox(ok and data or nil, not ok and tostring(data) or nil)
+  end
   if isSaveName(fname) then
     return self:importSave(file, fname:match("[^/\\]+$") or fname)
   end
@@ -1235,6 +1357,73 @@ function Launcher:drawDetail(x, y, w, h, s)
   end
 end
 
+function Launcher:boxMetrics(s)
+  local W, H = love.graphics.getDimensions()
+  return { s = s, W = W, H = H, pad = math.floor(16 * s),
+           btnH = math.max(Kit.tapMin(), math.floor(40 * s)) }
+end
+
+function Launcher:drawBox(x, y, w, h, s)
+  local m = self:boxMetrics(s)
+  local BoxPanel = require("src.import.BoxPanel")
+  self._tabScroll = self._tabScroll or {}
+  self._tabRegionRect = { x = x, y = y, w = w, h = h }
+  local popup = self._boxPopup or self._boxPrompt
+  local blocked = Kit.blockClicks
+  if popup then Kit.blockClicks = true end
+  local maxAt = Kit.scrollExtent(self.boxContentH or h, h)
+  local at = Kit.scrollInput(math.min(self._tabScroll.box or 0, maxAt), maxAt, x, y, w, h)
+  self._tabScroll.box = at
+  local py = Kit.scrollBegin(x, y, w, h, at, maxAt)
+  local okD, contentH = pcall(BoxPanel.draw, self, x, py, w - Kit.scrollGutter(s), h, m)
+  Kit.scrollEnd(x, y, w, h, at, maxAt, PAL.field)
+  if okD then
+    self.boxContentH = tonumber(contentH) or h
+  else
+    self:say("The Box could not draw: " .. tostring(contentH), "error")
+  end
+  pcall(require("src.import.BoxOrganizer").drawSticky, self, m)
+  Kit.blockClicks = blocked
+end
+
+-- What the Box opens over everything: its chooser/confirm popup and its
+-- rename prompt.  Drawn last, after the footer.
+function Launcher:drawBoxOverlays(s)
+  local m = self:boxMetrics(s)
+  local BoxUI = require("src.import.BoxUI")
+  pcall(BoxUI.occludeToast, self)
+  pcall(BoxUI.drawToast, self, m, m.H - math.floor(12 * s))
+  if self._boxPopup then
+    local ok, err = pcall(BoxUI.drawPopup, self, m)
+    if not ok then self:say(tostring(err), "error") BoxUI.close(self) end
+    return
+  end
+  local prompt = self._boxPrompt
+  if not prompt then return end
+  local BoxHost = require("src.import.BoxHost")
+  local pad = math.floor(18 * s)
+  local fieldH = math.max(Kit.tapMin(), math.floor(40 * s))
+  local px, py, pw = BoxHost.kit.modalPanel(m, math.floor(460 * s),
+    2 * pad + Kit.textHeight("title") + 2 * fieldH + math.floor(24 * s), { scrim = 0.76 })
+  local cx, cw = px + pad, pw - 2 * pad
+  local cy = py + pad
+  Kit.textBold("title", Kit.ellipsize("title", tostring(prompt.title or "Rename"), cw), cx, cy,
+    PAL.heading)
+  cy = cy + Kit.textHeight("title") + math.floor(12 * s)
+  local text = Kit.textfield("box-prompt", cx, cy, cw, fieldH, prompt.text, "")
+  if prompt.maxLen and #text > prompt.maxLen then text = text:sub(1, prompt.maxLen) end
+  prompt.text = text
+  cy = cy + fieldH + math.floor(12 * s)
+  local bw = math.floor((cw - math.floor(10 * s)) / 2)
+  local BoxPrompt = require("src.import.BoxPrompt")
+  if Kit.button(cx, cy, bw, fieldH, "Cancel", { id = "box-prompt-cancel" }) then
+    self:queue(function() BoxPrompt.close(self, false) end)
+  end
+  if Kit.button(cx + cw - bw, cy, bw, fieldH, "Save", { id = "box-prompt-ok", kind = "primary" }) then
+    self:queue(function() BoxPrompt.close(self, true) end)
+  end
+end
+
 function Launcher:drawFooter(x, y, w, s)
   local lines = Kit.wrapLines("micro", Launcher.CREDIT, w) or {}
   local lh = Kit.textHeight("micro")
@@ -1260,6 +1449,9 @@ function Launcher:draw()
   Kit.beginFrame(mx, my, click ~= nil, self.wheel or 0)
   self.click, self.wheel = nil, 0
   Theme.field()
+  -- a Box popup or prompt owns the frame: nothing under its scrim takes clicks
+  local boxModal = self.page == "box" and (self._boxPopup or self._boxPrompt) ~= nil
+  Kit.blockClicks = boxModal
 
   local pad = math.floor(Theme.clamp(W * 0.03, 12, 28))
   local x, w = pad, W - 2 * pad
@@ -1281,16 +1473,28 @@ function Launcher:draw()
       self.page == "settings" and "Close" or "Settings",
       { id = "settings", active = self.page == "settings" }) then
     self:queue(function()
+      if self.page == "box" then self:closeBox() end
       self.page = self.page ~= "settings" and "settings" or nil
     end)
   end
-  local nw = math.max(Kit.tapMin(), Kit.textWidth("small", "What's new") + math.floor(28 * s))
   local titleRight = x + Kit.textWidth("headline", Version.NAME or "PK:GB") + hgap
+  local boxW = math.max(Kit.tapMin(), Kit.textWidth("button", "Close Box") + math.floor(28 * s))
+  if rx - hgap - boxW >= titleRight then
+    rx = rx - hgap - boxW
+    if Kit.button(rx, by, boxW, bh, self.page == "box" and "Close Box" or "Box",
+        { id = "box", active = self.page == "box" }) then
+      self:queue(function()
+        if self.page == "box" then self:closeBox() else self:openBox() end
+      end)
+    end
+  end
+  local nw = math.max(Kit.tapMin(), Kit.textWidth("small", "What's new") + math.floor(28 * s))
   if rx - hgap - nw >= titleRight then
     rx = rx - hgap - nw
     if Kit.button(rx, by, nw, bh, self.page == "notes" and "Close" or "What's new",
         { id = "notes", font = "small", active = self.page == "notes" }) then
       self:queue(function()
+        if self.page == "box" then self:closeBox() end
         self.page = self.page ~= "notes" and "notes" or nil
         self.notesScroll = 0
       end)
@@ -1314,7 +1518,9 @@ function Launcher:draw()
   local bodyH = H - y - pad - footH
 
   local wide = w >= 700 * s
-  if wide then
+  if self.page == "box" then
+    self:drawBox(x, y, w, bodyH, s)
+  elseif wide then
     local listW = math.floor(math.min(320 * s, w * 0.34))
     self:drawGameList(x, y, listW, bodyH, s)
     self:drawDetail(x + listW + math.floor(16 * s), y, w - listW - math.floor(16 * s), bodyH, s)
@@ -1331,6 +1537,10 @@ function Launcher:draw()
       - math.floor(8 * s), w, color, 2)
   end
   self:drawFooter(x, fy, w, s)
+  if self.page == "box" then
+    Kit.blockClicks = false
+    self:drawBoxOverlays(s)
+  end
   Kit.endFrame()
 end
 
