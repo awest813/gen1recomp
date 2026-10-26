@@ -1950,12 +1950,6 @@ local MT_BURIED = 0x3F
 Objects.MT_BERRY_TREE, Objects.MT_BURIED = MT_BERRY_TREE, MT_BURIED
 Objects.MT_TREE_DISGUISE, Objects.MT_MOUNTAIN_DISGUISE = MT_TREE_DISGUISE, MT_MOUNTAIN_DISGUISE
 
--- pokeemerald/src/event_object_movement.c:1153
-local COPY_TYPES = {
-  [0x35] = { init = "up" }, [0x36] = { init = "down" }, [0x37] = { init = "left" }, [0x38] = { init = "right" },
-  [0x3B] = { init = "up", grass = true }, [0x3C] = { init = "down", grass = true },
-  [0x3D] = { init = "left", grass = true }, [0x3E] = { init = "right", grass = true },
-}
 local DIR_IDX = { down = 1, up = 2, left = 3, right = 4 }
 local IDX_DIR = { "down", "up", "left", "right" }
 -- pokeemerald/src/event_object_movement.c:1124

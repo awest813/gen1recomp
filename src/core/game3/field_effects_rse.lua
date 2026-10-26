@@ -146,12 +146,6 @@ function B.bridgeType(b)
 end
 FxRse.B = B
 
-local function behaviorAt(x, y)
-  local C = Collision()
-  if not (C and C.behavior) or x == nil or y == nil then return nil end
-  return C.behavior(x, y)
-end
-
 local function worldBehaviorAt(x, y)
   local C = Collision()
   if not (C and C.worldBehavior) or x == nil or y == nil then return nil end

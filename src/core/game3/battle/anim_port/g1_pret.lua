@@ -1,6 +1,5 @@
 local bit = require("bit")
 local Trig = require("src.core.game3.trig")
-local AnimSprites = require("src.core.game3.battle.anim_sprites")
 local AnimCoords = require("src.core.game3.battle.anim_coords")
 
 local band, bor, bxor, rshift, arshift, lshift = bit.band, bit.bor, bit.bxor, bit.rshift, bit.arshift, bit.lshift
@@ -316,16 +315,6 @@ end
 
 function P.updateZ(s)
   s.z = P.zFor(s._pri or 2, s.subpriority or 0)
-end
-
--- pokefirered/src/battle_anim.c:349
-local function op_subpriority(vm, op)
-  local raw = tonumber(op.subpriority) or 0
-  local side = (op.animBattler == "target") and P.tgtId(vm) or P.atkId(vm)
-  local sub
-  if raw >= 64 then sub = P.subpriorityOf(side) + (raw - 64) else sub = P.subpriorityOf(side) - raw end
-  if sub < 3 then sub = 3 end
-  return sub
 end
 
 local Templates

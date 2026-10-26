@@ -357,7 +357,6 @@ end
 
 -- pokeemerald/src/mauville_old_man.c:482
 function Bard.bake(sim, opts)
-  opts = opts or {}
   local Player = require("src.core.game3.m4a_player")
   local Mix = require("src.core.game3.m4a_mix")
   local pack, cache = audioPack()

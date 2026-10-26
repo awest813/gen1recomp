@@ -499,7 +499,7 @@ end
 --- Player PC Item Storage (profile bag.pcItems unique items).
 function Storage.depositItem(session, bagPocket, bagIdx, qty)
   if not session or not session.bag then return false, "no_bag" end
-  local storage = Storage.ensure(session)
+  Storage.ensure(session)
   qty = math.max(1, math.floor(tonumber(qty) or 1))
 
   local items = Bag.listPocket(session.bag, bagPocket)

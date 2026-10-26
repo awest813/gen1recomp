@@ -856,7 +856,7 @@ function AnimTasks.CreateSurfWave(t, vm)
   t.data[11] = (t.data[11] or 0) + (t.data[1] or 1)
 
   -- GBA Alpha Blending Curve (0 -> 14/16 -> 0)
-  local alpha = 0
+  local alpha
   if frame <= 14 then
     alpha = (frame / 14) * (14 / 16)
   elseif frame <= 34 then
@@ -944,7 +944,7 @@ function AnimTasks.CreateSurfWave(t, vm)
 
     -- GBA Scanline Swelling & Full-Screen Tidal Wave Engulfment
     -- Wave crest swells and rises to engulf the whole screen (0..112)
-    local surgeProgress = 0
+    local surgeProgress
     if f <= 20 then
       surgeProgress = f / 20 -- rising surge (0 -> 1)
     elseif f <= 34 then
@@ -954,7 +954,7 @@ function AnimTasks.CreateSurfWave(t, vm)
     end
 
     -- Swell baseline: Player surge rises from 95 up to -10 (engulfs entire arena); Opponent crashes from 0 down to 112
-    local baselineY = 0
+    local baselineY
     if isPlr then
       baselineY = 95 - (surgeProgress * 105) + math.floor(Sin((scrollX * 2) % 256, 4))
     else
@@ -3685,7 +3685,6 @@ function AnimTasks.NightShadeClone(t, vm)
   t.data[14] = frame + 1
   local dur = 32
   t.z = AnimSprites.Z.MID_FIELD
-  local Anim = require("src.core.game3.battle.anim")
   local atkSide = vm:attackerSide()
   local ax, ay = vm:battlerCenter(atkSide)
 

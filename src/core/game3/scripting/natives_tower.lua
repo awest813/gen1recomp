@@ -149,7 +149,7 @@ end
 
 -- pokefirered/src/trainer_tower.c:682
 local function setOpponentTextColor(ctx, challengeType, facilityClass)
-  local gender = MALE
+  local gender
   if challengeType == Tower.CHALLENGE_TYPE.DOUBLE then
     local _, _, gender1, gender2 = doublesGfxFor(facilityClass)
     gender = (varGet(ctx, VAR_TEMP_3) ~= 0) and gender2 or gender1

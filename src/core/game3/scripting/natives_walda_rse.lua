@@ -7,8 +7,6 @@ local function friends()
 end
 
 local LETTERS = "BCDFGHJKLMNPQRSTVWZbcdfghjkmnpqs"
-local TID_XOR = 6
-local PATTERN_XOR = 7
 
 local function state(session)
   session = session or Rse.session()

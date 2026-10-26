@@ -1060,7 +1060,6 @@ end
 
 -- pokefirered/include/constants/items.h:273
 local ROD_ITEMS = { [262] = true, [263] = true, [264] = true }
-local ITEM_BLACK_FLUTE = 42
 local ITEM_WHITE_FLUTE = 43
 local ITEM_POKE_FLUTE = 350
 -- pokefirered/include/constants/items.h:432 ITEM_BICYCLE
@@ -1437,7 +1436,7 @@ local function useField(session, bag, id, partySlot, moveSlot)
     if not mon then
       return false, "noparty", no_pokemon_text()
     end
-    local ok = false
+    local ok
     local text = nil
     local _
     local num = ItemsData.toNumericId(id) or tonumber(id)

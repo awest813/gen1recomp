@@ -2,7 +2,7 @@ local bit = require("bit")
 local P = require("src.core.game3.battle.anim_port.g1_pret")
 local S = require("src.core.game3.battle.anim_port.g1_sprite")
 
-local band, bxor, rshift, arshift, lshift = bit.band, bit.bxor, bit.rshift, bit.arshift, bit.lshift
+local band, bxor, arshift = bit.band, bit.bxor, bit.arshift
 local s16, u16 = P.s16, P.u16
 local Sin, Cos = P.Sin, P.Cos
 

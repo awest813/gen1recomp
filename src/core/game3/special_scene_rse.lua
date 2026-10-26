@@ -107,7 +107,7 @@ local function stepPorthole(scene)
   local Objects = require("src.core.game3.virtual_objects")
   local boat = Objects.get(scene.objectId)
   if not boat then
-    boat = Objects.spawn(scene.objectId, scene.graphicsId, Player.cellX, Player.cellY, 3,
+    Objects.spawn(scene.objectId, scene.graphicsId, Player.cellX, Player.cellY, 3,
       scene.direction == "right" and 2 or 1)
   else
     boat.x, boat.y = Player.cellX, Player.cellY
@@ -167,7 +167,7 @@ end
 
 -- pokeemerald/src/field_screen_effect.c:1207
 function SpecialScene.startOrb(result, onReady)
-  local blue, cx = false, 120
+  local blue, cx
   if result == 0 then blue, cx = false, 104
   elseif result == 1 then blue, cx = true, 136
   elseif result == 2 then blue, cx = false, 120

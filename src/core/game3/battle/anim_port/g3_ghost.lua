@@ -629,7 +629,7 @@ local function spiteStep1(t, vm)
     if not P.isMonBg(t._side) then P.monBlend(t._p, 10, 13 + 15 * 1024) end
     d[15] = d[15] + 1
   elseif k == 2 then
-    local mc, my = P.monCenter(vm, t._side)
+    local _, my = P.monCenter(vm, t._side)
     local startLine = math.floor(my) - 32
     if startLine < 0 then startLine = 0 end
     t._wave = P.Wave(startLine, startLine + 64, 2, 6, 0)

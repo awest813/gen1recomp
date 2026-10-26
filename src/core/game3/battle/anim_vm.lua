@@ -1265,7 +1265,7 @@ local function task_pan_to_target(t, vm)
     t._counter = 0
     local pan = t._cur + t._inc
     t._cur = pan
-    local done = false
+    local done
     if t._inc == 0 then
       done = true
     elseif t._init < t._target then

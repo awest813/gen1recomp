@@ -1,7 +1,6 @@
 local Rse = require("src.core.game3.rse.init")
 local Town = require("src.core.game3.rse.town_common")
 
-local bit = require("bit")
 
 local Lottery = {}
 

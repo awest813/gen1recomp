@@ -4,7 +4,7 @@ local CELL = 16
 
 -- pokeemerald/src/rotating_gate.c:160
 local ARM_NORTH, ARM_EAST, ARM_SOUTH, ARM_WEST = 0, 1, 2, 3
-local ROTATE_NONE, ROTATE_ANTICLOCKWISE, ROTATE_CLOCKWISE = 0, 1, 2
+local _, ROTATE_ANTICLOCKWISE, ROTATE_CLOCKWISE = 0, 1, 2
 RotatingGate.ROTATE_ANTICLOCKWISE, RotatingGate.ROTATE_CLOCKWISE = ROTATE_ANTICLOCKWISE, ROTATE_CLOCKWISE
 
 local function rot(dir, arm, long) return { dir = dir, arm = arm, long = long } end

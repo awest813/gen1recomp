@@ -1859,7 +1859,7 @@ local function dispatch(vm, row)
     if type(item) == "number" and item >= 0x4000 then
       item = Flags.getVar(store, ctx, item)
     end
-    local pocket = 0
+    local pocket
     if a.checkItemType then
       pocket = tonumber(a.checkItemType(item)) or 0
     else

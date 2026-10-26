@@ -284,7 +284,7 @@ end
 function ItemsData.info(id)
   if id == nil then return nil end
   local byId = load_pack()
-  local num, key = normalize_id(id)
+  local num = normalize_id(id)
   if num and byId[num] then
     local e = byId[num]
     return {

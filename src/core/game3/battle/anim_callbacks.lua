@@ -122,8 +122,8 @@ function AnimCallbacks.RoarNoiseLine(sprite)
     local dir = tonumber(sprite.data[2]) or 0
     local isOpponent = sprite._reversed and true or false
 
-    local vx = 0x280
-    local vy = 0
+    local vx
+    local vy
     local animBank = 0
 
     if dir == 0 then
@@ -1030,8 +1030,6 @@ function AnimCallbacks.FirePlume(sprite)
   if not sprite._inited then
     sprite._inited = true
     local args = sprite._args or {}
-    local dx = tonumber(args[1]) or 0
-    local dy = tonumber(args[2]) or 0
     local dur = tonumber(args[3]) or 20
     local dyStep = tonumber(args[4]) or -2
     local dxStep = tonumber(args[5]) or 0

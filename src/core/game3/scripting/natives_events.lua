@@ -63,10 +63,6 @@ local function partyOf(ctx)
   return (session and session.party) or (ctx and ctx.party) or {}, session
 end
 
-local function noop()
-  return false
-end
-
 Events.ICEFALL_CAVE_ICE_COORDS = ICEFALL_CAVE_ICE_COORDS
 Events.METATILE_SEAFOAM_CRACKED_ICE = METATILE_SEAFOAM_CRACKED_ICE
 Events.METATILE_SEAFOAM_ICE_HOLE = METATILE_SEAFOAM_ICE_HOLE
@@ -235,7 +231,7 @@ Events.BY_NAME = {
   end,
   -- pokefirered/src/field_specials.c:1710 UpdateTrainerCardPhotoIcons
   UpdateTrainerCardPhotoIcons = function(ctx)
-    local party, session = partyOf(ctx)
+    local party = partyOf(ctx)
     local Flags = flagsMod()
     local store = scriptStore(ctx)
     local partyCount = (party and #party) or 0
@@ -394,7 +390,7 @@ Events.BY_NAME = {
       end
       if not found then
         for _ = 1, 500 do
-          if ownedT[sp] then found = true break end
+          if ownedT[sp] then break end
           if sp == 1 then sp = NUM else sp = sp - 1 end
         end
       end

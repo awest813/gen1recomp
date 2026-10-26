@@ -52,7 +52,7 @@ local A_BUTTON, B_BUTTON, SELECT_BUTTON, START_BUTTON = 1, 2, 4, 8
 local JUMP_TIMER = 4
 
 -- pokeemerald/src/event_object_movement.c:5734
-local IN_PLACE_SLOW, IN_PLACE_NORMAL, IN_PLACE_FAST = 32, 16, 8
+local _, IN_PLACE_NORMAL, IN_PLACE_FAST = 32, 16, 8
 -- pokeemerald/src/event_object_movement.c:8464
 local JUMP_FRAMES_NORMAL, JUMP_FRAMES_FAR = 16, 32
 -- pokeemerald/src/data/object_events/object_event_anims.h:416

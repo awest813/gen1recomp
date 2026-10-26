@@ -372,7 +372,6 @@ function Rematch.onRematchBattleWon(session, opponentA)
 end
 
 local function gymLeaderLists()
-  local Rse = lazyReq("src.core.game3.rse.init")
   local man = lazyReq("src.core.game3.rse.match_call").manifest()
   return man.gymLeaderRematchesAfterNewMauville or {}, man.gymLeaderRematchesBeforeNewMauville or {}
 end

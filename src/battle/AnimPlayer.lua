@@ -517,7 +517,7 @@ function AnimPlayer:start(moveId, attackerIsPlayer, opts)
         local first, last, dir = 1, #sub.blocks, 1
         if transform == "REVERSE" then first, last, dir = last, first, -1 end
         -- DoBallShakeSpecialEffects: animations.asm:739-747, :623-627
-        local pendingTink = false
+        local pendingTink
         for _ = 1, (opts and opts.shakes) or 1 do
           pendingTink = opts and opts.shakes ~= nil
           local dest = 1   -- PlaySubanimation resets the OAM cursor per row

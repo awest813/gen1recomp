@@ -61,7 +61,6 @@ local HOTBAR_SLOP = 1.4
 
 local BUTTONS_GB = { "a", "b", "start", "select" }
 local BUTTONS_GBA = { "a", "b", "start", "select", "l", "r" }
-local BUTTONS = BUTTONS_GB
 local CONTROLS = { "dpad", "a", "b", "start", "select", "hotbar", "l", "r" }
 
 local HOTBAR = {

@@ -259,7 +259,6 @@ function ContestLink.beginTransfer(opts)
     data = opts.data,
     seed = opts.seed,
   }
-  local sess = job.session
   -- pokeemerald/src/contest_link_util.c:58
   local mine = Contest.buildContestMon(job.contestant)
   mine.highestRank = highestRank(job.partyMon, job.category)

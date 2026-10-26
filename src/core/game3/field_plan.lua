@@ -103,7 +103,7 @@ local function snapshot(game, id, x, y, cols, rows, mode, Native, reachW, reachH
     local l = d and d.midLayout
     if d then neighborDefs[#neighborDefs + 1] = { dir = n.dir, offset = n.offset, def = d } end
     if l then
-      local ox, oy = 0, 0
+      local ox, oy
       if n.dir == "north" then ox, oy = n.offset, -l.height
       elseif n.dir == "south" then ox, oy = n.offset, root.height
       elseif n.dir == "west" then ox, oy = -l.width, n.offset

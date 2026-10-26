@@ -165,8 +165,7 @@ function BugContest.elapsedSince(stamp, now, depth)
     stamp.hour = now.hour or 0
     out.hours = value
   end
-  local days
-  days, carry = borrowed((now.day or 0) - (stamp.day or 0) - carry,
+  local days = borrowed((now.day or 0) - (stamp.day or 0) - carry,
     BugContest.DAY_WRAP)
   stamp.day = now.day or 0
   out.days = days

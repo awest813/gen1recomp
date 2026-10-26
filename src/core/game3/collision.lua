@@ -1246,21 +1246,6 @@ function Collision.noteDynamicWarpEntry(game, destMap, destX, destY, srcX, srcY)
   return true
 end
 
-local function isBuilding(name)
-  local n = string.upper(tostring(name or ""))
-  return n:find("POKECENTER") or n:find("POKEMON_CENTER") or n:find("CENTER")
-      or n:find("MART") or n:find("DEPT_STORE")
-      or n:find("SILPH_CO") or n:find("HOUSE")
-      or n:find("LAB") or n:find("GYM")
-      or n:find("SAFARI_ZONE") or n:find("GAME_CORNER")
-      or n:find("FAN_CLUB") or n:find("MUSEUM")
-      or n:find("DAYCARE") or n:find("DAY_CARE")
-      or n:find("CABLE_CLUB") or n:find("SCHOOL")
-      or n:find("GATE") or n:find("BUILDING")
-      or n:find("_1F") or n:find("_2F") or n:find("_3F")
-      or n:find("_4F") or n:find("_5F")
-end
-
 --- Check if cell (cx, cy) is an entrance door warp
 function Collision.isDoorWarp(game, cx, cy)
   local w = Collision.warpAt(cx, cy)

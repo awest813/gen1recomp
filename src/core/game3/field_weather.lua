@@ -142,8 +142,6 @@ function FieldWeather.draw(camX, camY, canvasW, canvasH, exchangeCanvas)
 
   canvasW = canvasW or W
   canvasH = canvasH or H
-  camX = camX or 0
-  camY = camY or 0
 
   local assets = loadAssets()
 

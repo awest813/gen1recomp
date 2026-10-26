@@ -170,7 +170,6 @@ FieldRse.BY_NAME = {
   -- pokeemerald/src/battle_setup.c:1378
   ShowTrainerIntroSpeech = function(ctx, adapters)
     local sess = Rse.session()
-    local TrainerSight = require("src.core.game3.trainer_sight")
     local localId = Rse.specialVar(ctx, varId("VAR_LAST_TALKED"))
     local text
     local Pyramid = require("src.core.game3.rse.frontier.pyramid")

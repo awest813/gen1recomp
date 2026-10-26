@@ -482,7 +482,7 @@ local function damage_calc(M, target, calcOpts)
 end
 
 local function hit_once(M, opts)
-  local ad, user, target = M.adapter, M.user, M.target
+  local ad, target = M.adapter, M.target
   opts = opts or {}
   local adjustment = adjustment_policy(M)
   local calcOpts = calc_opts(M, opts.calc)

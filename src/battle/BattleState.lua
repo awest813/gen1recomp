@@ -3318,7 +3318,6 @@ end
 -- SetAnimationBGPalette / AnimationFlashScreen / ...ScreenLong).
 -- ------------------------------------------------------------------
 
-local BGP_IDENTITY = { [0] = 0, 1, 2, 3 }              -- $e4
 local BGP_INVERT   = { [0] = 3, 2, 1, 0 }              -- $1b (flash phase 1)
 local BGP_WHITE    = { [0] = 0, 0, 0, 0 }              -- $00 (flash phase 2)
 local BGP_DARK     = { [0] = 3, 3, 2, 1 }              -- $6f DarkScreenPalette

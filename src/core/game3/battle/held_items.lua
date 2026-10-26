@@ -1,5 +1,4 @@
 local Secondary = require("src.core.game3.battle.effects.secondary")
-local State = require("src.core.game3.battle.state")
 local RomText = require("src.core.game3.rom_text")
 
 local HeldItems = {}

@@ -4,7 +4,6 @@ local MapIds = require("src.core.game3.map_ids")
 local Movement = require("src.core.game3.scripting.movement")
 local Flags = require("src.core.game3.scripting.flags")
 local Opcodes = require("src.core.game3.scripting.opcodes")
-local Strings = require("src.core.Strings")
 
 local Adapters = {}
 
@@ -315,12 +314,6 @@ function Adapters.host(mod, game, world)
   local function useGame3Objects()
     local okO, Objects = pcall(require, "src.core.game3.objects")
     return okO and Objects and Objects.hasMap and Objects.hasMap() and Objects
-  end
-
-  local function useGame3Tracks()
-    local G3 = useGame3Objects()
-    if G3 and G3.hasActiveTracks and G3.hasActiveTracks() then return G3 end
-    return nil
   end
 
   local function spaceStore()
@@ -1371,7 +1364,6 @@ function Adapters.host(mod, game, world)
         finish()
       end
       if type(mapId) == "string" and MapIds.isGame3Map(mapId) then
-        local Map = require("src.core.game3.map")
         local Runtime = package.loaded["src.core.game3.runtime"]
         local mod = Runtime and Runtime._mod
         local game = resolveGame()

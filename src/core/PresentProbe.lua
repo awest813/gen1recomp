@@ -274,7 +274,6 @@ local function bindGlxWait(nest)
   -- Refine nest now that we have a Display*.
   if nest == "x11" or nest == "xwayland" then
     local refined = detectXWayland(dpy) and "xwayland" or "x11"
-    nest = refined
     state.nest = refined
   end
 

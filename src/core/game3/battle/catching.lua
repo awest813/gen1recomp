@@ -307,7 +307,7 @@ function Catching.storeCaught(session, foeBattler, ballId, opts)
   local wasCaught = Dex.registerCapture(session.dex, species, nil, mon.personality)
   local firstTimeCaught = not wasCaught
 
-  local location = "party"
+  local location
   local boxId, boxSlot, pending
   if #session.party < 6 then
     session.party[#session.party + 1] = mon

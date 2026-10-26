@@ -68,8 +68,6 @@ MysteryGift.MAX_STAMP_CARD_STAMPS = 7
 MysteryGift.RECEIVED_GIFT_FLAG_FIRST = 0x2A7
 MysteryGift.NUM_WONDER_CARD_FLAGS = 20
 
--- pokefirered/include/constants/flags.h:1391
-local FLAG_SYS_MYSTERY_GIFT_ENABLED = 0x839
 -- pokefirered/include/constants/flags.h:1013
 local FLAG_MYSTERY_GIFT_DONE = 0x3D8
 -- pokefirered/include/constants/flags.h:1408
@@ -151,7 +149,6 @@ end
 local VAR_ALTERING_CAVE_WILD_SET = 0x4024
 -- pokefirered/include/constants/vars.h:234
 local VAR_EVENT_PICHU_SLOT = 0x40B5
-local VAR_MYSTERY_GIFT_1 = 0x40B6
 
 -- pokefirered/include/constants/items.h:442
 MysteryGift.ITEM_MYSTIC_TICKET = 370

@@ -642,7 +642,7 @@ function Healthbox.draw(side, battler, opts)
       local cur, maxHp = display_hp_nums(side, battler)
       draw_hp_nums(cur, maxHp, tlX, tlY)
     end
-    local expRatio = 0
+    local expRatio
     do
       local ok, AnimE = pcall(require, "src.core.game3.battle.anim")
       if ok and AnimE and AnimE.displayExpRatio then

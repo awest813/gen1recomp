@@ -618,8 +618,6 @@ function CMD.if_would_go_first(vm, op)
   -- 0 = user(attacker) first, 1 = target first
   local userSpe = tonumber(vm.user.mon and (vm.user.mon.speed or vm.user.mon.spe)) or 0
   local tgtSpe = tonumber(vm.target.mon and (vm.target.mon.speed or vm.target.mon.spe)) or 0
-  local us = pret_stat_level(vm.user, 3) -- speed stage already in Damage; use stages
-  local ts = pret_stat_level(vm.target, 3)
   -- Approximate with stage mul via Damage
   userSpe = userSpe * (Damage.stageMul((vm.user.stages and vm.user.stages.speed) or 0))
   tgtSpe = tgtSpe * (Damage.stageMul((vm.target.stages and vm.target.stages.speed) or 0))
@@ -1116,7 +1114,7 @@ local ABILITY_SHADOW_TAG, ABILITY_MAGNET_PULL, ABILITY_ARENA_TRAP = 23, 42, 71
 function CMD.check_ability(vm, op)
   local b = wanted_battler(vm, op.battler)
   local want = tonumber(op.ability) or 0
-  local ability = want
+  local ability
   if op.battler == 0 or op.battler == 2 then
     local State = require("src.core.game3.battle.state")
     local hist = vm.st and vm.st._aiHistory and vm.st._aiHistory.abilities
@@ -1163,7 +1161,7 @@ end
 -- pokeemerald/src/battle_ai_script_commands.c:2061
 function CMD.if_holds_item(vm, op)
   local b = wanted_battler(vm, op.battler)
-  local item = 0
+  local item
   if same_side(b, vm.user) then
     local mon = b and b.mon
     item = tonumber(b and (b.item or (mon and (mon.item or mon.heldItem)))) or 0

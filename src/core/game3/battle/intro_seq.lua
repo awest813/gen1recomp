@@ -716,7 +716,7 @@ local function run_step(step)
     local side = d.side or "enemy"
     local tr = s.trainer[side]
     local from = tr.ox or 0
-    local to = (side == "enemy") and (d.toX or 280) - 176 or (d.toX or -40) - 80
+    local to
     -- Store as ox delta from resting center: resting ox=0 at center.
     -- Enemy exit: center 176 → 280 ⇒ ox 0 → 104
     if side == "enemy" then

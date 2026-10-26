@@ -241,8 +241,6 @@ function Field.update(_dt)
   Field.updateFishing()
 
   local Hud = lazyReq("src.ui.game3.hud")
-  local Runtime = package.loaded["src.core.game3.runtime"]
-    or lazyReq("src.core.game3.runtime")
   local Message = package.loaded["src.ui.game3.message"]
 
   -- A-button talk / signs / PC — owned here (host pollInput is no-op on Sevii).

@@ -4,26 +4,8 @@
 local ItemsData = require("src.core.game3.items_data")
 local Bag = require("src.core.game3.bag")
 local ItemUse = require("src.core.game3.item_use")
-local Pokemon = require("src.core.game3.pokemon")
-local Types = require("src.core.game3.battle.types")
 
 local BattleItems = {}
-
--- pret sBallCatchBonuses (×10): Ultra=20, Great=15, Poke=10, Safari=15
-local BALL_MULT = {
-  [1] = 255, -- MASTER (handled specially)
-  [2] = 20,  -- ULTRA
-  [3] = 15,  -- GREAT
-  [4] = 10,  -- POKE
-  [5] = 15,  -- SAFARI
-  [6] = 10,  -- NET (default; type boost below)
-  [7] = 10,  -- DIVE
-  [8] = 10,  -- NEST (level boost)
-  [9] = 10,  -- REPEAT
-  [10] = 10, -- TIMER
-  [11] = 10, -- LUXURY
-  [12] = 10, -- PREMIER
-}
 
 local function band(a, m) return bit.band(tonumber(a) or 0, m) end
 
@@ -337,7 +319,7 @@ function BattleItems.use(st, adapter, bag, session, itemId, partySlot, battlerId
     if active then require("src.core.game3.battle.state").syncBattlerToParty(active, party) end
     local before = tonumber(mon.hp) or 0
     local opts = enigma_options(st, active, user, false)
-    local applied, detail = ItemUse.applyEnigmaItem(session, mon, moveSlot or 1, opts)
+    local applied = ItemUse.applyEnigmaItem(session, mon, moveSlot or 1, opts)
     if active then
       active.status, active.fainted = mon.status, (tonumber(mon.hp) or 0) <= 0
       if active.mon and active.mon ~= mon then

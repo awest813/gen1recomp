@@ -27,7 +27,7 @@ AnimSprites.RESET_KEYS = {
 
 --- Slot-based dynamic Z calculation (supports 1v1 and 2v2 double battles).
 function AnimSprites.slotZ(slot, layer)
-  local slotId = 1
+  local slotId
   if type(slot) == "number" then
     slotId = slot
   elseif slot == "player" or slot == "player_left" then

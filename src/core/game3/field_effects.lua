@@ -252,12 +252,6 @@ local function modAudio() return getMod("Audio", "src.core.game3.audio") end
 local function modOwSprites() return getMod("OwSprites", "src.core.game3.ow_sprites") end
 local function modRenderer() return getMod("Renderer", "src.render.Renderer") end
 
-local function log(msg)
-  if FieldEffects._logged then return end
-  FieldEffects._logged = true
-  print("[game3/field_effects] " .. tostring(msg))
-end
-
 local function cache_root()
   return Extract.CACHE_ROOT or "data/generated/gba"
 end

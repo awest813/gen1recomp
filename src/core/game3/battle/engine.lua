@@ -792,7 +792,7 @@ local function run_called(M, calledId, opts)
   sub.noAttackString = nil
   sub.calledBy = M.moveId
   M.anim.calledBy = M.anim.calledBy or M.moveId
-  local target = M.target
+  local target
   local cmove = Moves.get(calledId)
   if M.st and M.st.double then
     target = State.battler(M.st, Engine.getMoveTarget(M.st, M.adapter, M.user, calledId))
@@ -2235,7 +2235,7 @@ function Engine.tryFlee(st, adapter, battler)
     say_id(adapter, "STRINGID_GOTAWAYSAFELY")
     return true
   end
-  local ok = false
+  local ok
   local mySpe = tonumber(battler.mon and battler.mon.speed) or 0
   local foeSpe = tonumber(foe and foe.mon and foe.mon.speed) or 0
   local function vanilla_run(pSpd, eSpd)

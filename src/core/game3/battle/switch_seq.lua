@@ -359,7 +359,7 @@ function SwitchSeq.beginSendOut(st, side, newSlot, opts)
     return false
   end
 
-  local steps = {}
+  local steps
   if side == "player" then
     steps = {
       { kind = "swap_data", data = { side = "player", newSlot = newSlot, nativeSwitchKind = "replace" } },

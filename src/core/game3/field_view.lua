@@ -236,13 +236,13 @@ local function playerPixels(game)
     if not px then px = (tonumber(p.cellX or p.x) or 0) * CELL end
     if not py then py = (tonumber(p.cellY or p.y) or 0) * CELL end
     local facing = p.facing or "down"
-    local walkPhase = 0
+    local walkPhase
     if type(p.walkPhase) == "function" then
       walkPhase = p:walkPhase() or 0
     else
       walkPhase = p.movePhase or p.walkPhase or 0
     end
-    local stepFlip = false
+    local stepFlip
     if type(p.drawFlip) == "function" then
       stepFlip = p:drawFlip() and true or false
     else
@@ -1648,7 +1648,6 @@ function FieldView.draw(game, canvasW, canvasH, opts)
   playerYOff = playerYOff or 0
   local Runtime = package.loaded["src.core.game3.runtime"]
   local session = Runtime and Runtime.getSession and Runtime.getSession()
-  local world = game and (game.overworld or game.world)
   if session then
     session.x = math.floor((px or 0) / CELL)
     session.y = math.floor((py or 0) / CELL)

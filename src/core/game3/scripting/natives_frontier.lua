@@ -19,7 +19,6 @@ local SSTIDAL = { SLATEPORT = 0, BATTLE_FRONTIER = 1, SOUTHERN_ISLAND = 2, NAVEL
 -- pokeemerald/src/start_menu.c:71
 local SAVE_SUCCESS = 1
 
-local F = D.FACILITY
 local M = D.MODE
 
 local function sess() return Rse.session() end
@@ -30,11 +29,6 @@ local function Tower() return require("src.core.game3.rse.frontier.tower") end
 local function Tents() return require("src.core.game3.rse.frontier.tents") end
 local function Records() return require("src.ui.game3.rse.frontier_records") end
 local function story() return require("src.core.game3.scripting.natives_frontier_story") end
-
-local function log(adapters, msg)
-  msg = "[game3] " .. msg
-  if adapters and adapters.log then adapters.log(msg) else print(msg) end
-end
 
 local FUNCS = {}
 local U = Util.FUNC

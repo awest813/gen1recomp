@@ -127,7 +127,6 @@ Roamer.ROAMER_LEVEL = 50
 
 -- include/constants/vars.h:47
 local VAR_REPEL_STEP_COUNT = 0x4020
-local VAR_STARTER_MON = 0x4031
 
 -- pokefirered/src/roamer.c:19 sRoamerLocations (Kanto routes)
 Roamer.LOCATIONS = {

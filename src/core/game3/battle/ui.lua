@@ -28,11 +28,7 @@ local BattleText = require("src.core.game3.battle.battle_text")
 local SummaryChrome = require("src.ui.game3.summary_chrome")
 local Anim = require("src.core.game3.battle.anim")
 local PicCoords = require("src.core.game3.battle.pic_coords")
-local TrainerPic = require("src.core.game3.trainer_pic")
-local Audio = require("src.core.game3.audio")
-local SE = require("src.core.game3.se_ids")
 local LevelUpStreaks = require("src.core.game3.battle.level_up_streaks")
-local bit = require("bit")
 
 local Ui = {}
 local chromeInstallWarned = false

@@ -303,7 +303,7 @@ function TrainerFanClub.tryGainNewFanFromCounter(session, ctx, counterIdx)
     if timer + inc >= 20 then
       if TrainerFanClub.countFans(fanFlags) < 3 then
         TrainerFanClub.playerGainRandomTrainerFan(session, ctx)
-        local _unused, newGotInitial, newFanFlags = TrainerFanClub.getFanClubData(session, ctx)
+        local _, newGotInitial, newFanFlags = TrainerFanClub.getFanClubData(session, ctx)
         gotInitialFans = newGotInitial
         fanFlags = newFanFlags
         timer = 0
@@ -322,8 +322,8 @@ end
 --- pokefirered/src/trainer_fan_club.c:240 BufferFanClubTrainerName
 function TrainerFanClub.bufferFanClubTrainerName(session, ctx, adapters, memberId)
   memberId = tonumber(memberId) or 0
-  local whichNPCTrainer = 0
-  local whichLinkTrainer = 0
+  local whichNPCTrainer
+  local whichLinkTrainer
 
   if memberId == TrainerFanClub.MEMBER.MEMBER1 then
     whichNPCTrainer = 0

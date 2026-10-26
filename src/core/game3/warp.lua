@@ -304,7 +304,7 @@ function Warp.startEscalator(mod, game, destMap, destX, destY, dir, approachDir,
   -- GBA pret trig offsets for escalator (field_effect.c)
   local function getOffsets(amp, isGoingUp, isLanding)
     local x = -amp
-    local y = 0
+    local y
     if isGoingUp then
       if not isLanding then
         -- Going UP departing (1F): moves left & UP into ceiling (0 -> -8)

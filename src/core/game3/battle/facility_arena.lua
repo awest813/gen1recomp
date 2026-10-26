@@ -269,7 +269,7 @@ function Fac:turnStart(st, ad, headless)
 end
 
 function Fac:applyJudgment(st, result)
-  local lost = {}
+  local lost
   if result == Fac.RESULT.PLAYER_WON then lost = { 1 }
   elseif result == Fac.RESULT.PLAYER_LOST then lost = { 0 }
   else lost = { 0, 1 } end

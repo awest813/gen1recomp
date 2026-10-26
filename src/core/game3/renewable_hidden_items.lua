@@ -302,7 +302,7 @@ end
 
 --- pokefirered/src/renewable_hidden_items.c:566
 function RenewableHiddenItems.tryRegenerate(ctx, mapGroup, mapNum, mapId, rngFn)
-  local isRenewable, zone = RenewableHiddenItems.isRenewableMap(mapGroup, mapNum, mapId)
+  local isRenewable = RenewableHiddenItems.isRenewableMap(mapGroup, mapNum, mapId)
   if not isRenewable then return false end
 
   local store = resolveStore(ctx)

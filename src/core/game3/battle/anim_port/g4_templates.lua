@@ -1,15 +1,8 @@
 
 local T = {}
 
-local function A(list) return list end
 local END = { e = true }
 local AEND = { e = true }
-
-local function frames(...)
-  local out = {}
-  for i, f in ipairs({ ... }) do out[i] = f end
-  return out
-end
 
 local function F(img, dur, h, v) return { f = img, d = dur, h = h, v = v } end
 local function J(i) return { jump = i } end

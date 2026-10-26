@@ -1,7 +1,6 @@
 local Std = require("src.core.game3.scripting.stdscripts")
 local Rse = require("src.core.game3.rse.init")
 local SB = require("src.core.game3.rse.secret_base")
-local Decor = require("src.core.game3.rse.decoration")
 
 local N = {}
 

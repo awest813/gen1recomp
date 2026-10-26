@@ -8,10 +8,6 @@ local s16, u16, u8 = P.s16, P.u16, P.u8
 local Sin, Cos = P.Sin, P.Cos
 local cdiv = P.cdiv
 
-local function random16()
-  return math.random(0, 0xFFFF)
-end
-
 local function atk_opp(s)
   return P.isOpponent(P.atk(s._vm))
 end

@@ -18,7 +18,6 @@ local Experience = require("src.core.game3.battle.experience")
 local Pokemon = require("src.core.game3.pokemon")
 local Evolution = require("src.core.game3.evolution")
 local LearnMove = require("src.core.game3.battle.learn_move")
-local Task = require("src.core.game3.task")
 local Trainers = require("src.core.game3.scripting.trainers")
 local SwitchSeq = require("src.core.game3.battle.switch_seq")
 local Oak = require("src.core.game3.battle.oak_advice")
@@ -2491,7 +2490,7 @@ local function step_action()
         end
       else
         local BattleItems = require("src.core.game3.battle.items")
-        local result, _msgs, endsTurn, endsBattle = BattleItems.use(
+        local result, _, endsTurn, endsBattle = BattleItems.use(
           st, ad, bag, session, meta.itemId, meta.partySlot, nil, meta.moveSlot)
         if endsBattle then
           Battle._actions = {}

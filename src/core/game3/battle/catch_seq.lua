@@ -72,10 +72,6 @@ local function advance()
   CatchSeq._i = CatchSeq._i + 1
 end
 
-local function wait_busy()
-  CatchSeq._waiting = true
-end
-
 local function catch_text(id)
   local st = CatchSeq._st
   local session = CatchSeq._session

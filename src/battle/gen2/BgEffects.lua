@@ -24,7 +24,7 @@
 local bit = require("bit")
 local AnimObjects = require("src.battle.gen2.AnimObjects")
 
-local u8, sra = AnimObjects.u8, AnimObjects.sra
+local u8 = AnimObjects.u8
 local swap = AnimObjects.swap
 local sine, cosine = AnimObjects.sine, AnimObjects.cosine
 

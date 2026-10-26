@@ -455,7 +455,7 @@ function Bag.add(bag, id, qty)
   end
 
   local slots = bag.pockets[pocket]
-  local idx, slot = find_slot(slots, storeId)
+  local _, slot = find_slot(slots, storeId)
   if slot then
     local have = tonumber(slot.qty) or 0
     local nextQty = Items.clampGame3(have + qty)
@@ -622,7 +622,6 @@ function Bag.restoreSidecar(bag, sidecar)
 end
 
 function Bag.splitForHost(bag, hostInventory)
-  hostInventory = hostInventory or {}
   local hostWrites, quarantine, overflow = {}, {}, {}
   bag = ensure(bag)
   if not bag then return hostWrites, quarantine, overflow end
