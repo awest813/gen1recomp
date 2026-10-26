@@ -892,3 +892,4 @@ tests/engine/save_editor_toast_s6.lua
 tests/engine/launcher_save_toast_s6.lua
 tests/engine/save_editor_map_point_buttons_s8.lua
 tests/engine/love_run_shell_matrix.lua
+tests/engine/void_fill_bake_retry_test.lua

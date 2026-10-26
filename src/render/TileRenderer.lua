@@ -635,6 +635,10 @@ function TileRenderer:ensureBorderFill()
   local ready = (mode == "black")
                 or (mode == "water" and self.borderWaterTextures)
                 or (mode ~= "water" and mode ~= "black" and self.borderFill)
+                -- a bake that already failed for this mode stays failed until
+                -- the mode changes: retrying every frame built (and dropped) a
+                -- fresh 32x32 canvas per frame, forever
+                or self.borderFillFailed == mode
   if self.borderFillMode == mode and ready then return end
   if self.borderFill and self.borderFill.release then
     pcall(self.borderFill.release, self.borderFill)
@@ -643,12 +647,20 @@ function TileRenderer:ensureBorderFill()
   -- shared shift-variant cache: drop the reference only, never release
   self.borderWaterTextures = nil
   self.borderFillMode = mode
+  self.borderFillFailed = nil
   if mode == "black" or block == false or block == nil then return end
   if mode == "water" then
     if ensureWaterBorderFill(self) then return end
     -- headless / missing pixels: fall back to the static water block bake
   end
-  pcall(bakeBorderFill, self, block)
+  local ok, err = pcall(bakeBorderFill, self, block)
+  if not (ok and self.borderFill) then
+    self.borderFillFailed = mode
+    if not ok then
+      require("src.core.Logger").warn("void fill %s bake failed: %s",
+        mode, tostring(err))
+    end
+  end
 end
 
 -- tile the border block across the whole view (world-aligned so it
