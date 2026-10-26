@@ -23,7 +23,10 @@ function TradeAnim:sgbPalettes(game)
   local colors = mon and P.monPal(game.data, mon.species)
   local zones = colors and { P.whole(colors) } or P.wholeNamed(game.data, "MEWMON")
   if self.cableFlash and zones and zones[1] and zones[1].colors then
-    zones[1].colors = P.permute(zones[1].colors, FLASH_BGP)
+    -- a copy: wholeNamed's list is kept from frame to frame (keepZones)
+    local z = zones[1]
+    zones = { { colors = P.permute(z.colors, FLASH_BGP),
+                x = z.x, y = z.y, w = z.w, h = z.h } }
   end
   return zones
 end

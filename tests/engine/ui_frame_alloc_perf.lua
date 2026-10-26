@@ -1,8 +1,9 @@
 -- Steady frames off the plain overworld build no Lua garbage either: the
 -- rarer Renderer:endFrame paths (a DYNAMIC-layout docked box, the battle
 -- dim and void veil around the letterbox, the paper surround behind an
--- opaque screen) and the Gen 1 battle screen at its command menu and under
--- a message.  Same harness as overworld_frame_alloc_perf.lua: the
+-- opaque screen), the Gen 1 battle screen at its command menu and under a
+-- message, and the common menus (START, party, list, summary, options,
+-- trainer card) with their SGB zone lists.  Same harness as overworld_frame_alloc_perf.lua: the
 -- fixture overworld through Game:draw on tests/love_stub, the collector
 -- stopped, KB per frame on the interpreter love.js runs.
 --   luajit tests/engine/ui_frame_alloc_perf.lua
@@ -277,5 +278,115 @@ do
   eq(Strings("%d LEFT", 3), "3 LEFT", "and a format still formats")
 end
 Game.stack:pop()
+
+-- ------------------------------------------------ menus
+local PaletteFX = require("src.render.PaletteFX")
+local StartMenu = require("src.ui.StartMenu")
+local PartyMenu = require("src.ui.PartyMenu")
+local ListMenu = require("src.ui.ListMenu")
+local SummaryMenu = require("src.ui.SummaryMenu")
+local OptionsMenu = require("src.ui.OptionsMenu")
+local TrainerCard = require("src.ui.TrainerCard")
+local Runtime = require("src.mods.Runtime")
+local Hooks = require("src.mods.Hooks")
+local pals = Data.palettes.palettes
+local party = Game.save.party
+party[2] = Pokemon.new(Data, "FIXMON_A", 10, function(_, b) return b end)
+party[3] = Pokemon.new(Data, "FIXMON_A", 10, function(_, b) return b end)
+party[3].hp = 1
+
+local menus = {
+  { "the START menu", function() return StartMenu.new(Game) end },
+  { "the party menu", function() return PartyMenu.new(Game, {}) end },
+  { "a list menu", function()
+    return ListMenu.new(Game, "ITEMS", { { label = "POTION" }, { label = "CANCEL" } }, {})
+  end },
+  { "the summary screen", function() return SummaryMenu.new(Game, party[3]) end },
+  { "the options menu", function() return OptionsMenu.new(Game, {}) end },
+  { "the trainer card", function() return TrainerCard.new(Game, {}) end },
+}
+for _, m in ipairs(menus) do
+  local menu = m[2]()
+  Game.stack:push(menu)
+  steady(m[1] .. " over the overworld")
+  check(Game.stack:top() == menu, m[1] .. " is still up")
+  Game.stack:pop()
+end
+
+local function zoneIs(z, colors, x, y, w, h, what)
+  check(z ~= nil and z.colors == colors and z.x == x and z.y == y
+    and z.w == w and z.h == h, what)
+end
+
+-- the party menu's zones (BlkPacket_PartyMenu): kept while they hold
+do
+  local menu = PartyMenu.new(Game, {})
+  local z1 = menu:sgbPalettes(Game)
+  local z2 = menu:sgbPalettes(Game)
+  check(z1 == z2, "the party zone list is reused while it holds")
+  eq(#z2, 5, "base, icon column and three bars")
+  zoneIs(z2[1], pals.GREENBAR, 0, 0, 160, 144, "the GREENBAR base")
+  zoneIs(z2[2], pals.MEWMON, 8, 0, 16, 96, "the MEWMON icon column")
+  zoneIs(z2[3], pals.GREENBAR, 40, 8, 56, 8, "a full bar")
+  zoneIs(z2[5], pals.REDBAR, 40, 40, 56, 8, "the 1 HP bar")
+
+  party[3].hp = party[3].stats.hp
+  local z3 = menu:sgbPalettes(Game)
+  check(z3 ~= z2, "a healed bar builds a fresh list")
+  zoneIs(z3[5], pals.GREENBAR, 40, 40, 56, 8, "showing the new colour")
+  zoneIs(z2[5], pals.REDBAR, 40, 40, 56, 8, "while the old list is untouched")
+  check(z3[1] == z2[1] and z3[4] == z2[4], "zones that held are carried over")
+  party[3].hp = 1
+  local z4 = menu:sgbPalettes(Game)
+  eq(#z4, 5, "and back again")
+
+  z4.extra = true
+  local z5 = menu:sgbPalettes(Game)
+  check(z5 ~= z4 and z5.extra == nil, "a list someone wrote to is rebuilt")
+  z5[1].tag = true
+  local z6 = menu:sgbPalettes(Game)
+  check(z6 ~= z5 and z6[1].tag == nil, "as is one with a zone written to")
+  party[3], party[2] = nil, nil
+  local z7 = menu:sgbPalettes(Game)
+  eq(#z7, 3, "a shorter party drops its bars")
+  check(z7[1] == z6[1], "and keeps the base zone")
+
+  -- a render.zones subscriber may keep what it is handed: always fresh
+  local saved = Runtime.hooks
+  local hooks = Hooks.new()
+  Runtime.hooks = hooks
+  hooks:wrap("render.zones", function(vanilla, ...) return vanilla(...) end, 0, "test")
+  local h1, h2 = menu:sgbPalettes(Game), menu:sgbPalettes(Game)
+  check(h1 ~= h2 and h1[1] ~= h2[1], "hooked frames get fresh lists and zones")
+  zoneIs(h2[1], pals.GREENBAR, 0, 0, 160, 144, "with the same base")
+  local w1, w2 = PaletteFX.wholeNamed(Data, "MEWMON"), PaletteFX.wholeNamed(Data, "MEWMON")
+  check(w1 ~= w2, "wholeNamed too")
+  -- render.compose is handed the zone lists as well
+  hooks = Hooks.new()
+  Runtime.hooks = hooks
+  hooks:wrap("render.compose", function(vanilla, ...) return vanilla(...) end, 0, "test")
+  check(menu:sgbPalettes(Game) ~= menu:sgbPalettes(Game),
+    "a render.compose subscriber gets fresh lists too")
+  Runtime.hooks = saved
+
+  local n1, n2 = PaletteFX.wholeNamed(Data, "MEWMON"), PaletteFX.wholeNamed(Data, "MEWMON")
+  check(n1 == n2, "wholeNamed keeps its list while it holds")
+  eq(#n2, 1, "one zone")
+  zoneIs(n2[1], pals.MEWMON, 0, 0, 160, 144, "across the screen")
+  eq(PaletteFX.wholeNamed(Data, "NO_SUCH_PALETTE"), nil, "an unknown name is nil")
+
+  -- the bottom message: one row per line, empty ones included
+  local rows = {}
+  local draw = Font.draw
+  Font.draw = function(text, x, y)
+    if x == 8 and y >= 112 then rows[#rows + 1] = text .. "@" .. y end
+    return draw(text, x, y)
+  end
+  menu.message = "LINE ONE\nLINE TWO\n"
+  menu:draw()
+  Font.draw = draw
+  eq(table.concat(rows, "|"), "LINE ONE@112|LINE TWO@128|@144",
+    "the party message prints line by line")
+end
 
 T.finish("ui_frame_alloc_perf")

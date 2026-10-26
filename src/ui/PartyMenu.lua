@@ -45,9 +45,10 @@ function PartyMenu:sgbPalettes(game)
   local P = require("src.render.PaletteFX")
   local base = P.pal(game.data, "GREENBAR")
   if not base then return nil end
-  local zones = { P.whole(base) }
-  local mew = P.pal(game.data, "MEWMON")
-  if mew then zones[#zones + 1] = P.zone(mew, 1, 0, 2, 11) end
+  -- asked every frame: described as a steady list (PaletteFX.keepZones)
+  local zones = P.keepZones(self)
+  P.keepWhole(zones, base)
+  P.keepZone(zones, P.pal(game.data, "MEWMON"), 1, 0, 2, 11)
   -- the TM/HM list prints ABLE / NOT ABLE where the bar would be, so those
   -- rows have no bar to color (party_menu.asm .teachMoveMenu; #210)
   if not self.tmhm then
@@ -62,12 +63,10 @@ function PartyMenu:sgbPalettes(game)
       local hp = mon.hp
       if self.heal and self.heal.mon == mon then hp = self.heal.from end
       local bar = P.pal(game.data, P.barPalName(hp, mon.stats.hp))
-      if bar then
-        zones[#zones + 1] = P.zone(bar, 5, i * 2 - 1, 11, i * 2 - 1)
-      end
+      P.keepZone(zones, bar, 5, i * 2 - 1, 11, i * 2 - 1)
     end
   end
-  return zones
+  return P.keptZones(zones)
 end
 
 -- data/moves/field_moves.asm: leftmost tile per field move name
@@ -1059,10 +1058,16 @@ function PartyMenu:draw()
   -- bottom text box, rows 12-17 (party_menu.asm:174). #147 #210 #1610
   Font.drawBox(0, 12, 20, 6)
   love.graphics.setColor(0, 0, 0, 1)
+  -- one row per "\n"-separated line, empty ones included; a find walk, as
+  -- gmatch builds an iterator every frame
   local ly = 112
-  for line in (self:bottomMessage() .. "\n"):gmatch("([^\n]*)\n") do
-    Font.draw(line, 8, ly)
+  local msg, from = self:bottomMessage(), 1
+  while true do
+    local nl = msg:find("\n", from, true)
+    Font.draw(msg:sub(from, nl and nl - 1 or -1), 8, ly)
     ly = ly + 16
+    if not nl then break end
+    from = nl + 1
   end
   if self.submenu then
     local n = #self.subItems

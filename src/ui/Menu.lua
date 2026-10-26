@@ -117,6 +117,15 @@ function Menu:update(dt)
   self:clampScroll()
 end
 
+-- a choice row's pixel Y (see Menu:draw); a module function rather than a
+-- closure built every frame the menu draws
+local function rowY(self, visible, row)
+  if self.itemY then
+    return (self.ty + self.itemY + (row - 1) * self.rowStep) * 8
+  end
+  return (self.ty + self.th - 2 - (visible - row) * self.rowStep) * 8
+end
+
 function Menu:draw()
   -- opts.anchor opts a menu out of the centred letterbox and onto a screen
   -- edge (the START menu asks for "topright").  Only menus that ask for it
@@ -171,21 +180,15 @@ function Menu:draw()
   -- USE/TOSS is th = 5 for two choices (#284, matching text_boxes.asm's
   -- USE_TOSS_MENU_TEMPLATE rows 10..14), and a top anchor pushed TOSS onto
   -- the bottom border (#564, #572).
-  local function rowY(row)
-    if self.itemY then
-      return (self.ty + self.itemY + (row - 1) * self.rowStep) * 8
-    end
-    return (self.ty + self.th - 2 - (visible - row) * self.rowStep) * 8
-  end
   for row = 1, visible do
     local item = self.items[self.scroll + row]
     if not item then break end
-    Font.draw(item.label, (self.tx + 2) * 8, rowY(row))
+    Font.draw(item.label, (self.tx + 2) * 8, rowY(self, visible, row))
   end
   -- hollowIndex: home/window.asm:198
   Font.drawCode(self.hollowIndex == self.index
                 and Theme.cursorHollow or Theme.cursor,
-    (self.tx + 1) * 8, rowY(self.index - self.scroll))
+    (self.tx + 1) * 8, rowY(self, visible, self.index - self.scroll))
   -- moreArrow ($EE): the same "more below" glyph OptionRows/ManagerState
   -- use, sat on the bottom border like TextBox's page-advance cursor.  It
   -- has to be the border row, not ty + th - 2: that is the last interior

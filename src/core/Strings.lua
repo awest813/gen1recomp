@@ -84,13 +84,23 @@ end
 
 -- Count `%`-directives so a translation that drops or adds one is caught
 -- here rather than as a mid-battle `string.format` error.
+-- Most sources carry none, and gmatch builds an iterator per call, so a
+-- string with no '%' skips it and the rest (the same few format strings,
+-- every frame they draw) are counted once; the memo is dropped whole past
+-- SPEC_CACHE_MAX entries rather than tracked LRU.
+local SPEC_CACHE_MAX = 1024
+local specCache, specCount = {}, 0
 local function specifiers(s)
-  -- most sources carry none, and gmatch builds an iterator per call
   if not s:find("%", 1, true) then return 0 end
-  local n = 0
+  local n = specCache[s]
+  if n then return n end
+  n = 0
   for spec in s:gmatch("%%(.)") do
     if spec ~= "%" then n = n + 1 end
   end
+  if specCount >= SPEC_CACHE_MAX then specCache, specCount = {}, 0 end
+  specCache[s] = n
+  specCount = specCount + 1
   return n
 end
 

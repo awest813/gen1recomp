@@ -397,6 +397,81 @@ function PaletteFX.whole(colors)
   return PaletteFX.zone(colors, 0, 0, 19, 17)
 end
 
+-- ------- steady zone lists
+--
+-- A screen's sgbPalettes is asked every frame and nearly always answers the
+-- same zones.  Described through keepZones / keepZone / keptZones instead of
+-- built, the list the holder was handed last time comes back while it is
+-- still exactly what would be built: the same zones in the same order, each
+-- holding only the five fields PaletteFX.zone fills.  The first zone that
+-- differs, or a list or zone someone wrote to, starts a fresh list (zones
+-- that still match are carried over), so a list once handed out is never
+-- changed by this code.  A caller that edits what it is handed copies it
+-- first (TradeAnim).  With a render.zones or render.compose subscriber
+-- every list is fresh, since a mod may keep or edit the one it was handed.
+local kept = setmetatable({}, { __mode = "k" })
+
+local function keyCount(t)
+  local n = 0
+  for _ in pairs(t) do n = n + 1 end
+  return n
+end
+
+-- Start describing `holder`'s list (a table or a string, one per list).
+function PaletteFX.keepZones(holder)
+  local k = kept[holder]
+  if not k then
+    k = {}
+    kept[holder] = k
+  end
+  k.n = 0
+  local Runtime = package.loaded["src.mods.Runtime"]
+  local hooked = type(Runtime) == "table" and Runtime.wantsHook
+    and (Runtime.wantsHook("render.zones")
+         or Runtime.wantsHook("render.compose"))
+  k.out = hooked and {} or nil
+  return k
+end
+
+-- The next zone, as PaletteFX.zone(colors, tx1, ty1, tx2, ty2) would build
+-- it; nil colors adds nothing, like appending that nil.
+function PaletteFX.keepZone(k, colors, tx1, ty1, tx2, ty2)
+  if colors == nil then return end
+  local n = k.n + 1
+  k.n = n
+  local out = k.out
+  if not out then
+    local list = k.list
+    local z = list and list[n]
+    if z and z.colors == colors and z.x == tx1 * 8 and z.y == ty1 * 8
+        and z.w == (tx2 - tx1 + 1) * 8 and z.h == (ty2 - ty1 + 1) * 8
+        and keyCount(z) == 5 then
+      return
+    end
+    out = {}
+    for i = 1, n - 1 do out[i] = list[i] end
+    k.out = out
+  end
+  out[n] = PaletteFX.zone(colors, tx1, ty1, tx2, ty2)
+end
+
+function PaletteFX.keepWhole(k, colors)
+  PaletteFX.keepZone(k, colors, 0, 0, 19, 17)
+end
+
+-- The finished list: last time's while nothing differed, else the new one.
+function PaletteFX.keptZones(k)
+  local out = k.out
+  if not out then
+    local list = k.list
+    if list and keyCount(list) == k.n then return list end
+    out = {}
+    for i = 1, k.n do out[i] = list[i] end
+  end
+  k.list, k.out = out, nil
+  return out
+end
+
 -- Red++ / pokered-gbc SuperPalette pack (committed; optional if absent).
 function PaletteFX.gbcPack()
   if gbcPack == nil then
@@ -909,10 +984,14 @@ function PaletteFX.barPalName(hp, maxHp, pixels)
   return px >= 27 and "GREENBAR" or px >= 10 and "YELLOWBAR" or "REDBAR"
 end
 
--- convenience: a single whole-screen zone for a named palette
+-- convenience: a single whole-screen zone for a named palette (one steady
+-- list per name, see keepZones)
 function PaletteFX.wholeNamed(data, name)
   local c = PaletteFX.pal(data, name)
-  return c and { PaletteFX.whole(c) } or nil
+  if not c then return nil end
+  local k = PaletteFX.keepZones(name)
+  PaletteFX.keepWhole(k, c)
+  return PaletteFX.keptZones(k)
 end
 
 -- The four DMG grays the extracted art uses (255/170/85/0), as a

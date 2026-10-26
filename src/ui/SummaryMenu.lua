@@ -51,8 +51,18 @@ function SummaryMenu:sgbPalettes(game)
   if not mon then return P.wholeNamed(game.data, "MEWMON") end
   local bar = P.pal(game.data, P.barPalName(mon.hp, mon.stats.hp))
   if not bar then return nil end
-  return { P.whole(bar), P.zone(P.monPal(game.data, mon.species), 1, 0, 7, 6) }
+  -- asked every frame: described as a steady list (PaletteFX.keepZones)
+  local zones = P.keepZones(self)
+  P.keepWhole(zones, bar)
+  P.keepZone(zones, P.monPal(game.data, mon.species), 1, 0, 7, 6)
+  return P.keptZones(zones)
 end
+
+-- the stats box rows: label, then the mon.stats field it prints
+local STAT_ROWS = {
+  { "ATTACK", "attack" }, { "DEFENSE", "defense" },
+  { "SPEED", "speed" }, { "SPECIAL", "special" },
+}
 
 function SummaryMenu.new(game, mon)
   -- status_screen.asm:66-76: StatusScreen recalculates the stat block before
@@ -192,14 +202,10 @@ function SummaryMenu:draw()
 
     -- stats box (0,8) 10x10: names rows 9/11/13/15, values indented
     Font.drawBox(0, 8, 10, 10)
-    local stats = {
-      { "ATTACK", mon.stats.attack }, { "DEFENSE", mon.stats.defense },
-      { "SPEED", mon.stats.speed }, { "SPECIAL", mon.stats.special },
-    }
-    for i, s in ipairs(stats) do
+    for i, s in ipairs(STAT_ROWS) do
       local y = 72 + (i - 1) * 16
       Font.draw(Strings(s[1]), 8, y)
-      Font.draw(("%3d"):format(s[2]), 48, y + 8)
+      Font.draw(("%3d"):format(mon.stats[s[2]]), 48, y + 8)
     end
 
     -- TYPE1/TYPE2/IDNo/OT column (10,9) with values indented (11,10)
