@@ -12,6 +12,9 @@
 
 local bit = require("bit")
 
+local floor, ceil, abs = math.floor, math.ceil, math.abs
+local min, max, huge = math.min, math.max, math.huge
+
 local ChipSynth = {}
 
 -- Handheld tunable: the sbc/portmaster launcher exports POKEPORT_AUDIO_RATE
@@ -62,6 +65,11 @@ end
 local channelVolume = { 1, 1, 1, 1 }
 local channelPitch = { 1, 1, 1, 1 }
 
+-- Bumped whenever the mix or the sample rate changes.  Channel:sample caches
+-- per-note values derived from them (gain, phase step, noise clock rate) and
+-- re-derives them when its stamp no longer matches.
+local mixEpoch = 0
+
 local function clampScale(scale)
   return math.max(0, tonumber(scale) or 0)
 end
@@ -70,6 +78,7 @@ local function setChannelTable(table, hw, scale)
   hw = tonumber(hw)
   if not hw or hw < 1 or hw > 4 then return end
   table[hw] = clampScale(scale)
+  mixEpoch = mixEpoch + 1
 end
 
 local function setChannelTables(table, values)
@@ -77,6 +86,7 @@ local function setChannelTables(table, values)
   for hw = 1, 4 do
     if values[hw] ~= nil then table[hw] = clampScale(values[hw]) end
   end
+  mixEpoch = mixEpoch + 1
 end
 
 function ChipSynth.setChannelVolume(hw, scale)
@@ -168,6 +178,7 @@ function ChipSynth.setSampleRate(rate)
       SAMPLE_RATE = rate
       HPF_CHARGE = 0.999958 ^ (GB_CLOCK / SAMPLE_RATE)
       ChipSynth.SAMPLE_RATE = SAMPLE_RATE
+      mixEpoch = mixEpoch + 1
     end
   end
   return SAMPLE_RATE
@@ -923,41 +934,103 @@ function Channel:resetNoise()
   self.noiseClock = 0
 end
 
-function Channel:clockNoise(width7)
-  local feedback = bit.bxor(
-    bit.band(self.noiseLfsr, 1),
-    bit.band(bit.rshift(self.noiseLfsr, 1), 1))
-  self.noiseLfsr = bit.bor(
-    bit.rshift(self.noiseLfsr, 1),
-    bit.lshift(feedback, 14))
-  if width7 then
-    self.noiseLfsr = bit.bor(
-      bit.band(self.noiseLfsr, bit.bnot(0x40)),
-      bit.lshift(feedback, 6))
+-- The per-sample loop below is the synth's whole cost (the browser build
+-- runs it on PUC Lua 5.1, on the main thread), so it is written to do as
+-- little as possible per sample while staying bit-identical to the plain
+-- formulas (tests/engine/chip_synth_golden_test.lua pins the PCM):
+--
+--  * everything that only changes on a frame, envelope or sweep step --
+--    volume, register, duty pattern, phase step -- is derived once per step
+--    by prepareTone, with the original expressions, and reused until the
+--    first sample index where that step count moves (nextChange);
+--  * the noise LFSR is clocked with integer arithmetic on locals instead of
+--    a method call and five bit.* calls per clock;
+--  * floor(x) of a non-negative in-range double is x - x % 1, which is the
+--    same value without a C call.
+local CLOCK_EDGE = 1 - 1e-12
+
+-- A clock shifts the LFSR right and feeds bit0 xor bit1 in at bit 14 (and,
+-- in 7-bit mode, over bit 6 too).  Until a fed-in bit reaches bit 1 -- seven
+-- clocks in 15-bit mode, six in 7-bit mode -- every feedback bit comes from
+-- the low byte as it was, b xor (b >> 1), so k clocks collapse into one:
+--   15-bit: (lfsr >> k) | (x << (15 - k))
+--    7-bit: the same above bit 6, and (low7 >> k) | (x << (7 - k)) below
+-- where x is the low k feedback bits (checked exhaustively against single
+-- clocks for every state).
+local NOISE_FEEDBACK = {}
+for low = 0, 0xFF do
+  NOISE_FEEDBACK[low] = bit.band(bit.bxor(low, bit.rshift(low, 1)), 0x7F)
+end
+local POW2 = {}
+for k = 0, 15 do POW2[k] = 2 ^ k end
+
+-- noise output for one sample: advance the LFSR by the parameter's clock
+-- rate (GB_CLOCK / divisor / 2^shift per second, scaled by the channel pitch)
+local function noiseSample(self, parameter)
+  parameter = parameter or 0
+  if parameter ~= self.noiseRateParameter or self.noiseRateEpoch ~= mixEpoch then
+    local shift = bit.rshift(parameter, 4)
+    if shift < 14 then
+      local divisor = NOISE_DIVISORS[bit.band(parameter, 7)]
+      local pitch = channelPitch[self.hardware] or 1
+      self.noiseCycles = GB_CLOCK / divisor / (2 ^ shift) / SAMPLE_RATE * pitch
+      self.noiseWidth7 = bit.band(parameter, 8) ~= 0
+    else
+      self.noiseCycles = nil
+    end
+    self.noiseRateParameter, self.noiseRateEpoch = parameter, mixEpoch
   end
+  local lfsr = self.noiseLfsr
+  local remaining = self.noiseCycles
+  if remaining then
+    -- the LFSR is 15 bits, so shifts and masks are exact integer arithmetic
+    local clock, width7 = self.noiseClock, self.noiseWidth7
+    while remaining > 0 do
+      if clock == 0 and remaining >= 1 then
+        -- from a clock edge, each whole cycle is one full-span clock and
+        -- `remaining - 1` is exact, so floor(remaining) of them collapse
+        local whole = remaining - remaining % 1
+        remaining = remaining - whole
+        local chunk = width7 and 6 or 7
+        while whole > 0 do
+          local k = whole < chunk and whole or chunk
+          local scale = POW2[k]
+          local feedback = NOISE_FEEDBACK[lfsr % 256] % scale
+          local shifted = (lfsr - lfsr % scale) / scale
+          if width7 then
+            local low = lfsr % 128
+            lfsr = shifted - shifted % 128 + feedback * (0x8000 / scale)
+              + (low - low % scale) / scale + feedback * (128 / scale)
+          else
+            lfsr = shifted + feedback * (0x8000 / scale)
+          end
+          whole = whole - k
+        end
+      else
+        local span = 1 - clock
+        if remaining <= span then span = remaining end
+        clock = clock + span
+        remaining = remaining - span
+        if clock >= CLOCK_EDGE then
+          clock = 0
+          local low = lfsr % 2
+          local half = (lfsr - low) / 2
+          local feedback = (low + half % 2) % 2
+          lfsr = half + feedback * 0x4000
+          if width7 then
+            local above = lfsr % 128
+            lfsr = lfsr - above + above % 64 + feedback * 64
+          end
+        end
+      end
+    end
+    self.noiseClock, self.noiseLfsr = clock, lfsr
+  end
+  return lfsr % 2 == 0 and 1 or 0
 end
 
 function Channel:sampleNoise(parameter)
-  parameter = parameter or 0
-  local divisor = NOISE_DIVISORS[bit.band(parameter, 7)]
-  local shift = bit.rshift(parameter, 4)
-  if shift < 14 then
-    local pitch = channelPitch[self.hardware] or 1
-    local cycles = GB_CLOCK / divisor / (2 ^ shift) / SAMPLE_RATE * pitch
-    local width7 = bit.band(parameter, 8) ~= 0
-    local remaining = cycles
-    while remaining > 0 do
-      local untilClock = 1 - self.noiseClock
-      local span = math.min(remaining, untilClock)
-      self.noiseClock = self.noiseClock + span
-      remaining = remaining - span
-      if self.noiseClock >= 1 - 1e-12 then
-        self.noiseClock = 0
-        self:clockNoise(width7)
-      end
-    end
-  end
-  return bit.band(self.noiseLfsr, 1) == 0 and 1 or 0
+  return noiseSample(self, parameter)
 end
 
 local function sweepCalculation(register, sweep)
@@ -981,42 +1054,215 @@ local function sweptRegister(register, sweep, elapsed)
   return register
 end
 
-function Channel:sampleDrum(event, sampleIndex)
+-- The step counters the per-sample values hang off, each exactly as the
+-- sample formulas compute it.  All are non-decreasing in the sample index.
+local function envelopeStepAt(index, start, unit)
+  return floor((index - start) / SAMPLE_RATE / unit)
+end
+
+local function frameAt(index)
+  return floor(index / SAMPLE_RATE * 60)
+end
+
+local function sweepStepAt(index, pace)
+  return floor(index / SAMPLE_RATE * 128 / pace)
+end
+
+-- smallest sample index after `from` where counter(index, a, b) exceeds
+-- `value`: start at the analytic estimate, then settle on the exact edge by
+-- evaluating the counter itself, so float rounding can never move a step
+local function nextChange(counter, a, b, from, value, estimate)
+  local index = ceil(estimate)
+  if index <= from then index = from + 1 end
+  while index - 1 > from and counter(index - 1, a, b) > value do
+    index = index - 1
+  end
+  while counter(index, a, b) <= value do index = index + 1 end
+  return index
+end
+
+-- the envelope's level at `index` and the index where it next changes
+local function envelopeSpan(volume, fade, index, start)
+  local level = envelopeVolume(volume, fade, (index - start) / SAMPLE_RATE)
+  if type(fade) ~= "number" or fade == 0 then return level, huge end
+  local unit = abs(fade) / 64
+  local steps = envelopeStepAt(index, start, unit)
+  return level, nextChange(envelopeStepAt, start, unit, index, steps,
+    start + (steps + 1) * unit * SAMPLE_RATE)
+end
+
+local function drumSample(self, event, sampleIndex)
+  local drum = event.drum
   local index = event.drumSegmentIndex or 1
-  local segment = event.drum[index]
+  local segment = drum[index]
   while segment and sampleIndex >= segment.endSample do
     index = index + 1
-    segment = event.drum[index]
+    segment = drum[index]
   end
   if not segment or sampleIndex < segment.startSample then return 0 end
   if event.drumSegmentIndex ~= index then
     event.drumSegmentIndex = index
     self:resetNoise()
   end
-  local elapsed = (sampleIndex - segment.startSample) / SAMPLE_RATE
-  local volume = envelopeVolume(segment.volume, segment.fade, elapsed)
-  return self:sampleNoise(segment.parameter) * volume / 15
+  local volume = event.drumVolume
+  if event.drumVolumeSegment ~= segment or event.drumVolumeEpoch ~= mixEpoch
+     or sampleIndex >= event.drumVolumeUntil then
+    local untilIndex
+    volume, untilIndex = envelopeSpan(segment.volume, segment.fade,
+      sampleIndex, segment.startSample)
+    event.drumVolume, event.drumVolumeUntil = volume, untilIndex
+    event.drumVolumeSegment, event.drumVolumeEpoch = segment, mixEpoch
+  end
+  return noiseSample(self, segment.parameter) * volume / 15
 end
 
-function Channel:sample()
-  while not self.ended
-      and (not self.event or self.event.sample >= self.event.samples) do
-    local prev = self.event
-    self.event = self:nextEvent()
-    self.phase = 0
-    if self.event and self.event.drum then
-      self.drumTail = nil
-      self:resetNoise()
-    elseif prev and prev.drum and prev.sample < drumAudioEnd(prev.drum) then
-      -- ..(audio/engine_1.asm ln 197)
-      self.drumTail = prev
-    elseif not (self.event and self.event.silence and self.drumTail) then
-      self.drumTail = nil
-      self:resetNoise()
+function Channel:sampleDrum(event, sampleIndex)
+  return drumSample(self, event, sampleIndex)
+end
+
+-- duty step (0-7) -> true where the pattern is low
+local DUTY_LOW = {}
+for duty, pattern in pairs(WAVE_PATTERN_TABLES) do
+  local low = {}
+  for step = 0, 7 do low[step] = pattern[step + 1] == 0 end
+  DUTY_LOW[duty] = low
+end
+
+-- wave position (1-32) -> (nibble / 15) * level, per wave table and level;
+-- a position whose sample is not a number is left out so the per-sample
+-- path falls back to the plain formula (and its error)
+local function waveLevels(engine, wave, level)
+  local cache = engine.waveLevelCache
+  if not cache then
+    cache = {}
+    engine.waveLevelCache = cache
+  end
+  local byLevel = cache[wave]
+  if not byLevel then
+    byLevel = {}
+    cache[wave] = byLevel
+  end
+  if type(level) ~= "number" or level ~= level then return {} end
+  local values = byLevel[level]
+  if not values then
+    values = {}
+    for index = 1, 32 do
+      local value = wave[index]
+      if type(value) == "number" then
+        values[index] = (max(0, min(15, value * 8 + 8)) / 15) * level
+      end
+    end
+    byLevel[level] = values
+  end
+  return values
+end
+
+-- derive a tone/noise note's values at sample `index`, valid until
+-- event.validUntil (or a mix change)
+local function prepareTone(self, event, index)
+  local elapsed = index / SAMPLE_RATE
+  local volume, validUntil = envelopeSpan(event.volume or 0, event.fade or 0,
+    index, 0)
+  local gain = channelVolume[self.hardware] or 1
+  event.level, event.gain, event.mixEpoch = volume, gain, mixEpoch
+  if event.noise then
+    event.validUntil = validUntil
+    return
+  end
+
+  local register = event.register
+  local frame = floor(elapsed * 60)
+  local perFrame = type(event.duty) == "table"
+  local sweep = event.sweep
+  if sweep then
+    register = sweptRegister(register, sweep, elapsed)
+    if register and sweep.shift ~= 0 and sweep.pace ~= 0 then
+      local pace = sweep.pace
+      local steps = sweepStepAt(index, pace)
+      local untilIndex = nextChange(sweepStepAt, pace, nil, index, steps,
+        (steps + 1) * pace * SAMPLE_RATE / 128)
+      if untilIndex < validUntil then validUntil = untilIndex end
+    end
+  elseif event.slide then
+    perFrame = true
+    local amount = min(1, frame / event.slide.frames)
+    register = register + (event.slide.target - register) * amount
+  elseif event.vibrato then
+    perFrame = true
+    local vibrato = event.vibrato
+    if frame >= vibrato.delay then
+      local toggles = floor((frame - vibrato.delay + 1) / (vibrato.rate + 1))
+      if toggles > 0 then
+        local low = bit.band(register, 0xFF)
+        local high = bit.band(register, 0x700)
+        if bit.band(toggles, 1) ~= 0 then
+          register = high + min(0xFF, low + vibrato.above)
+        else
+          register = high + max(0, low - vibrato.below)
+        end
+      end
     end
   end
+  if perFrame then
+    local untilIndex = nextChange(frameAt, nil, nil, index, frame,
+      (frame + 1) * SAMPLE_RATE / 60)
+    if untilIndex < validUntil then validUntil = untilIndex end
+  end
+  event.validUntil = validUntil
+  event.muted = not register
+  if not register then
+    event.toneUntil = nil
+    return
+  end
+  -- sampleChannel's fast path renders this note until the next step or the
+  -- note's end, whichever comes first
+  event.toneUntil = validUntil < event.samples and validUntil or event.samples
+
+  local pitch = channelPitch[self.hardware] or 1
+  local frequency = 131072 / (2048 - min(register, 2047)) * pitch
+  if event.wave then
+    frequency = frequency * 0.5
+    local waves = self.engine.waves
+    local wave = waves[min(event.waveInstrument + 1, #waves)]
+    event.waveTable = wave
+    event.waveValues = wave and waveLevels(self.engine, wave, event.waveLevel)
+      or false
+  else
+    local duty = event.duty
+    if type(duty) == "table" then
+      duty = duty[frame % 4 + 1]
+    end
+    event.dutyLow = DUTY_LOW[duty or 2] or DUTY_LOW[2]
+    event.high = volume / 15 * gain
+  end
+  event.step = frequency / SAMPLE_RATE
+end
+
+-- everything but the steady state of a sounding tone note: advancing to the
+-- next event, drums and their tails, noise notes, muted sweeps, and the
+-- per-step prepareTone.  Returns the sample, or nothing when the current
+-- note is a prepared tone the caller renders (event.sample not yet advanced)
+local function sampleSlow(self)
   local event = self.event
-  local gain = channelVolume[self.hardware] or 1
+  if not event or event.sample >= event.samples then
+    while not self.ended
+        and (not self.event or self.event.sample >= self.event.samples) do
+      local prev = self.event
+      self.event = self:nextEvent()
+      self.phase = 0
+      if self.event and self.event.drum then
+        self.drumTail = nil
+        self:resetNoise()
+      elseif prev and prev.drum and prev.sample < drumAudioEnd(prev.drum) then
+        -- ..(audio/engine_1.asm ln 197)
+        self.drumTail = prev
+      elseif not (self.event and self.event.silence and self.drumTail) then
+        self.drumTail = nil
+        self:resetNoise()
+      end
+    end
+    event = self.event
+  end
   if not event then
     local tail = self.drumTail
     if not tail then return 0 end
@@ -1026,12 +1272,12 @@ function Channel:sample()
       self.drumTail = nil
       return 0
     end
-    return self:sampleDrum(tail, sampleIndex) * gain
+    return drumSample(self, tail, sampleIndex)
+      * (channelVolume[self.hardware] or 1)
   end
   local sampleIndex = event.sample
-  event.elapsed = sampleIndex / SAMPLE_RATE
-  event.sample = sampleIndex + 1
   if event.silence then
+    event.sample = sampleIndex + 1
     local tail = self.drumTail
     if not tail then return 0 end
     local tailIndex = tail.sample
@@ -1040,65 +1286,65 @@ function Channel:sample()
       self.drumTail = nil
       return 0
     end
-    return self:sampleDrum(tail, tailIndex) * gain
+    return drumSample(self, tail, tailIndex)
+      * (channelVolume[self.hardware] or 1)
   end
   if event.drum then
-    return self:sampleDrum(event, sampleIndex) * gain
+    event.sample = sampleIndex + 1
+    return drumSample(self, event, sampleIndex)
+      * (channelVolume[self.hardware] or 1)
   end
-  self.drumTail = nil
-  local volume = envelopeVolume(
-    event.volume or 0, event.fade or 0, event.elapsed)
+  if event.mixEpoch ~= mixEpoch or sampleIndex >= event.validUntil then
+    -- a note's first sample always lands here (no mixEpoch yet), and only a
+    -- new event can bring a drum tail back, so this is where it is dropped
+    self.drumTail = nil
+    prepareTone(self, event, sampleIndex)
+  end
   if event.noise then
-    return self:sampleNoise(event.noiseParameter) * volume / 15 * gain
+    event.sample = sampleIndex + 1
+    return noiseSample(self, event.noiseParameter) * event.level / 15
+      * event.gain
   end
-
-  local register = event.register
-  local frame = math.floor(event.elapsed * 60)
-  if event.sweep then
-    register = sweptRegister(register, event.sweep, event.elapsed)
-    if not register then return 0 end
-  elseif event.slide then
-    local amount = math.min(1, frame / event.slide.frames)
-    register = register + (event.slide.target - register) * amount
-  elseif event.vibrato and frame >= event.vibrato.delay then
-    local vibrato = event.vibrato
-    local toggles = math.floor(
-      (frame - vibrato.delay + 1) / (vibrato.rate + 1))
-    if toggles > 0 then
-      local low = bit.band(register, 0xFF)
-      local high = bit.band(register, 0x700)
-      if bit.band(toggles, 1) ~= 0 then
-        register = high + math.min(0xFF, low + vibrato.above)
-      else
-        register = high + math.max(0, low - vibrato.below)
-      end
-    end
-  end
-  local pitch = channelPitch[self.hardware] or 1
-  local frequency = 131072 / (2048 - math.min(register, 2047)) * pitch
-  if event.wave then frequency = frequency * 0.5 end
-  local phase = self.phase
-  self.phase = (phase + frequency / SAMPLE_RATE) % 1
-  if event.wave then
-    local wave = self.engine.waves[
-      math.min(event.waveInstrument + 1, #self.engine.waves)]
-    -- a def-local program may omit its wave table entirely
-    if not wave then return 0 end
-    local index = math.min(32, math.floor(phase * 32) + 1)
-    local nibble = math.max(0, math.min(15, wave[index] * 8 + 8))
-    return (nibble / 15) * event.waveLevel * gain
-  end
-  local duty = event.duty
-  if type(duty) == "table" then
-    duty = duty[frame % 4 + 1]
-  end
-  local pattern = WAVE_PATTERN_TABLES[duty or 2] or WAVE_PATTERN_TABLES[2]
-  local step = math.floor(phase * 8) % 8
-  if pattern[step + 1] == 0 then
+  if event.muted then
+    event.sample = sampleIndex + 1
     return 0
   end
-  return volume / 15 * gain
 end
+
+local function sampleChannel(self)
+  local event = self.event
+  local sampleIndex = event and event.sample
+  local untilIndex = event and event.toneUntil
+  if not (untilIndex and sampleIndex < untilIndex
+          and event.mixEpoch == mixEpoch) then
+    local value = sampleSlow(self)
+    if value then return value end
+    event = self.event
+    sampleIndex = event.sample
+  end
+  event.sample = sampleIndex + 1
+
+  local phase = self.phase
+  self.phase = (phase + event.step) % 1
+  local dutyLow = event.dutyLow
+  if dutyLow then
+    -- floor(phase * 8) (phase is in [0, 1); NaN finds no entry, as before)
+    local step = phase * 8
+    if dutyLow[step - step % 1] then return 0 end
+    return event.high
+  end
+  local values = event.waveValues
+  -- a def-local program may omit its wave table entirely
+  if not values then return 0 end
+  local position = phase * 32
+  local value = values[position - position % 1 + 1]
+  if value then return value * event.gain end
+  local wave = event.waveTable
+  local index = min(32, floor(phase * 32) + 1)
+  local nibble = max(0, min(15, wave[index] * 8 + 8))
+  return (nibble / 15) * event.waveLevel * event.gain
+end
+Channel.sample = sampleChannel
 
 local Engine = {}
 Engine.__index = Engine
@@ -1341,7 +1587,9 @@ function Engine:refreshMonoMix()
 end
 
 function Engine:finished()
-  for _, channel in ipairs(self.channels) do
+  local channels = self.channels
+  for index = 1, #channels do
+    local channel = channels[index]
     if not channel.ended or channel.event then return false end
   end
   return true
@@ -1357,39 +1605,101 @@ local function analogOut(engine, input, hpfField, lpfField)
   return math.max(-1, math.min(1, lp * MIX_SCALE))
 end
 
+-- Engine:sample and Engine:sampleStereo run analogOut inline (same
+-- expressions, fields named directly): a Lua call per output sample is a
+-- measurable share of the per-sample cost on PUC Lua.  Inside (-1, 1) the
+-- clamp is the identity, so math.max/min only run outside it (or on NaN).
+
 function Engine:sample()
   local value = 0
-  for _, channel in ipairs(self.channels) do value = value + channel:sample() end
-  return analogOut(self, value, "hpfCap", "lpf")
+  local channels = self.channels
+  for index = 1, #channels do value = value + sampleChannel(channels[index]) end
+  local hp = value - self.hpfCap
+  self.hpfCap = value - hp * HPF_CHARGE
+  local prev = self.lpf
+  local lp = prev + LPF_ALPHA * (hp - prev)
+  self.lpf = lp
+  local out = lp * MIX_SCALE
+  if out < 1 and out > -1 then return out end
+  return max(-1, min(1, out))
+end
+
+-- Gen 2 CHANNEL_TRACKS byte -> does this hardware channel reach the left /
+-- right output (Channel:pan's test, tabled per hardware channel)
+local TRACK_LEFT, TRACK_RIGHT = {}, {}
+for hardware = 1, 4 do
+  local mask = bit.lshift(1, hardware - 1)
+  local left, right = {}, {}
+  for tracks = 0, 0xFF do
+    left[tracks] = bit.band(bit.rshift(tracks, 4), mask) ~= 0
+    right[tracks] = bit.band(tracks, mask) ~= 0
+  end
+  TRACK_LEFT[hardware], TRACK_RIGHT[hardware] = left, right
 end
 
 function Engine:sampleStereo()
+  local channels = self.channels
   if monoFastPath and self.monoMix and not stereoEnabled then
     local value = 0
-    local channels = self.channels
-    for index = 1, #channels do value = value + channels[index]:sample() end
-    local out = analogOut(self, value, "hpfCapLeft", "lpfLeft")
-    self.hpfCapRight, self.lpfRight = self.hpfCapLeft, self.lpfLeft
+    for index = 1, #channels do value = value + sampleChannel(channels[index]) end
+    local hp = value - self.hpfCapLeft
+    local cap = value - hp * HPF_CHARGE
+    local prev = self.lpfLeft
+    local lp = prev + LPF_ALPHA * (hp - prev)
+    self.hpfCapLeft, self.lpfLeft = cap, lp
+    self.hpfCapRight, self.lpfRight = cap, lp
+    local out = lp * MIX_SCALE
+    if not (out < 1 and out > -1) then out = max(-1, min(1, out)) end
     return out, out
   end
   local left, right = 0, 0
-  for _, channel in ipairs(self.channels) do
-    local value = channel:sample()
-    local panLeft, panRight
-    if self.generation == 2 then
+  if self.generation == 2 then
+    for index = 1, #channels do
+      local channel = channels[index]
+      local value = sampleChannel(channel)
       -- live CHANNEL_TRACKS, not the pan baked into the current note, so a
       -- SOUND toggle reaches the next synthesized sample (#1471)
-      panLeft, panRight = channel:pan()
-    else
-      local event = channel.event
-      panLeft = not event or event.panLeft ~= false
-      panRight = not event or event.panRight ~= false
+      local tracks = channel.tracks or 0xFF
+      local lefts = TRACK_LEFT[channel.hardware]
+      local panLeft = lefts and lefts[tracks]
+      local panRight
+      if panLeft == nil then
+        panLeft, panRight = channel:pan()
+      else
+        panRight = TRACK_RIGHT[channel.hardware][tracks]
+      end
+      if panLeft then left = left + value end
+      if panRight then right = right + value end
     end
-    if panLeft then left = left + value end
-    if panRight then right = right + value end
+  else
+    for index = 1, #channels do
+      local channel = channels[index]
+      local value = sampleChannel(channel)
+      local event = channel.event
+      if not event then
+        left = left + value
+        right = right + value
+      else
+        if event.panLeft ~= false then left = left + value end
+        if event.panRight ~= false then right = right + value end
+      end
+    end
   end
-  return analogOut(self, left, "hpfCapLeft", "lpfLeft"),
-    analogOut(self, right, "hpfCapRight", "lpfRight")
+  local hp = left - self.hpfCapLeft
+  self.hpfCapLeft = left - hp * HPF_CHARGE
+  local prev = self.lpfLeft
+  local lp = prev + LPF_ALPHA * (hp - prev)
+  self.lpfLeft = lp
+  local outLeft = lp * MIX_SCALE
+  if not (outLeft < 1 and outLeft > -1) then outLeft = max(-1, min(1, outLeft)) end
+  hp = right - self.hpfCapRight
+  self.hpfCapRight = right - hp * HPF_CHARGE
+  prev = self.lpfRight
+  lp = prev + LPF_ALPHA * (hp - prev)
+  self.lpfRight = lp
+  local outRight = lp * MIX_SCALE
+  if not (outRight < 1 and outRight > -1) then outRight = max(-1, min(1, outRight)) end
+  return outLeft, outRight
 end
 
 function Engine:applyStereo()

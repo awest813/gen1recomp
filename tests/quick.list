@@ -68,6 +68,7 @@ tests/engine/chip_analog_path.lua
 tests/engine/chip_audio_preroll_test.lua
 tests/engine/chip_mono_fastpath_test.lua
 tests/engine/chip_sample_rate_test.lua
+tests/engine/chip_synth_golden_test.lua
 tests/engine/confusion_selfhit_anim_bug1578.lua
 tests/engine/continue_info_layout_2684.lua
 tests/engine/copyright_splash_backdrop.lua
