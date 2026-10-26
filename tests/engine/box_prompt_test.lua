@@ -68,16 +68,16 @@ for _, size in ipairs({ { 390, 844 }, { 1360, 860 } }) do
   T.check(imp.message == nil or imp.message.kind ~= "error",
     "and the Box draws without an error at " .. size[1] .. ": " .. tostring(imp.message and imp.message.text))
 end
--- a click on the header's Settings button under the prompt's scrim is not taken
+-- a click on the navigation's Settings item under the prompt's scrim is not taken
 local settingsRect
 local realButton = Kit.button
 Kit.button = function(x, y, w, h, label, opts)
-  if opts and opts.id == "settings" then settingsRect = { x = x, y = y, w = w, h = h } end
+  if opts and (opts.id == "nav-settings" or opts.id == "tab-settings") then settingsRect = { x = x, y = y, w = w, h = h } end
   return realButton(x, y, w, h, label, opts)
 end
 frame(imp)
 Kit.button = realButton
-T.check(settingsRect ~= nil, "the header draws under the prompt")
+T.check(settingsRect ~= nil, "the navigation draws under the prompt")
 if settingsRect then
   imp.click = { x = settingsRect.x + settingsRect.w / 2, y = settingsRect.y + settingsRect.h / 2 }
   frame(imp)

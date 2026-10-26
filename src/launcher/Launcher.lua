@@ -1409,13 +1409,40 @@ function Launcher:drawGameList(x, y, w, h, s)
   Kit.scrollEnd(x, top, w, viewH, self.listScroll, maxAt)
 end
 
+-- The one page header: title, an optional subtitle (wrapped), an optional
+-- Back button on the right, and an optional game colour mark.  Returns the
+-- y the page's content starts at.
+function Launcher:pageHeader(cx, cy, cw, s, o)
+  local backW = 0
+  if o.back then
+    backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + Theme.space("xl", s) + Theme.space("s", s))
+    if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)), "Back",
+        { id = o.backId or "page-back", font = "small", icon = "arrow-left", fullLabel = true }) then
+      self:queue(o.back)
+    end
+  end
+  local textW = cw - backW - (backW > 0 and Theme.space("m", s) or 0)
+  Kit.textBold("title", Kit.ellipsize("title", o.title, textW), cx, cy, PAL.heading)
+  cy = cy + Kit.textHeight("title") + Theme.space("xs", s)
+  if o.subtitle then
+    local tx = cx
+    if o.accent then
+      local d = Theme.space("s", s)
+      Theme.fillRounded(cx, cy + (Kit.textHeight("small") - d) / 2, d, d, o.accent, 1, d / 2)
+      tx = cx + d + Theme.space("s", s)
+    end
+    Kit.textWrapped("small", o.subtitle, tx, cy, textW - (tx - cx), PAL.muted)
+    cy = cy + Kit.wrapHeight("small", o.subtitle, textW - (tx - cx))
+  end
+  return cy + Theme.space("l", s)
+end
+
 function Launcher:drawSettings(x, y, w, h, s)
   local pad = math.floor(18 * s)
   Kit.card(x, y, w, h)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
-  Kit.textBold("title", "Settings", cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(16 * s)
+  cy = self:pageHeader(cx, cy, cw, s, { title = "Settings" })
   local opts = self:options()
   local rowH = math.max(Kit.tapMin(), math.floor(40 * s))
   local stepW = math.max(Kit.tapMin(), math.floor(40 * s))
@@ -1472,6 +1499,11 @@ function Launcher:drawSettings(x, y, w, h, s)
   end
   local saveW = math.max(Kit.tapMin(), Kit.textWidth("small", "Save") + math.floor(28 * s))
   local fieldW = math.floor(math.min(cw * 0.5, 300 * s))
+  -- too narrow for an address beside its label: the field takes its own line
+  if fieldW - saveW < 180 * s then
+    cy = cy + rowH
+    fieldW = cw
+  end
   self.relayDraft = Kit.textfield("relay-field", cx + cw - fieldW, cy,
     fieldW - saveW - math.floor(8 * s), rowH, self.relayDraft, Net.DEFAULT_RELAY_ADDRESS)
   if Kit.button(cx + cw - saveW, cy, saveW, rowH, "Save", { id = "relay-save", font = "small" }) then
@@ -1526,30 +1558,23 @@ function Launcher:drawSettings(x, y, w, h, s)
     self:queue(function() self:reportProblem() end)
   end
   cy = cy + rowH + math.floor(10 * s)
-  -- a narrow window drops Box / What's new from the header; reach them here
-  local hidden = self.headerHidden or {}
-  if hidden.box or hidden.notes or hidden.online then
-    local n = (hidden.box and 1 or 0) + (hidden.notes and 1 or 0) + (hidden.online and 1 or 0)
-    local bw2 = math.floor((cw - (n - 1) * math.floor(10 * s)) / n)
-    local bx = cx
-    if hidden.box then
-      if Kit.button(bx, cy, bw2, rowH, "Pokemon Box", { id = "settings-box" }) then
-        self:queue(function() self.page = nil; self:openBox() end)
-      end
-      bx = bx + bw2 + math.floor(10 * s)
+  -- the tab bar has room for four sections only: the rest live here
+  if not self.railMode then
+    local extras = { { id = "settings-notes", label = "What's new", icon = "sparkles",
+      run = function() self.notesFrom, self.page, self.notesScroll = "settings", "notes", 0 end } }
+    if self:canQuit() then
+      extras[#extras + 1] = { id = "settings-quit", label = "Quit", icon = "x",
+        run = function() self:quit() end }
     end
-    if hidden.online then
-      if Kit.button(bx, cy, bw2, rowH, "Online", { id = "settings-online" }) then
-        self:queue(function() self:openOnline() end)
-      end
-      bx = bx + bw2 + math.floor(10 * s)
-    end
-    if hidden.notes then
-      if Kit.button(bx, cy, bw2, rowH, "What's new", { id = "settings-notes" }) then
-        self:queue(function() self.page = "notes"; self.notesScroll = 0 end)
+    local gap = Theme.space("m", s)
+    local bw2 = math.floor((cw - (#extras - 1) * gap) / #extras)
+    for i, e in ipairs(extras) do
+      if Kit.button(cx + (i - 1) * (bw2 + gap), cy, bw2, rowH, e.label,
+          { id = e.id, icon = e.icon, fullLabel = true }) then
+        self:queue(e.run)
       end
     end
-    cy = cy + rowH + math.floor(10 * s)
+    cy = cy + rowH + Theme.space("m", s)
   end
   Kit.textWrapped("micro", "More options (colors, zoom, speed, controls) are in "
     .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
@@ -1573,9 +1598,9 @@ function Launcher:drawNotes(x, y, w, h, s)
     self.notesText = body or "Unable to fetch patch notes."
     self.notesVersion = ver
   end
-  Kit.textBold("title", "What's new" .. (self.notesVersion
-    and ("  v" .. tostring(self.notesVersion)) or ""), cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(12 * s)
+  cy = self:pageHeader(cx, cy, cw, s, { title = "What's new",
+    subtitle = self.notesVersion and ("Version " .. tostring(self.notesVersion)) or nil,
+    back = function() self.page = self.notesFrom end, backId = "notes-back" })
   local viewH = y + h - pad - cy
   -- wrapped once per width, not per frame
   local wrapW = cw - Kit.scrollGutter(s)
@@ -1608,15 +1633,9 @@ function Launcher:drawMods(x, y, w, h, s)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
   local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
-  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
-  if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)),
-      "Back", { id = "mods-back", font = "small" }) then
-    self:queue(function() self.page = nil end)
-  end
-  Kit.textBold("title", "Mods", cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
-  Kit.text("small", "For " .. GameVersion.info(v).displayName, cx, cy, PAL.muted)
-  cy = cy + Kit.textHeight("small") + math.floor(14 * s)
+  cy = self:pageHeader(cx, cy, cw, s, { title = "Mods",
+    subtitle = "For " .. GameVersion.info(v).displayName, accent = Theme.gameColor(v),
+    back = function() self.page = nil end, backId = "mods-back" })
 
   local rows = self:modsFor(v)
   local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
@@ -1713,16 +1732,10 @@ function Launcher:drawImporters(x, y, w, h, s)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
   local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
-  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
-  if Kit.button(cx + cw - backW, cy, backW, smallH, "Back", { id = "importers-back", font = "small" }) then
-    self:queue(function() self.page = "mods" end)
-  end
-  Kit.textBold("title", "Asset importers", cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
-  local intro = "Some mods use art or sound from another game you own. Import it once "
-    .. "here and every mod that asks for it can use it."
-  Kit.textWrapped("small", intro, cx, cy, cw - backW - math.floor(10 * s), PAL.muted)
-  cy = cy + Kit.wrapHeight("small", intro, cw - backW - math.floor(10 * s)) + math.floor(14 * s)
+  cy = self:pageHeader(cx, cy, cw, s, { title = "Asset importers",
+    subtitle = "Some mods use art or sound from another game you own. Import it once "
+      .. "here and every mod that asks for it can use it.",
+    back = function() self.page = "mods" end, backId = "importers-back" })
 
   local job = self.assetJob
   if job then
@@ -1765,15 +1778,9 @@ function Launcher:drawCarts(x, y, w, h, s)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
   local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
-  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
-  if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)),
-      "Back", { id = "carts-back", font = "small" }) then
-    self:queue(function() self.page = nil end)
-  end
-  Kit.textBold("title", "Carts", cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
-  Kit.text("small", "Play " .. GameVersion.info(v).displayName .. " as", cx, cy, PAL.muted)
-  cy = cy + Kit.textHeight("small") + math.floor(14 * s)
+  cy = self:pageHeader(cx, cy, cw, s, { title = "Carts",
+    subtitle = "Play " .. GameVersion.info(v).displayName .. " as", accent = Theme.gameColor(v),
+    back = function() self.page = nil end, backId = "carts-back" })
 
   local carts = self:cartsFor(v)
   local active = self:activeCart(v)
@@ -2189,6 +2196,116 @@ function Launcher:drawBoxOverlays(s)
   end
 end
 
+-- --------------------------------------------------------- navigation
+
+-- Which top-level section a page belongs to: the rail / tab bar highlight.
+local SECTION_OF = { box = "box", online = "online", settings = "settings", sync = "settings",
+  notes = "notes" }
+function Launcher:section()
+  return SECTION_OF[self.page] or "games"
+end
+
+function Launcher:goSection(section)
+  if section == self:section() and section ~= "games" then return end
+  if self.page == "box" and section ~= "box" then self:closeBox() end
+  if section == "games" then self.page = nil
+  elseif section == "box" then self:openBox()
+  elseif section == "online" then self:openOnline()
+  elseif section == "notes" then
+    self.notesFrom, self.page, self.notesScroll = nil, "notes", 0
+  else self.page = section end
+end
+
+local NAV = {
+  { id = "games", label = "Games", icon = "gamepad-2" },
+  { id = "box", label = "Box", icon = "package" },
+  { id = "online", label = "Online", icon = "globe" },
+  { id = "settings", label = "Settings", icon = "settings" },
+}
+Launcher.NAV = NAV
+
+function Launcher:railWidth(W, s)
+  return math.floor(Theme.clamp(W * 0.18, 168 * s, 220 * s))
+end
+
+function Launcher:drawRail(x, y, w, h, s)
+  Theme.fill(x, y, w, h, PAL.sidebar, 1)
+  Theme.fill(x + w - 1, y, 1, h, PAL.line, Theme.A.hairline)
+  local inset = Theme.space("m", s)
+  local ix, iw = x + inset, w - 2 * inset
+  local upLabel, upAction, upEnabled = self:updateChip()
+  local quits = self:canQuit()
+  local count = #NAV + 1 + (upLabel and 1 or 0) + (quits and 1 or 0)
+  local gap, groupGap = Theme.space("xs", s), Theme.space("l", s)
+  local itemH = math.max(Kit.tapMin(), math.floor(44 * s))
+  local top = Theme.space("xl", s) * 2 + Kit.textHeight("headline")
+  -- a short window (a landscape phone) tightens the rail, then drops the name
+  local function fits() return top + count * (itemH + gap) + groupGap * 2 <= h end
+  if not fits() then
+    itemH = math.max(Kit.tapMin(), math.floor((h - top - groupGap * 2) / count) - gap)
+  end
+  local showName = fits()
+  if not showName then top, groupGap = Theme.space("s", s), Theme.space("xs", s) end
+  local cy = y + Theme.space(showName and "xl" or "s", s)
+  if showName then
+    Kit.textBold("headline", Version.NAME or "PK:GB", ix + Theme.space("s", s), cy, PAL.heading)
+    cy = cy + Kit.textHeight("headline") + Theme.space("xl", s)
+  end
+  local current = self:section()
+  local function item(it, iy, opts)
+    opts = opts or {}
+    if Kit.button(ix, iy, iw, itemH, it.label, { id = "nav-" .. it.id, face = "nav",
+        icon = it.icon, fullLabel = true, align = "left", active = current == it.id,
+        color = opts.color, glow = opts.glow, enabled = opts.enabled }) then
+      if opts.run then self:queue(opts.run) else self:queue(function() self:goSection(it.id) end) end
+    end
+  end
+  for _, it in ipairs(NAV) do
+    item(it, cy)
+    cy = cy + itemH + gap
+  end
+  cy = cy + groupGap
+  item({ id = "notes", label = "What's new", icon = "sparkles" }, cy)
+  cy = cy + itemH + gap
+  if upLabel then
+    item({ id = "update", label = upLabel, icon = "download" }, cy,
+      { run = upAction, enabled = upEnabled, glow = upEnabled, color = PAL.yellow })
+    cy = cy + itemH + gap
+  end
+  -- Quit sits at the foot, away from everything else, when there is room
+  if quits then
+    local footY = y + h - Theme.space(showName and "l" or "s", s) - itemH
+    item({ id = "quit", label = "Quit", icon = "x" }, math.max(cy + groupGap, footY),
+      { run = function() self:quit() end })
+  end
+end
+
+function Launcher:tabBarHeight(s)
+  return math.max(Kit.tapMin() + Theme.space("m", s), math.floor(60 * s))
+end
+
+function Launcher:drawTabBar(x, y, w, h, s)
+  Theme.fill(x, y, w, h, PAL.sidebar, 1)
+  Theme.fill(x, y, w, 1, PAL.line, Theme.A.hairline)
+  local current = self:section()
+  if current == "notes" then current = "settings" end
+  local tw = w / #NAV
+  for i, it in ipairs(NAV) do
+    if Kit.button(x + (i - 1) * tw, y + Theme.space("xs", s), tw, h - Theme.space("s", s), it.label,
+        { id = "tab-" .. it.id, face = "nav", icon = it.icon, fullLabel = true, font = "micro",
+          iconStack = true, active = current == it.id, accent = "top" }) then
+      local id = it.id
+      self:queue(function() self:goSection(id) end)
+    end
+  end
+end
+
+-- Phones and the browser leave through the system; a desktop window gets Quit.
+function Launcher:canQuit()
+  local os_ = love.system and love.system.getOS and love.system.getOS() or ""
+  return os_ ~= "Android" and os_ ~= "iOS" and os_ ~= "Web"
+end
+
 function Launcher:drawFooter(x, y, w, s)
   local lines = Kit.wrapLines("micro", Launcher.CREDIT, w) or {}
   local lh = Kit.textHeight("micro")
@@ -2219,107 +2336,64 @@ function Launcher:draw()
   Kit.blockClicks = boxModal
 
   local pad = math.floor(Theme.clamp(W * 0.03, 12, 28))
-  local x, w = pad, W - 2 * pad
-  local y = pad
-
-  -- header: name, version, quit
-  Kit.textBold("headline", Version.NAME or "PK:GB", x, y, PAL.heading)
-  local hh = Kit.textHeight("headline")
-  local qw = math.max(Kit.tapMin(), math.floor(80 * s))
-  local bh = math.max(Kit.tapMin(), math.floor(34 * s))
-  local by = y + (hh - Kit.tapMin()) / 2
-  if Kit.button(x + w - qw, by, qw, bh, "Quit", { id = "quit" }) then
-    self:queue(function() self:quit() end)
-  end
-  local sw = math.max(Kit.tapMin(), math.floor(110 * s))
-  local hgap = math.floor(8 * s)
-  local rx = x + w - qw - hgap - sw
-  if Kit.button(rx, by, sw, bh,
-      self.page == "settings" and "Close" or "Settings",
-      { id = "settings", active = self.page == "settings" }) then
-    self:queue(function()
-      if self.page == "box" then self:closeBox() end
-      self.page = self.page ~= "settings" and "settings" or nil
-    end)
-  end
-  local titleRight = x + Kit.textWidth("headline", Version.NAME or "PK:GB") + hgap
-  local boxW = math.max(Kit.tapMin(), Kit.textWidth("button", "Close Box") + math.floor(28 * s))
-  -- what the header has no room for, Settings offers instead
-  self.headerHidden = { box = rx - hgap - boxW < titleRight }
-  if rx - hgap - boxW >= titleRight then
-    rx = rx - hgap - boxW
-    if Kit.button(rx, by, boxW, bh, self.page == "box" and "Close Box" or "Box",
-        { id = "box", active = self.page == "box" }) then
-      self:queue(function()
-        if self.page == "box" then self:closeBox() else self:openBox() end
-      end)
-    end
-  end
-  local ow = math.max(Kit.tapMin(), Kit.textWidth("button", "Online") + math.floor(28 * s))
-  self.headerHidden.online = rx - hgap - ow < titleRight
-  if not self.headerHidden.online then
-    rx = rx - hgap - ow
-    if Kit.button(rx, by, ow, bh, "Online", { id = "online", active = self.page == "online" }) then
-      self:queue(function()
-        if self.page == "online" then self.page = nil else self:openOnline() end
-      end)
-    end
-  end
-  local nw = math.max(Kit.tapMin(), Kit.textWidth("small", "What's new") + math.floor(28 * s))
-  self.headerHidden.notes = rx - hgap - nw < titleRight
-  if rx - hgap - nw >= titleRight then
-    rx = rx - hgap - nw
-    if Kit.button(rx, by, nw, bh, self.page == "notes" and "Close" or "What's new",
-        { id = "notes", font = "small", active = self.page == "notes" }) then
-      self:queue(function()
-        if self.page == "box" then self:closeBox() end
-        self.page = self.page ~= "notes" and "notes" or nil
-        self.notesScroll = 0
-      end)
-    end
-  end
-  local upLabel, upAction, upEnabled = self:updateChip()
-  if upLabel then
-    local uw = Kit.textWidth("small", upLabel) + math.floor(28 * s)
-    if rx - hgap - uw >= titleRight then
-      if Kit.button(rx - hgap - uw, by, uw, bh, upLabel,
+  -- a left rail on a wide window or a landscape phone; a bottom tab bar on
+  -- a portrait one (Launcher:drawRail / drawTabBar)
+  local railMode = W >= 860 * s or (W >= 520 and W >= H * 1.3)
+  self.railMode = railMode
+  local x, w, y, bottom
+  if railMode then
+    local railW = self:railWidth(W, s)
+    self:drawRail(0, 0, railW, H, s)
+    x, w, y, bottom = railW + pad, W - railW - 2 * pad, pad, H - pad
+  else
+    x, w, y = pad, W - 2 * pad, pad
+    -- compact title bar: the name, and an update when one is ready
+    Kit.textBold("title", Version.NAME or "PK:GB", x, y, PAL.heading)
+    local upLabel, upAction, upEnabled = self:updateChip()
+    if upLabel then
+      local uh = math.max(Kit.tapMin(), math.floor(30 * s))
+      local uw = math.min(w - Kit.textWidth("title", Version.NAME or "PK:GB") - Theme.space("m", s),
+        Kit.textWidth("small", upLabel) + Theme.space("xl", s))
+      if Kit.button(x + w - uw, y + (Kit.textHeight("title") - uh) / 2, uw, uh, upLabel,
           { id = "update", font = "small", kind = "warn", glow = upEnabled,
             enabled = upEnabled }) and upAction then
         self:queue(upAction)
       end
     end
+    y = y + Kit.textHeight("title") + Theme.space("m", s)
+    local tabH = self:tabBarHeight(s)
+    self:drawTabBar(0, H - tabH, W, tabH, s)
+    bottom = H - tabH - Theme.space("s", s)
   end
-  y = y + hh + math.floor(14 * s)
 
-  local footH = self:footerHeight(w) + math.floor(12 * s)
-  if self.message then footH = footH + Kit.textHeight("small") * 2 + math.floor(8 * s) end
-  local bodyH = H - y - pad - footH
+  local footH = self:footerHeight(w) + Theme.space("m", s)
+  if self.message then footH = footH + Kit.textHeight("small") * 2 + Theme.space("s", s) end
+  local bodyH = bottom - y - footH
 
-  -- side by side on a wide window, and on a landscape phone too: stacking
-  -- there leaves neither half tall enough to use
-  local wide = w >= 700 * s or (w >= 520 and w >= H * 1.3)
+  -- side by side when the content area is wide enough, else stacked
+  local wide = w >= 600 * s or (railMode and w >= 480)
   if self.page == "box" then
     self:drawBox(x, y, w, bodyH, s)
   elseif self.page == "online" and self.online then
     self:drawFitted("online", x, y, w, bodyH, s, function(l, ...) return l.online:draw(...) end)
-  elseif self.page and not wide then
-    -- stacked, a page (settings, mods, carts, notes) takes the whole body;
-    -- its Back / Close goes back to the game list
+  elseif self.page and (not wide or self:section() ~= "games") then
+    -- a section page (settings, what's new) or, stacked, a game page (mods,
+    -- carts) takes the whole content area
     self:drawDetail(x, y, w, bodyH, s)
   elseif wide then
-    local listW = math.floor(math.min(320 * s, w * 0.34))
+    local listW = math.floor(math.min(320 * s, w * 0.36))
     self:drawGameList(x, y, listW, bodyH, s)
-    self:drawDetail(x + listW + math.floor(16 * s), y, w - listW - math.floor(16 * s), bodyH, s)
+    self:drawDetail(x + listW + Theme.space("l", s), y, w - listW - Theme.space("l", s), bodyH, s)
   else
     -- the game list yields height to the detail panel down to two rows
     local listMin = Kit.textHeight("caption") + math.floor(110 * s)
     local listH = math.floor(math.max(listMin,
-      math.min(bodyH * 0.42, bodyH - math.floor(10 * s) - self:detailNeed(w, s))))
+      math.min(bodyH * 0.42, bodyH - Theme.space("m", s) - self:detailNeed(w, s))))
     self:drawGameList(x, y, w, listH, s)
-    self:drawDetail(x, y + listH + math.floor(10 * s), w, bodyH - listH - math.floor(10 * s), s)
+    self:drawDetail(x, y + listH + Theme.space("m", s), w, bodyH - listH - Theme.space("m", s), s)
   end
 
-  local fy = H - pad - self:footerHeight(w)
+  local fy = bottom - self:footerHeight(w)
   if self.message then
     local color = self.message.kind == "error" and PAL.red or PAL.text
     Kit.textWrapped("small", self.message.text, x, fy - Kit.textHeight("small") * 2

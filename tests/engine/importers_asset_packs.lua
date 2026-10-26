@@ -173,8 +173,8 @@ do
   T.eq(mod and mod.state, "invalid",
     "a mod whose required pack is missing is gated, not half-loaded")
   T.check(mod and type(mod.failure) == "string"
-      and mod.failure:find("IMPORTERS", 1, true),
-    "and the reason points at the tab that would fix it")
+      and mod.failure:find("Asset importers", 1, true),
+    "and the reason points at the page that would fix it")
   T.eq(run.loader.exports.pack_probe, nil, "its entry chunk never ran")
   run.release()
 end

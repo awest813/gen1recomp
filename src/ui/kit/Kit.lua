@@ -991,7 +991,7 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
     local pad = 10 * Kit.scale
     local ty = y + (h - Kit.textHeight("mono")) / 2
     if value == "" and not focused then
-      Kit.text("mono", placeholder or "", x + pad, ty, PAL.faint)
+      Kit.text("mono", Kit.ellipsize("mono", placeholder or "", w - 2 * pad), x + pad, ty, PAL.faint)
     else
       local shown = Kit.ellipsizeLeft("mono", value, w - 2 * pad)
       local tw = Kit.text("mono", shown, x + pad, ty, PAL.heading)

@@ -328,7 +328,7 @@ local ut = drawText(l)
 check(ut:find("Update to 1.4.2", 1, true) ~= nil, "the chip is on screen")
 l.page = "notes"
 local nt = drawText(l)
-check(nt:find("v1.4.2", 1, true) and nt:find("cart padding", 1, true),
+check(nt:find("Version 1.4.2", 1, true) and nt:find("cart padding", 1, true),
   "What's new shows the patch notes for that version")
 check(not nt:find("**", 1, true) and not nt:find("##", 1, true),
   "with the markdown markers stripped")
@@ -895,6 +895,41 @@ do
   m.page = "mods"
   check(not drawText(m):find("Get pack", 1, true), "an imported pack satisfies the mod")
   ML.list = realList
+end
+
+-- ---------------------------------------------------------- navigation
+do
+  window(1280, 720)
+  local n = fresh()
+  local t = drawText(n)
+  check(n.railMode, "a wide window gets the side rail")
+  for _, label in ipairs({ "Games", "Box", "Online", "Settings", "What's new", "Quit" }) do
+    check(t:find(label, 1, true) ~= nil, "the rail offers " .. label)
+  end
+  n:goSection("settings")
+  eq(n:section(), "settings", "a rail item opens its section")
+  n:goSection("box")
+  eq(n.page, "box", "Box opens from the rail")
+  n:goSection("games")
+  eq(n.page, nil, "and Games closes it")
+  window(640, 360)
+  drawText(n)
+  check(n.railMode, "a landscape phone keeps the rail")
+  window(390, 844)
+  t = drawText(n)
+  check(not n.railMode, "a portrait phone gets the tab bar")
+  for _, label in ipairs({ "Games", "Box", "Online", "Settings" }) do
+    check(t:find(label, 1, true) ~= nil, "the tab bar offers " .. label)
+  end
+  n:goSection("settings")
+  t = drawText(n)
+  check(t:find("What's new", 1, true) ~= nil, "with the tab bar, Settings offers What's new")
+  check(t:find("BOIS CLUB", 1, true) ~= nil, "and the credit stays on screen")
+  love.system.getOS = function() return "Android" end
+  t = drawText(n)
+  check(not t:find("Quit", 1, true), "a phone has no Quit")
+  love.system.getOS = function() return "OS X" end
+  window(1280, 720)
 end
 
 T.finish("pkgb launcher")

@@ -969,7 +969,7 @@ function Loader:_validate()
         local pack, packErr = Importers.resolve(spec, self.fs)
         if not pack then
           reason = "required asset pack unavailable: " .. tostring(packErr)
-            .. " -- import it from the launcher's IMPORTERS tab"
+            .. " -- import it from the launcher's Mods > Asset importers page"
           break
         end
       end

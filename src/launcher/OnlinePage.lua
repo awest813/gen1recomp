@@ -381,12 +381,8 @@ function OnlinePage:draw(x, y, w, h, s)
   local gap = math.floor(10 * s)
   local function btnW(label) return math.max(Kit.tapMin(), Kit.textWidth("small", label) + math.floor(28 * s)) end
 
-  local backW = btnW("Back")
-  if Kit.button(cx + cw - backW, cy, backW, smallH, "Back", { id = "online-back", font = "small" }) then
-    l:queue(function() l:back() end)
-  end
-  Kit.textBold("title", "Online", cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
+  cy = l:pageHeader(cx, cy, cw, s, { title = "Online",
+    subtitle = "Battle and trade with other players" }) - math.floor(8 * s)
 
   local state = Connect().state()
   local online = state == "online"

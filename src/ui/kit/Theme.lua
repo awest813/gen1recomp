@@ -33,18 +33,19 @@ local PAL = {
   buttonBlue  = { 36, 106, 181 }, -- darker fill for white action labels
   buttonPurple = { 88, 44, 140 },
   steel       = { 120, 120, 120 }, -- disabled
-  -- the version rail is the one piece of brand colour that stays
-  railRed     = { 255, 60, 72 },
-  railBlue    = { 70, 150, 255 },
-  railGold    = { 255, 203, 5 },   -- Yellow cartridge (bright)
-  railAmber   = { 218, 145, 32 },  -- Gold cartridge (deeper metal)
-  railSilver  = { 190, 198, 210 }, -- Silver cartridge (cool light metal)
-  railCrystal = { 132, 196, 228 }, -- Crystal cartridge (translucent ice blue)
-  railLeafGreen = { 38, 162, 78 }, -- LeafGreen cartridge (vibrant deep forest green)
-  railFireRed = { 220, 48, 48 },   -- FireRed cartridge (deeper red than Red)
-  railEmerald = { 31, 158, 110 },
-  railRuby = { 185, 46, 50 },
-  railSapphire = { 53, 94, 196 },
+  -- one identity colour per game (Theme.gameColor); the Gen 3 ones are the
+  -- cartridge shells in GameVersion (cartShell)
+  railRed     = { 200, 49, 59 },   -- #c8313b
+  railBlue    = { 47, 111, 214 },  -- #2f6fd6
+  railGold    = { 242, 194, 48 },  -- #f2c230, Yellow
+  railAmber   = { 201, 162, 39 },  -- #c9a227, Gold
+  railSilver  = { 167, 176, 186 }, -- #a7b0ba
+  railCrystal = { 79, 179, 217 },  -- #4fb3d9
+  railFireRed = { 230, 65, 16 },   -- #e64110
+  railLeafGreen = { 38, 162, 78 }, -- #26a24e
+  railEmerald = { 31, 158, 110 },  -- #1f9e6e
+  railRuby = { 185, 46, 50 },      -- #b92e32
+  railSapphire = { 53, 94, 196 },  -- #355ec4
 }
 -- Semantic aliases kept so ported call sites read the same as before.
 PAL.cardBorder = PAL.line
@@ -53,6 +54,24 @@ PAL.blueInk    = PAL.blue
 PAL.redSoft    = PAL.red
 PAL.greenDark  = PAL.green
 Theme.PAL = PAL
+
+-- Each game's identity colour, by GameVersion id.
+local GAME_COLORS = {
+  red = PAL.railRed, blue = PAL.railBlue, yellow = PAL.railGold,
+  gold = PAL.railAmber, silver = PAL.railSilver, crystal = PAL.railCrystal,
+  firered = PAL.railFireRed, leafgreen = PAL.railLeafGreen, emerald = PAL.railEmerald,
+  ruby = PAL.railRuby, sapphire = PAL.railSapphire,
+}
+function Theme.gameColor(version)
+  return GAME_COLORS[version] or PAL.blue
+end
+
+-- The spacing scale, in unscaled pixels: every gap and inset is one of
+-- these, multiplied by Kit.scale (Theme.space).
+Theme.SPACE = { xxs = 2, xs = 4, s = 8, m = 12, l = 16, xl = 24, xxl = 32 }
+function Theme.space(name, scale)
+  return math.floor((Theme.SPACE[name] or 0) * (scale or 1))
+end
 
 -- Standard alphas, so "hairline" means one thing everywhere.
 Theme.A = {

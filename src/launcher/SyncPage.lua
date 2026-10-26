@@ -110,15 +110,9 @@ function SyncPage:draw(x, y, w, h, s)
   local cy = y + pad
   local rowH = math.max(Kit.tapMin(), math.floor(40 * s))
   local gap = math.floor(10 * s)
-  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
-  if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)), "Back",
-      { id = "sync-back", font = "small" }) then
-    l:queue(function() l.page = "settings" end)
-  end
-  Kit.textBold("title", "Save sync", cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
-  Kit.textWrapped("small", "Keep saves in step across your devices.", cx, cy, cw - backW, PAL.muted)
-  cy = cy + Kit.textHeight("small") + gap * 2
+  cy = l:pageHeader(cx, cy, cw, s, { title = "Save sync",
+    subtitle = "Keep saves in step across your devices.",
+    back = function() l.page = "settings" end, backId = "sync-back" })
 
   local eng = self:engine()
   if not eng then
