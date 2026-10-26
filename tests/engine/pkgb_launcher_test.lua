@@ -417,7 +417,10 @@ l = Launcher.new(function() end, { noUpdateCheck = true,
   onEditSave = function(version, slotId) edited = version .. ":" .. slotId end,
   onEditTouchControls = function(version) arranged = version end })
 l.selected = "gold"
-check(drawText(l):find("Edit", 1, true) ~= nil, "a host with the save editor offers Edit")
+drawText(l)
+l.saveMenu = "slot1"
+check(drawText(l):find("Edit", 1, true) ~= nil, "a host with the save editor offers Edit in a save's menu")
+l.saveMenu = nil
 l.selectedSlot.gold = "slot2"
 l:editSave()
 eq(edited, "gold:slot2", "Edit opens the save editor on the chosen save")
@@ -693,6 +696,7 @@ l = fresh()
 l.selected = "gold"
 drawText(l)
 l.selectedSlot[l:scopeKey("gold")] = "slot1"
+l.saveMenu = "slot1"
 local realButton3 = Kit.button
 Kit.button = function(x, y, w, h, label, o)
   if o and o.id == "save-rename" then return true end
@@ -960,6 +964,43 @@ do
     window(size[1], size[2])
     drawText(g)
   end
+  window(1280, 720)
+end
+
+-- ------------------------------------------------------- the game panel
+do
+  window(1280, 720)
+  local p = fresh()
+  p.selected = "gold"
+  local t = drawText(p)
+  check(t:find("Continue  -  GOLD", 1, true) ~= nil, "Continue names the save it opens")
+  check(t:find("3:15", 1, true) and t:find("31 in Pokedex", 1, true), "a save card shows play time and Pokedex")
+  check(not t:find("Rename", 1, true), "the less used save actions wait in a menu")
+  local realB = Kit.button
+  Kit.button = function(x, y, w, h, label, o)
+    if o and o.id == "save-menu-slot2" then return true end
+    return realB(x, y, w, h, label, o)
+  end
+  drawText(p)
+  Kit.button = realB
+  p:update(0)
+  eq(p.saveMenu, "slot2", "a save's ... button opens its menu")
+  eq(p.selectedSlot[p:scopeKey("gold")], "slot2", "and chooses that save")
+  t = drawText(p)
+  check(t:find("Rename", 1, true) and t:find("Export .sav", 1, true) and t:find("Delete", 1, true),
+    "the menu offers Rename, Export and Delete")
+  -- a press elsewhere closes it
+  p.click = { x = 5, y = 5 }
+  drawText(p)
+  p:update(0)
+  eq(p.saveMenu, nil, "a press outside closes the menu")
+  for _, size in ipairs({ { 390, 844 }, { 640, 360 }, { 800, 600 } }) do
+    window(size[1], size[2])
+    drawText(p)
+  end
+  p.selected = "red"
+  t = drawText(p)
+  check(t:find("Import ROM", 1, true) ~= nil, "a game not imported offers Import ROM on its panel")
   window(1280, 720)
 end
 

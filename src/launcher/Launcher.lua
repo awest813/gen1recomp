@@ -1910,35 +1910,14 @@ function Launcher:drawCarts(x, y, w, h, s)
   Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
 end
 
--- How the save tools wrap in a panel `cw` wide: all in one row, else three
--- or two to a row, so no label is cut short.  Returns columns, rows.
-function Launcher:toolGrid(cw, s)
-  local n = self.opts.onEditSave and 5 or 4
-  local tg = math.floor(8 * s)
-  local needW = Kit.textWidth("small", "Confirm delete") + math.floor(24 * s)
-  local cols = 2
-  for _, c in ipairs({ n, 3 }) do
-    if (cw - (c - 1) * tg) / c >= needW then cols = c break end
-  end
-  return cols, math.ceil(n / cols)
-end
-
--- The height the game panel needs to show one save row with its tools.
+-- The height the game panel needs: banner, the saves caption, one save
+-- card and the Continue / New game row.
 function Launcher:detailNeed(w, s)
-  local cw = w - 2 * math.floor(18 * s)
-  local tg = math.floor(8 * s)
-  local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
-  local _, toolRows = self:toolGrid(cw, s)
-  local h = 2 * math.floor(18 * s) + Kit.textHeight("title") + math.floor(6 * s)
-    + Kit.textHeight("small") + math.floor(16 * s)
-    + Kit.textHeight("caption") + math.floor(8 * s)
-    + math.max(Kit.tapMin(), math.floor(44 * s))
-    + toolRows * smallH + (toolRows - 1) * tg
-    + math.max(Kit.tapMin(), math.floor(40 * s)) + math.floor(22 * s)
-  if self.selected and self:activeCart(self.selected) then
-    h = h + Kit.textHeight("small") + math.floor(4 * s)
-  end
-  return h
+  local pad = Theme.space("l", s) + Theme.space("xxs", s)
+  return self:gameBannerHeight(s) + Theme.space("l", s)
+    + math.max(Kit.tapMin(), math.floor(30 * s)) + Theme.space("s", s)
+    + math.max(Kit.tapMin() + Theme.space("m", s), math.floor(62 * s)) + Theme.space("l", s)
+    + math.max(Kit.tapMin(), math.floor(44 * s)) + pad
 end
 
 -- Draw a panel that reports the height it used; when that is more than the
@@ -1988,46 +1967,141 @@ end
 
 -- The chosen game: import, or its saves with Continue / New game.  Returns
 -- the height it needs (drawFitted scrolls it on a short window).
+-- A cartridge drawn in code, w wide and tinted by the game's colour: a
+-- Game Boy cart (portrait, the corner notch) or a Game Boy Advance one
+-- (landscape).  No image assets.
+local function drawCartridge(x, y, w, h, color, gba, s)
+  local G = love.graphics
+  local r = math.max(2, math.floor(4 * s))
+  local shell = { color[1] * 0.55, color[2] * 0.55, color[3] * 0.55 }
+  if gba then
+    Theme.fillRounded(x, y, w, h, shell, 1, r)
+    local lw, lh = w * 0.62, h * 0.56
+    Theme.fillRounded(x + (w - lw) / 2, y + h * 0.12, lw, lh, color, 1, r)
+    for i = 0, 2 do
+      Theme.fill(x + w * 0.2 + i * w * 0.24, y + h * 0.82, w * 0.12, math.max(1, 2 * s), PAL.bg, 0.6)
+    end
+    return
+  end
+  Theme.fillRounded(x, y, w, h, shell, 1, r)
+  -- the cut corner, top right
+  if G then
+    Theme.col(PAL.surface, 1)
+    local c = w * 0.22
+    G.polygon("fill", x + w - c, y, x + w + 1, y, x + w + 1, y + c)
+  end
+  for i = 0, 3 do
+    Theme.fill(x + w * 0.14, y + h * 0.06 + i * math.max(2, 3 * s), w * 0.6, math.max(1, s), PAL.bg, 0.35)
+  end
+  local lw, lh = w * 0.74, h * 0.48
+  Theme.fillRounded(x + (w - lw) / 2, y + h * 0.26, lw, lh, color, 1, r)
+end
+Launcher.drawCartridge = drawCartridge
+
+-- Badge dots: earned ones filled in the game's colour.
+local function drawBadges(x, y, earned, total, color, s)
+  local d = math.max(4, math.floor(6 * s))
+  local g = math.max(2, math.floor(3 * s))
+  local perRow = 8
+  for i = 1, total do
+    local row, col = math.floor((i - 1) / perRow), (i - 1) % perRow
+    local dx, dy = x + col * (d + g), y + row * (d + g)
+    if i <= earned then
+      Theme.fillRounded(dx, dy, d, d, color, 1, d / 2)
+    else
+      Theme.strokeRounded(dx, dy, d, d, PAL.line, 0.6, 1, d / 2)
+    end
+  end
+  local rows = math.ceil(total / perRow)
+  return perRow * (d + g) - g, rows * (d + g) - g
+end
+
+-- The banner atop the game panel: colour wash, cartridge, title, status.
+-- Returns its height.
+function Launcher:gameBannerHeight(s)
+  return math.max(math.floor(92 * s), Kit.textHeight("title") + Kit.textHeight("small")
+    + Theme.space("xl", s) * 2)
+end
+
 function Launcher:drawGame(x, y, w, h, s)
   local v = self.selected
   if not v then return end
   local info = GameVersion.info(v)
-  local pad = math.floor(18 * s)
+  local color = Theme.gameColor(v)
+  local pad = Theme.space("l", s) + Theme.space("xxs", s)
   Kit.card(x, y, w, h)
-  local cx, cw = x + pad, w - 2 * pad
-  local cy = y + pad
-  -- the Carts / Mods buttons share the title's line on an imported game
-  local titleW = cw
-  if self.ready[v] and not (self.job and self.job.version == v) then
-    titleW = cw - Kit.textWidth("small", "Carts") - Kit.textWidth("small", "Mods")
-      - math.floor(84 * s)
-  end
-  Kit.textBold("title", Kit.ellipsize("title", info.displayName, math.max(0, titleW)),
-    cx, cy, PAL.heading)
-  cy = cy + Kit.textHeight("title") + math.floor(6 * s)
-  local status, color = statusText(self, v)
-  Kit.text("small", status, cx, cy, color)
-  cy = cy + Kit.textHeight("small") + math.floor(16 * s)
-  local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
+  local ready = self.ready[v]
+  local importing = self.job and self.job.version == v
 
-  if self.job and self.job.version == v then
+  -- banner
+  local bannerH = self:gameBannerHeight(s)
+  Theme.fillRounded(x + 1, y + 1, w - 2, bannerH, color, ready and 0.16 or 0.08, Theme.cardRadius())
+  Theme.fill(x + 1, y + bannerH - 1, w - 2, 1, color, 0.35)
+  local cartH = bannerH - Theme.space("xl", s)
+  local gba = GameVersion.generation(v) == 3
+  local cartW = gba and math.floor(cartH * 1.45) or math.floor(cartH * 0.82)
+  if w < 360 * s then cartW, cartH = math.floor(cartW * 0.75), math.floor(cartH * 0.75) end
+  drawCartridge(x + pad, y + (bannerH - cartH) / 2, cartW, cartH, color, gba, s)
+  local tx = x + pad + cartW + Theme.space("l", s)
+  local cx, cw = x + pad, w - 2 * pad
+  local slots = ready and self:slotsFor(v) or {}
+  local scope = self:scopeKey(v)
+  local cartId, cartRow = self:activeCart(v)
+  local problem = ready and self:cartProblem(v) or nil
+
+  -- Carts / Mods on the banner's right
+  local rightW = 0
+  if ready and not importing then
+    local mh = math.max(Kit.tapMin(), math.floor(32 * s))
+    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + Theme.space("xl", s) + Theme.space("s", s))
+    local kw = math.max(Kit.tapMin(), Kit.textWidth("small", "Carts") + Theme.space("xl", s) + Theme.space("s", s))
+    local by = y + Theme.space("m", s)
+    if Kit.button(x + w - pad - mw, by, mw, mh, "Mods", { id = "mods", font = "small" }) then
+      self:queue(function() self.page = "mods"; self.modScroll = 0 end)
+    end
+    if Kit.button(x + w - pad - mw - Theme.space("s", s) - kw, by, kw, mh, "Carts",
+        { id = "carts", font = "small", active = cartId ~= nil }) then
+      self:queue(function() self.page = "carts"; self.cartScroll = 0 end)
+    end
+    rightW = mw + kw + Theme.space("s", s) + Theme.space("m", s)
+  end
+  local titleW = x + w - pad - rightW - tx
+  local ty = y + (bannerH - Kit.textHeight("title") - Kit.textHeight("small") - Theme.space("xs", s)) / 2
+  local title = info.displayName
+  if Kit.textWidth("title", title) > titleW then title = info.label or title end
+  Kit.textBold("title", Kit.ellipsize("title", title, math.max(0, titleW)), tx, ty, PAL.heading)
+  local status, scolor = statusText(self, v)
+  if cartRow then
+    status = "Playing as " .. tostring(cartRow.title or cartId)
+      .. (problem and (" - " .. problem) or "")
+    scolor = problem and PAL.red or PAL.blue
+  end
+  Kit.text("small", Kit.ellipsize("small", status, math.max(0, x + w - pad - tx)),
+    tx, ty + Kit.textHeight("title") + Theme.space("xs", s), scolor)
+
+  local cy = y + bannerH + Theme.space("l", s)
+  local btnH = math.max(Kit.tapMin(), math.floor(44 * s))
+
+  if importing then
     Kit.text("small", self.job.stage or "Importing", cx, cy, PAL.text)
-    cy = cy + Kit.textHeight("small") + math.floor(8 * s)
-    Theme.meter(cx, cy, cw, math.floor(10 * s), self.job.progress or 0, PAL.green)
+    local pct = math.floor((self.job.progress or 0) * 100) .. "%"
+    Kit.text("small", pct, cx + cw - Kit.textWidth("small", pct), cy, PAL.muted)
+    cy = cy + Kit.textHeight("small") + Theme.space("s", s)
+    Theme.meter(cx, cy, cw, math.floor(10 * s), self.job.progress or 0, color)
     return cy + math.floor(10 * s) + pad - y
   end
 
-  if not self.ready[v] then
+  if not ready then
     local help = "Import your own " .. info.displayName .. " ROM to play. "
       .. "It is checked against the original release before anything is "
       .. "written, read once, and never copied."
     Kit.textWrapped("small", help, cx, cy, cw, PAL.muted)
-    cy = cy + Kit.wrapHeight("small", help, cw) + math.floor(12 * s)
+    cy = cy + Kit.wrapHeight("small", help, cw) + Theme.space("m", s)
     if Kit.button(cx, cy, math.min(cw, math.floor(260 * s)), btnH, "Import ROM",
-        { id = "import", kind = "accent" }) then
+        { id = "import", kind = "accent", icon = "download", fullLabel = true }) then
       self:queue(function() self:pickRom() end)
     end
-    cy = cy + btnH + math.floor(8 * s)
+    cy = cy + btnH + Theme.space("s", s)
     local Inbox = require("src.launcher.Inbox")
     Kit.text("micro", Kit.ellipsize("micro", Inbox.enabled()
       and ("Or copy it into " .. Inbox.location() .. " and choose Settings > Scan again.")
@@ -2035,157 +2109,181 @@ function Launcher:drawGame(x, y, w, h, s)
     return cy + Kit.textHeight("micro") + pad - y
   end
 
-  local slots = self:slotsFor(v)
-  local scope = self:scopeKey(v)
-  local cartId, cartRow = self:activeCart(v)
-  do
-    local mh = math.max(Kit.tapMin(), math.floor(32 * s))
-    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + math.floor(32 * s))
-    local kw = math.max(Kit.tapMin(), Kit.textWidth("small", "Carts") + math.floor(32 * s))
-    if Kit.button(cx + cw - mw, y + pad, mw, mh, "Mods", { id = "mods", font = "small" }) then
-      self:queue(function() self.page = "mods"; self.modScroll = 0 end)
-    end
-    if Kit.button(cx + cw - mw - math.floor(8 * s) - kw, y + pad, kw, mh, "Carts",
-        { id = "carts", font = "small", active = cartId ~= nil }) then
-      self:queue(function() self.page = "carts"; self.cartScroll = 0 end)
-    end
+  -- saves caption, with Import .sav at its right
+  local smallH = math.max(Kit.tapMin(), math.floor(30 * s))
+  local iw = Kit.textWidth("small", "Import .sav") + Theme.space("xl", s) + Theme.space("m", s)
+  Kit.caption(cx, cy + (smallH - Kit.textHeight("caption")) / 2, "SAVES", PAL.caption)
+  if Kit.button(cx + cw - iw, cy, iw, smallH, "Import .sav",
+      { id = "save-import", font = "small", icon = "upload", fullLabel = true,
+        enabled = cartId == nil }) then
+    self:queue(function() self:pickSave() end)
   end
-  local problem = self:cartProblem(v)
-  if cartRow then
-    local line = "Playing as " .. tostring(cartRow.title or cartId)
-    if problem then line = line .. " - " .. problem end
-    Kit.text("small", Kit.ellipsize("small", line, cw), cx, cy - math.floor(8 * s),
-      problem and PAL.red or PAL.blue)
-    cy = cy + Kit.textHeight("small") + math.floor(4 * s)
-  end
-  Kit.caption(cx, cy, "SAVES", PAL.caption)
-  cy = cy + Kit.textHeight("caption") + math.floor(8 * s)
-  local rowH = math.max(Kit.tapMin(), math.floor(44 * s))
-  local gap = math.floor(4 * s)
-  local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
-  local tg = math.floor(8 * s)
-  local toolCols, toolRows = self:toolGrid(cw, s)
-  local toolsH = toolRows * smallH + (toolRows - 1) * tg
-  local footH = btnH + toolsH + math.floor(22 * s)
-  local viewH = y + h - pad - footH - cy
-  if viewH < rowH then
-    -- a window too short for even one save row: Continue still plays the
-    -- chosen save, so the list just steps aside rather than overlap the tools
+  cy = cy + smallH + Theme.space("s", s)
+
+  local chosen = self.selectedSlot[scope]
+  local has = chosen ~= nil and #slots > 0
+  local cardH = math.max(Kit.tapMin() + Theme.space("m", s), math.floor(62 * s))
+  local gap = Theme.space("s", s)
+  local extraH = (self.saveConfirm and self.saveConfirm.version == v or (self.renaming == chosen and has))
+    and (smallH + Theme.space("m", s)) or 0
+  local footY = y + h - pad - btnH
+  local viewH = footY - Theme.space("l", s) - extraH - cy
+  local menuAt
+  if viewH < cardH * 0.75 then
     local line = "No saves yet - New game starts one"
     for _, sl in ipairs(slots) do
-      if sl.id == self.selectedSlot[scope] then
-        line = "Save: " .. tostring(sl.label or sl.name or sl.id)
-      end
+      if sl.id == chosen then line = "Save: " .. tostring(sl.label or sl.name or sl.id) end
     end
     if viewH >= Kit.textHeight("small") then
       Kit.text("small", Kit.ellipsize("small", line, cw), cx, cy, PAL.muted)
     end
   elseif #slots == 0 then
-    Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No saves yet")
+    Kit.emptyBox(cx, cy, cw, math.min(viewH, cardH * 1.5), "No saves yet. New game starts one.")
   else
-    local contentH = #slots * (rowH + gap)
-    local maxAt = Kit.scrollExtent(contentH, viewH)
+    local maxAt = Kit.scrollExtent(#slots * (cardH + gap) - gap, viewH)
     self.slotScroll = Kit.scrollInput(self.slotScroll, maxAt, cx, cy, cw, viewH)
     local py = Kit.scrollBegin(cx, cy, cw, viewH, self.slotScroll, maxAt)
+    local rw = cw - Kit.scrollGutter(s)
+    local total = GameVersion.generation(v) == 2 and 16 or 8
     for i, slot in ipairs(slots) do
-      local ry = py + (i - 1) * (rowH + gap)
-      local chosen = self.selectedSlot[scope] == slot.id
-      local clicked, ink = Kit.row(cx, ry, cw - Kit.scrollGutter(s), rowH, chosen,
-        "slot-" .. slot.id)
-      local title = slot.label or slot.name or slot.id
-      Kit.text("button", title, cx + math.floor(12 * s),
-        ry + math.floor(6 * s), ink or PAL.text)
-      local meta = slot.meta
-      if meta then
-        local line = ("%s  -  %d badges  -  %d in Pokedex"):format(
-          meta.timeText or "0:00", meta.badges or 0, meta.dexCount or 0)
-        Kit.text("micro", line, cx + math.floor(12 * s),
-          ry + rowH - Kit.textHeight("micro") - math.floor(6 * s),
-          chosen and (ink or PAL.text) or PAL.muted)
+      local ry = py + (i - 1) * (cardH + gap)
+      local picked = chosen == slot.id
+      local clicked, ink = Kit.row(cx, ry, rw, cardH, picked, "slot-" .. slot.id)
+      local mbw = math.max(Kit.tapMin(), math.floor(36 * s))
+      local mbx, mby = cx + rw - mbw - Theme.space("s", s), ry + (cardH - mbw) / 2
+      if Kit.button(mbx, mby, mbw, mbw, "", { id = "save-menu-" .. slot.id, icon = "ellipsis",
+          face = "bare", ring = false, iconInk = picked and PAL.inverse or PAL.text }) then
+        local id = slot.id
+        self:queue(function()
+          self.selectedSlot[scope] = id
+          self.saveMenu = self.saveMenu ~= id and id or nil
+        end)
       end
-      if clicked then
-        self:queue(function() self.selectedSlot[scope] = slot.id end)
+      if self.saveMenu == slot.id then menuAt = { x = mbx + mbw, y = mby + mbw, slot = slot } end
+      local meta = slot.meta or {}
+      local dotsW = 0
+      if rw > 300 * s then
+        local d = math.max(4, math.floor(6 * s))
+        local g = math.max(2, math.floor(3 * s))
+        dotsW = 8 * (d + g) - g
+        local dotsH = math.ceil(total / 8) * (d + g) - g
+        drawBadges(mbx - Theme.space("m", s) - dotsW, ry + (cardH - dotsH) / 2,
+          tonumber(meta.badges) or 0, total, color, s)
+      end
+      local textW = mbx - Theme.space("l", s) - dotsW - (cx + Theme.space("m", s))
+      local tx2 = cx + Theme.space("m", s)
+      local top = ry + (cardH - Kit.textHeight("button") - Kit.textHeight("micro") - Theme.space("xxs", s)) / 2
+      Kit.text("button", Kit.ellipsize("button", tostring(slot.label or slot.name or slot.id), textW),
+        tx2, top, ink or PAL.text)
+      local parts = {}
+      if meta.timeText then parts[#parts + 1] = tostring(meta.timeText) end
+      if meta.dexCount then parts[#parts + 1] = tostring(meta.dexCount) .. " in Pokedex" end
+      if dotsW == 0 and meta.badges then parts[#parts + 1] = tostring(meta.badges) .. " badges" end
+      Kit.text("micro", Kit.ellipsize("micro", table.concat(parts, "  -  "), textW), tx2,
+        top + Kit.textHeight("button") + Theme.space("xxs", s), picked and (ink or PAL.text) or PAL.muted)
+      if clicked and not Kit.hit(mbx, mby, mbw, mbw) then
+        local id = slot.id
+        self:queue(function() self.selectedSlot[scope] = id; self.saveMenu = nil end)
       end
     end
     Kit.scrollEnd(cx, cy, cw, viewH, self.slotScroll, maxAt, PAL.surface)
   end
 
-  -- save tools: import / export / rename / delete, or the rename field
-  local ty = y + h - pad - btnH - math.floor(10 * s) - toolsH
-  local chosen = self.selectedSlot[scope]
-  local has = chosen ~= nil and #slots > 0
+  -- rename field, or the footer-bytes question, above the buttons
+  local ay = footY - Theme.space("m", s) - smallH
   if self.saveConfirm and self.saveConfirm.version == v then
-    local half2 = math.floor((cw - math.floor(10 * s)) / 2)
-    if Kit.button(cx, ty, half2, smallH, "Import without them",
+    local half2 = math.floor((cw - Theme.space("m", s)) / 2)
+    if Kit.button(cx, ay, half2, smallH, "Import without them",
         { id = "save-confirm-yes", kind = "primary", font = "small" }) then
       self:queue(function() self:confirmSave(true) end)
     end
-    if Kit.button(cx + cw - half2, ty, half2, smallH, "Cancel",
+    if Kit.button(cx + cw - half2, ay, half2, smallH, "Cancel",
         { id = "save-confirm-no", font = "small" }) then
       self:queue(function() self:confirmSave(false) end)
     end
   elseif self.renaming == chosen and has then
     local okW = math.floor(90 * s)
-    local fw = cw - 2 * (okW + math.floor(8 * s))
-    self.renameText = Kit.textfield("rename-field", cx, ty, fw, smallH,
-      self.renameText, "Save name")
-    if Kit.button(cx + fw + math.floor(8 * s), ty, okW, smallH, "Save",
+    local fw = cw - 2 * (okW + Theme.space("s", s))
+    self.renameText = Kit.textfield("rename-field", cx, ay, fw, smallH, self.renameText, "Save name")
+    if Kit.button(cx + fw + Theme.space("s", s), ay, okW, smallH, "Save",
         { id = "rename-ok", kind = "primary", font = "small" }) then
       local text = self.renameText
       self:queue(function() self:renameSave(text) end)
     end
-    if Kit.button(cx + cw - okW, ty, okW, smallH, "Cancel",
+    if Kit.button(cx + cw - okW, ay, okW, smallH, "Cancel",
         { id = "rename-cancel", font = "small" }) then
       self:queue(function() self.renaming = nil end)
     end
-  else
-    local tools = {
-      { id = "save-import", label = "Import .sav", enabled = cartId == nil,
-        run = function() self:pickSave() end },
-      { id = "save-export", label = "Export", enabled = has and cartId == nil,
-        run = function() self:exportSave() end },
-      { id = "save-rename", label = "Rename", enabled = has,
-        run = function()
-          self.renaming = chosen
-          local slot
-          for _, sl in ipairs(slots) do if sl.id == chosen then slot = sl end end
-          self.renameText = slot and (slot.label or slot.name) or ""
-          Kit.setFocus("rename-field")
-          Kit.focus = "rename-field"
-        end },
-      { id = "save-delete", label = self.armedDelete == v .. ":" .. tostring(chosen)
-          and "Confirm delete" or "Delete", enabled = has, danger = true,
-        run = function() self:deleteSave() end },
-    }
-    if self.opts.onEditSave then
-      -- the save editor (tools/save-editor) opens on the chosen save
-      table.insert(tools, 4, { id = "save-edit", label = "Edit", enabled = has and cartId == nil,
-        run = function() self:editSave() end })
-    end
-    local tw = math.floor((cw - (toolCols - 1) * tg) / toolCols)
-    for i, t in ipairs(tools) do
-      local col, row = (i - 1) % toolCols, math.floor((i - 1) / toolCols)
-      if Kit.button(cx + col * (tw + tg), ty + row * (smallH + tg), tw, smallH, t.label,
-          { id = t.id, font = "small", enabled = t.enabled,
-            kind = t.danger and "danger" or nil }) then
-        self:queue(t.run, t.danger)
-      end
-    end
   end
 
-  local by = y + h - pad - btnH
-  local half = math.floor((cw - math.floor(10 * s)) / 2)
-  if Kit.button(cx, by, half, btnH, "Continue",
+  -- Continue opens the chosen save; New game makes another
+  local half = math.floor((cw - Theme.space("m", s)) / 2)
+  local current
+  for _, sl in ipairs(slots) do if sl.id == chosen then current = sl end end
+  local label = "Continue"
+  if current and Kit.textWidth("button", "Continue  -  " .. tostring(current.label or current.name or ""))
+      < half - Theme.space("xl", s) then
+    label = "Continue  -  " .. tostring(current.label or current.name or "")
+  end
+  if Kit.button(cx, footY, half, btnH, label,
       { id = "continue", kind = "primary",
-        enabled = chosen ~= nil and #slots > 0 and not problem and not self:importing() }) then
+        enabled = has and not problem and not self:importing() }) then
     self:queue(function() self:play(v, chosen) end)
   end
-  local need = self:detailNeed(w, s)
-  if Kit.button(cx + cw - half, by, half, btnH, "New game",
+  if Kit.button(cx + cw - half, footY, half, btnH, "New game",
       { id = "newgame", kind = "accent", enabled = not problem and not self:importing() }) then
     self:queue(function() self:newGame(v) end)
   end
-  return need
+
+  if menuAt then self:drawSaveMenu(menuAt, x, y, w, h, s, cartId, scope) end
+  return self:detailNeed(w, s)
+end
+
+-- The "..." menu of one save: the actions used less often than Continue.
+function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
+  local v = self.selected
+  local slot = at.slot
+  local items = {
+    { id = "save-rename", label = "Rename", icon = "pencil", run = function()
+        self.renaming = slot.id
+        self.renameText = slot.label or slot.name or ""
+        Kit.setFocus("rename-field")
+        Kit.focus = "rename-field"
+      end },
+    { id = "save-export", label = "Export .sav", icon = "download", enabled = cartId == nil,
+      run = function() self:exportSave() end },
+  }
+  if self.opts.onEditSave then
+    items[#items + 1] = { id = "save-edit", label = "Edit", icon = "file-pen-line",
+      enabled = cartId == nil, run = function() self:editSave() end }
+  end
+  local armed = self.armedDelete == v .. ":" .. tostring(slot.id)
+  items[#items + 1] = { id = "save-delete", label = armed and "Confirm delete" or "Delete",
+    icon = "trash", danger = true, keep = true, run = function() self:deleteSave() end }
+  local itemH = math.max(Kit.tapMin(), math.floor(38 * s))
+  local mw = math.floor(math.min(220 * s, w - 2 * Theme.space("m", s)))
+  local mh = #items * itemH + 2 * Theme.space("xs", s)
+  local mx = math.max(x + Theme.space("s", s), math.min(at.x - mw, x + w - mw - Theme.space("s", s)))
+  local my = at.y + Theme.space("xs", s)
+  if my + mh > y + h - Theme.space("s", s) then my = math.max(y + Theme.space("s", s), at.y - mh - 44 * s) end
+  Theme.shadow(mx, my, mw, mh, Theme.radius())
+  Theme.fillRounded(mx, my, mw, mh, PAL.raised, 1, Theme.radius())
+  Theme.strokeRounded(mx, my, mw, mh, PAL.line, Theme.A.hairline, 1, Theme.radius())
+  for i, it in ipairs(items) do
+    local iy = my + Theme.space("xs", s) + (i - 1) * itemH
+    if Kit.button(mx + Theme.space("xs", s), iy, mw - 2 * Theme.space("xs", s), itemH, it.label,
+        { id = it.id, face = "nav", icon = it.icon, fullLabel = true, align = "left",
+          enabled = it.enabled ~= false, color = it.danger and PAL.red or nil }) then
+      self:queue(function()
+        if not it.keep then self.saveMenu = nil end
+        it.run()
+      end, it.danger)
+    end
+  end
+  -- a press anywhere else closes it
+  if Kit.mouseClicked and not Kit.hit(mx, my, mw, mh) then
+    self:queue(function() self.saveMenu = nil end, true)
+  end
 end
 
 function Launcher:boxMetrics(s)
