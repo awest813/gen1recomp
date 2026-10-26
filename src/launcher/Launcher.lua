@@ -30,6 +30,7 @@ Launcher.CREDIT = "Based on the Pokemon Gen 1 Recompilation Project by BOIS "
 
 local ROM_KIND = { label = "Game Boy ROM",
   exts = { "gb", "gbc", "gba", "zip", "7z" } }
+local MOD_KIND = { label = "Mod package", exts = { "zip" } }
 
 -- ------------------------------------------------------------------ model
 
@@ -176,6 +177,14 @@ function Launcher:pollHostPick()
     self.pendingPick = nil
     local FilePicker = require("src.core.FilePicker")
     local name = FilePicker.basename(path)
+    if kind == "mod" then
+      local data, err = FilePicker.read(path)
+      pcall(os.remove, path)
+      if not data then
+        return self:say("Could not read that file: " .. tostring(err), "error")
+      end
+      return self:installMod(data, name)
+    end
     if kind == "sav" then
       -- by path: SaveFileIO only takes raw bytes for a bare 32 KiB image,
       -- and a Gen 2 save (RTC footer) or a Gen 3 one is larger
@@ -210,6 +219,79 @@ function Launcher:pickRom()
   local data, err = FilePicker.read(path)
   if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
   self:importData(data, FilePicker.basename(path))
+end
+
+-- ------------------------------------------------------------------- mods
+
+-- Installed mods as src/mods/ModLibrary.lua lists them for one game, cached
+-- until something changes them.
+function Launcher:modsFor(version)
+  self.modRows = self.modRows or {}
+  local rows = self.modRows[version]
+  if rows then return rows end
+  local ok, ModLibrary = pcall(require, "src.mods.ModLibrary")
+  local okL, got = false, nil
+  if ok then okL, got = pcall(ModLibrary.list, version) end
+  rows = (okL and type(got) == "table") and got or {}
+  self.modRows[version] = rows
+  return rows
+end
+
+function Launcher:toggleMod(version, row)
+  if not (row and row.id) or row.broken then return end
+  local ModLibrary = require("src.mods.ModLibrary")
+  local ok, err = pcall(ModLibrary.setEnabled, row.id, not row.enabled, version)
+  if not ok then return self:say("Could not change that mod: " .. tostring(err), "error") end
+  self.modRows = nil
+  self:say(("%s is %s for %s. It applies the next time the game starts."):format(
+    row.name, row.enabled and "off" or "on", GameVersion.info(version).displayName), "info")
+end
+
+function Launcher:removeMod(row)
+  local key = "mod:" .. tostring(row and row.folder)
+  if self.armedDelete ~= key then
+    self.armedDelete = key
+    return self:say("Press Remove again to uninstall " .. tostring(row.name) .. ".", "info")
+  end
+  self.armedDelete = nil
+  local ModLibrary = require("src.mods.ModLibrary")
+  local ok, done, err = pcall(ModLibrary.uninstall, row.folder)
+  self.modRows = nil
+  if not (ok and done) then
+    return self:say("Could not remove " .. tostring(row.name) .. ": "
+      .. tostring(ok and err or done), "error")
+  end
+  self:say(tostring(row.name) .. " was removed.", "info")
+end
+
+function Launcher:installMod(data, name)
+  local ModLibrary = require("src.mods.ModLibrary")
+  local ok, manifest, err = pcall(ModLibrary.installZip, data, name)
+  if not ok then manifest, err = nil, manifest end
+  self.modRows = nil
+  if not manifest then
+    return self:say("Could not install " .. tostring(name or "that mod") .. ": "
+      .. tostring(err), "error")
+  end
+  local missing = ModLibrary.missingDependencies(manifest, ModLibrary.list())
+  local text = ("Installed %s."):format(manifest.name or manifest.id)
+  if #missing > 0 then
+    text = text .. " It also needs: " .. table.concat(missing, ", ") .. "."
+  end
+  self:say(text, #missing > 0 and "error" or "info")
+end
+
+function Launcher:pickMod()
+  if self:requestHostPick("mod") then return end
+  local ok, FilePicker = pcall(require, "src.core.FilePicker")
+  if not (ok and FilePicker.available()) then
+    return self:say("Drop a mod .zip onto this window to install it.", "info")
+  end
+  local path = FilePicker.open("Choose a mod .zip", MOD_KIND)
+  if not path then return end
+  local data, err = FilePicker.read(path)
+  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
+  self:installMod(data, FilePicker.basename(path))
 end
 
 function Launcher:play(version, slotId)
@@ -452,6 +534,8 @@ function Launcher:filedropped(file)
   if isSaveName(fname) then
     return self:importSave(file, fname:match("[^/\\]+$") or fname)
   end
+  -- a .zip dropped on the Mods page is a mod; anywhere else, a zipped ROM
+  local asMod = self.page == "mods" and fname:lower():match("%.zip$") ~= nil
   local ok, data = pcall(function()
     file:open("r")
     local bytes = file:read()
@@ -462,6 +546,7 @@ function Launcher:filedropped(file)
   if not ok or type(data) ~= "string" then
     return self:say("Could not read the dropped file.", "error")
   end
+  if asMod then return self:installMod(data, name:match("[^/\\]+$") or name) end
   self:importData(data, name:match("[^/\\]+$") or name)
 end
 
@@ -475,7 +560,7 @@ end
 
 -- Hooks main.lua calls on any launcher when another screen hands control
 -- back (save editor, skin studio) or saves changed underneath it.
-function Launcher:focus() self:refresh() end
+function Launcher:focus() self:refresh() self.modRows = nil end
 function Launcher:savesChanged() self.slots = {} end
 function Launcher:resumeAfterOverlay() self:refresh() end
 function Launcher:prepareOverlayHandoff() end
@@ -613,9 +698,97 @@ function Launcher:drawNotes(x, y, w, h, s)
   Kit.scrollEnd(cx, cy, cw, viewH, self.notesScroll, maxAt, PAL.surface)
 end
 
+function Launcher:drawMods(x, y, w, h, s)
+  local v = self.selected
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
+  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
+  if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)),
+      "Back", { id = "mods-back", font = "small" }) then
+    self:queue(function() self.page = nil end)
+  end
+  Kit.textBold("title", "Mods", cx, cy, PAL.heading)
+  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
+  Kit.text("small", "For " .. GameVersion.info(v).displayName, cx, cy, PAL.muted)
+  cy = cy + Kit.textHeight("small") + math.floor(14 * s)
+
+  local rows = self:modsFor(v)
+  local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
+  local gap = math.floor(4 * s)
+  local hint = "Or drop a mod .zip onto this window. Changes apply the next "
+    .. "time the game starts."
+  local hintH = Kit.wrapHeight("micro", hint, cw)
+  local footH = btnH + math.floor(12 * s) + hintH
+  local viewH = math.max(rowH, y + h - pad - footH - math.floor(10 * s) - cy)
+  if #rows == 0 then
+    Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No mods installed")
+  else
+    local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
+    self.modScroll = Kit.scrollInput(self.modScroll or 0, maxAt, cx, cy, cw, viewH)
+    local py = Kit.scrollBegin(cx, cy, cw, viewH, self.modScroll, maxAt)
+    local rw = cw - Kit.scrollGutter(s)
+    local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Confirm") + math.floor(24 * s))
+    local bh = math.max(Kit.tapMin(), math.floor(32 * s))
+    for i, row in ipairs(rows) do
+      local ry = py + (i - 1) * (rowH + gap)
+      Kit.row(cx, ry, rw, rowH, false, "mod-" .. tostring(row.folder))
+      local tx = cx + math.floor(12 * s)
+      local textW = rw - 2 * bw - math.floor(36 * s)
+      Kit.text("button", Kit.ellipsize("button", row.name, textW), tx, ry + math.floor(6 * s), PAL.text)
+      local detail
+      if row.broken then
+        detail = "Broken: " .. row.broken
+      elseif not row.supported then
+        detail = "Not made for this game"
+      else
+        local parts = {}
+        if row.version then parts[#parts + 1] = "v" .. tostring(row.version) end
+        if row.author then parts[#parts + 1] = "by " .. tostring(row.author) end
+        if row.experimental then parts[#parts + 1] = "experimental" end
+        detail = table.concat(parts, "  -  ")
+        if detail == "" then detail = row.id end
+      end
+      Kit.text("micro", Kit.ellipsize("micro", detail, textW),
+        tx, ry + rowH - Kit.textHeight("micro") - math.floor(8 * s),
+        row.broken and PAL.red or PAL.muted)
+      local by = ry + (rowH - bh) / 2
+      local onX = cx + rw - 2 * bw - math.floor(16 * s)
+      local usable = not row.broken and row.supported
+      if Kit.button(onX, by, bw, bh, row.enabled and usable and "On" or "Off",
+          { id = "mod-toggle-" .. tostring(row.folder), font = "small",
+            kind = row.enabled and usable and "primary" or nil, enabled = usable }) then
+        self:queue(function() self:toggleMod(v, row) end)
+      end
+      local armed = self.armedDelete == "mod:" .. tostring(row.folder)
+      if row.bundled then
+        Kit.textCenter("micro", "Built in", onX + bw + math.floor(8 * s),
+          by + (bh - Kit.textHeight("micro")) / 2, bw, PAL.faint)
+      elseif Kit.button(onX + bw + math.floor(8 * s), by, bw, bh,
+          armed and "Confirm" or "Remove",
+          { id = "mod-remove-" .. tostring(row.folder), font = "small", kind = "danger" }) then
+        self:queue(function() self:removeMod(row) end, true)
+      end
+    end
+    Kit.scrollEnd(cx, cy, cw, viewH, self.modScroll, maxAt, PAL.surface)
+  end
+
+  local by = y + h - pad - btnH - hintH - math.floor(8 * s)
+  if Kit.button(cx, by, math.min(cw, math.floor(260 * s)), btnH, "Install mod .zip",
+      { id = "mod-install", kind = "accent" }) then
+    self:queue(function() self:pickMod() end)
+  end
+  Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
+end
+
 function Launcher:drawDetail(x, y, w, h, s)
   if self.page == "settings" then return self:drawSettings(x, y, w, h, s) end
   if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
+  if self.page == "mods" and self.selected and self.ready[self.selected] then
+    return self:drawMods(x, y, w, h, s)
+  end
   local v = self.selected
   if not v then return end
   local info = GameVersion.info(v)
@@ -654,6 +827,13 @@ function Launcher:drawDetail(x, y, w, h, s)
   end
 
   local slots = self:slotsFor(v)
+  do
+    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + math.floor(32 * s))
+    local mh = math.max(Kit.tapMin(), math.floor(32 * s))
+    if Kit.button(cx + cw - mw, y + pad, mw, mh, "Mods", { id = "mods", font = "small" }) then
+      self:queue(function() self.page = "mods"; self.modScroll = 0 end)
+    end
+  end
   Kit.caption(cx, cy, "SAVES", PAL.caption)
   cy = cy + Kit.textHeight("caption") + math.floor(8 * s)
   local rowH = math.max(Kit.tapMin(), math.floor(44 * s))

@@ -335,4 +335,76 @@ local wrapped = l.notesLines
 drawText(l)
 check(l.notesLines == wrapped, "and wraps them once, not every frame")
 
+-- ------------------------------------------------------------------- mods
+local modState = { cool = true, exp = false }
+local modCalls = { toggled = {}, removed = {}, installed = {} }
+package.loaded["src.mods.ModLibrary"] = {
+  list = function(version)
+    return {
+      { id = "cool", name = "Cool Mod", folder = "mods/cool", version = "1.0",
+        author = "someone", supported = true, enabled = modState.cool },
+      { id = "exp", name = "Experiment", folder = "mods/exp", experimental = true,
+        supported = true, enabled = modState.exp },
+      { id = "redonly", name = "Red Only", folder = "mods/redonly",
+        supported = version == "red", enabled = true },
+    }
+  end,
+  setEnabled = function(id, on, version)
+    modCalls.toggled[#modCalls.toggled + 1] = id .. "=" .. tostring(on) .. "@" .. version
+    modState[id] = on
+    return true
+  end,
+  uninstall = function(folder)
+    modCalls.removed[#modCalls.removed + 1] = folder
+    return true
+  end,
+  installZip = function(bytes, name)
+    modCalls.installed[#modCalls.installed + 1] = name
+    if bytes == "bad" then return nil, "no manifest.json in that .zip" end
+    return { id = "new", name = "New Mod", dependencies = { "base" } }
+  end,
+  missingDependencies = function() return { "base" } end,
+}
+window(1280, 720)
+l = fresh()
+l.selected = "gold"
+local dt = drawText(l)
+check(dt:find("Mods", 1, true) ~= nil, "an imported game offers its Mods page")
+l.page = "mods"
+local mt = drawText(l)
+check(mt:find("Cool Mod", 1, true) and mt:find("Experiment", 1, true),
+  "the Mods page lists installed mods")
+check(mt:find("Not made for this game", 1, true) ~= nil,
+  "a mod for another game says so")
+check(mt:find("Install mod .zip", 1, true) ~= nil, "and offers to install one")
+l:toggleMod("gold", l:modsFor("gold")[1])
+eq(modCalls.toggled[1], "cool=false@gold", "a toggle switches the mod for this game only")
+eq(l:modsFor("gold")[1].enabled, false, "and the page re-reads the answer")
+local cool = l:modsFor("gold")[1]
+l:removeMod(cool)
+eq(#modCalls.removed, 0, "the first Remove only arms")
+l:removeMod(cool)
+eq(modCalls.removed[1], "mods/cool", "the second uninstalls")
+l:installMod("zipbytes", "new.zip")
+check(l.message and l.message.text:find("New Mod", 1, true)
+  and l.message.text:find("base", 1, true), "an install names the mod and what it still needs")
+l:installMod("bad", "bad.zip")
+check(l.message.kind == "error" and l.message.text:find("no manifest", 1, true),
+  "a bad package is refused with the reason")
+local zipFile = { getFilename = function() return "/home/x/thing.zip" end,
+  open = function() end, close = function() end, read = function() return "zipbytes" end }
+local before = #modCalls.installed
+l:filedropped(zipFile)
+eq(#modCalls.installed, before + 1, "a .zip dropped on the Mods page installs as a mod")
+l.page = nil
+local importedData
+local realImport = l.importData
+l.importData = function(_, data) importedData = data end
+l:filedropped(zipFile)
+eq(importedData, "zipbytes", "elsewhere a dropped .zip is a ROM archive")
+l.importData = realImport
+window(390, 844)
+l.page = "mods"
+drawText(l)
+
 T.finish("pkgb launcher")
