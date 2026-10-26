@@ -3,7 +3,7 @@ local Version = require("src.core.Version")
 
 local IssueReport = {}
 
-local FORM_URL = "https://github.com/bryanthaboi/gen1recomp/issues/new"
+local FORM_URL = "https://github.com/awest813/gen1recomp/issues/new"
 local TEMPLATE = "bug_report.yml"
 
 local APPLE_MODELS = {

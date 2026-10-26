@@ -1,7 +1,7 @@
 # Anbernic RG34XXSP (Stock OS 64-bit MOD)
 
 Download `gen1recomp-*-rg34xxsp-stockos64-mod.zip` from
-[Releases](https://github.com/bryanthaboi/gen1recomp/releases). This build
+[Releases](https://github.com/awest813/gen1recomp/releases). This build
 targets **Stock OS 64-bit MOD** on the RG34XXSP with PortMaster installed
 (TF1).
 

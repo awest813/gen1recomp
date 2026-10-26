@@ -68,7 +68,7 @@ PACKAGE_ONLY=false
 INSTALL=false
 CREATE_IPA=false
 # Last resort for an incomplete source export, mirroring build_android.sh.
-MANIFEST_BASE_URL="${MANIFEST_BASE_URL:-https://raw.githubusercontent.com/bryanthaboi/gen1recomp/main}"
+MANIFEST_BASE_URL="${MANIFEST_BASE_URL:-https://raw.githubusercontent.com/awest813/gen1recomp/main}"
 MANIFESTS=""
 
 VERSION=""

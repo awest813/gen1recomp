@@ -40,7 +40,7 @@ local check, eq = T.check, T.eq
 love = love or require("tests.love_stub")
 
 -- The launcher touches two graphics calls the shared stub does not carry
--- (focus-ring joins, the footer's BCG invert shader); both are draw-only, so
+-- (focus-ring joins, the footer's former logo shader); both are draw-only, so
 -- inert fills are enough for the layout arithmetic under test.
 love.graphics.setLineJoin = love.graphics.setLineJoin or function() end
 love.graphics.newShader = love.graphics.newShader or function() return {} end

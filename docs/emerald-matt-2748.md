@@ -2,7 +2,7 @@
 
 ## Reproduced cause
 
-[Issue #2748](https://github.com/bryanthaboi/gen1recomp/issues/2748) reports
+Issue #2748 (in the original project's tracker) reports
 Matt missing and uninteractable in Aqua Hideout B2F on Android v3.60. The
 maintainer's comment asks whether Tate and Liza were defeated. No reporter
 save is attached, so this is a reproduced cause, not confirmation of the

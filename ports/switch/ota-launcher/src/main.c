@@ -108,7 +108,7 @@ static int run_update_flow(const char *install_dir) {
   ota_ui_show_progress("Step 2/3: Verifying...", "Checking file integrity.", 0.55f);
   char sums_url[512];
   snprintf(sums_url, sizeof(sums_url),
-           "https://github.com/bryanthaboi/gen1recomp/releases/download/%s/sha256sums.txt",
+           "https://github.com/awest813/gen1recomp/releases/download/%s/sha256sums.txt",
            rel.tag);
   if (ota_net_download_file(sums_url, sums_path, CHECK_TIMEOUT_MS, err, sizeof(err), NULL,
                             NULL) != 0) {

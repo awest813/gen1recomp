@@ -1,0 +1,26 @@
+{
+  "name": "PK:GB App Repo",
+  "identifier": "example.fixture.repo",
+  "apps": [
+    {
+      "name": "PK:GB",
+      "bundleIdentifier": "example.fixture",
+      "versions": [
+        {
+          "version": "1.4.2",
+          "date": "2026-10-01",
+          "size": 1,
+          "downloadURL": "https://example.invalid/pkgb-1.4.2.ipa",
+          "localizedDescription": "Download the right version for your device below.\n\n## Issues closed\n\n- #12 cart padding"
+        },
+        {
+          "version": "1.4.1",
+          "date": "2026-09-20",
+          "size": 1,
+          "downloadURL": "https://example.invalid/pkgb-1.4.1.ipa",
+          "localizedDescription": "Download the right version for your device below.\n\n## Issues closed\n\n- #11 save slot order"
+        }
+      ]
+    }
+  ]
+}

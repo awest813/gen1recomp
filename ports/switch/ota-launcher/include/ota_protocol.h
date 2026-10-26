@@ -16,7 +16,7 @@ extern "C" {
 #define OTA_BOOTSTRAP_ROMFS "romfs:/ota-bootstrap.nro"
 #define OTA_BOOTSTRAP_SD_NAME "ota-bootstrap.nro"
 #define OTA_RELEASES_API \
-  "https://api.github.com/repos/bryanthaboi/gen1recomp/releases/latest"
+  "https://api.github.com/repos/awest813/gen1recomp/releases/latest"
 
 /* Mirrors src/update/SwitchOta.lua — keep semantics in lockstep. */
 

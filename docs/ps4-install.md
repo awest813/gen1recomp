@@ -16,7 +16,7 @@ Silver, Crystal, FireRed and LeafGreen. They may work; reports are welcome.
 
 ## 1. Install the package
 
-1. Open [Releases](https://github.com/bryanthaboi/gen1recomp/releases) and
+1. Open [Releases](https://github.com/awest813/gen1recomp/releases) and
    download `gen1recomp-*-ps4.pkg` (optionally check it against its `.sha256`).
 2. Copy it to a USB drive formatted **exFAT** and plug it into the console.
 3. **Settings → Debug Settings → Game → Package Installer**, pick the file.

@@ -304,7 +304,7 @@ jobs:
         env:
           CERTIFICATE_BASE64: ${{ secrets.XBOX_UWP_SIGNING_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.XBOX_UWP_SIGNING_PASSWORD }}
-          CANONICAL_REPOSITORY: ${{ github.repository == 'bryanthaboi/gen1recomp' }}
+          CANONICAL_REPOSITORY: ${{ vars.CANONICAL_RELEASES == 'true' }}
         run: |
           if ($env:CANONICAL_REPOSITORY -eq 'true' -and
               [string]::IsNullOrWhiteSpace($env:CERTIFICATE_BASE64)) {
@@ -505,7 +505,7 @@ jobs:
   desktop:
     name: build macOS + Linux
     needs: [version, love-payload, shaderfx-bridge]
-    runs-on: ${{ fromJSON(github.repository == 'bryanthaboi/gen1recomp' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
+    runs-on: ${{ fromJSON(vars.CANONICAL_RELEASES == 'true' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
     concurrency:
       group: mac-signing-keychain
       cancel-in-progress: false
@@ -552,7 +552,7 @@ jobs:
           path: dist/payload
 
       - name: Import signing certificate into a temporary keychain
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         uses: ./.github/actions/mac-signing-keychain
 
       - name: Build macOS + Linux
@@ -566,7 +566,7 @@ jobs:
             --game-love dist/payload/game.love
 
       - name: Notarize & staple macOS app
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         run: |
           set -euo pipefail
           ci_dir="${POKEMON_CI_DIR:-$HOME/.config/pokemon-ci}"
@@ -611,13 +611,13 @@ jobs:
           retention-days: 7
 
       - name: Clean up signing keychain
-        if: ${{ always() && github.repository == 'bryanthaboi/gen1recomp' }}
+        if: ${{ always() && vars.CANONICAL_RELEASES == 'true' }}
         run: security delete-keychain "$RUNNER_TEMP/pokemon-signing.keychain-db" 2>/dev/null || true
 
   android:
     name: build Android
     needs: [version, shaderfx-bridge]
-    runs-on: ${{ fromJSON(github.repository == 'bryanthaboi/gen1recomp' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
+    runs-on: ${{ fromJSON(vars.CANONICAL_RELEASES == 'true' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
     steps:
       # The self-hosted runner lives under the machine owner's home
       # directory; mask it first so absolute paths in every later step's
@@ -675,7 +675,7 @@ jobs:
   ios:
     name: build iOS
     needs: [version, shaderfx-bridge]
-    runs-on: ${{ fromJSON(github.repository == 'bryanthaboi/gen1recomp' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
+    runs-on: ${{ fromJSON(vars.CANONICAL_RELEASES == 'true' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
     concurrency:
       group: mac-signing-keychain
       cancel-in-progress: false
@@ -690,7 +690,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Import signing certificate into a temporary keychain
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         uses: ./.github/actions/mac-signing-keychain
 
       - name: Download the iOS ShaderFX bridge
@@ -706,7 +706,7 @@ jobs:
 
       - name: Build iOS
         env:
-          CANONICAL_REPOSITORY: ${{ github.repository == 'bryanthaboi/gen1recomp' }}
+          CANONICAL_REPOSITORY: ${{ vars.CANONICAL_RELEASES == 'true' }}
           SHADERFX_BRIDGE_IOS: ${{ github.workspace }}/dist/native/ios/liblibrashader_bridge.a
         run: |
           set -euo pipefail
@@ -728,13 +728,13 @@ jobs:
           retention-days: 7
 
       - name: Clean up signing keychain
-        if: ${{ always() && github.repository == 'bryanthaboi/gen1recomp' }}
+        if: ${{ always() && vars.CANONICAL_RELEASES == 'true' }}
         run: security delete-keychain "$RUNNER_TEMP/pokemon-signing.keychain-db" 2>/dev/null || true
 
   switch:
     name: build Switch
     needs: version
-    runs-on: ${{ fromJSON(github.repository == 'bryanthaboi/gen1recomp' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
+    runs-on: ${{ fromJSON(vars.CANONICAL_RELEASES == 'true' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
     steps:
       # The self-hosted runner lives under the machine owner's home
       # directory; mask it first so absolute paths in every later step's
@@ -824,7 +824,7 @@ jobs:
   rg34xxsp:
     name: build Anbernic RG34XXSP port
     needs: [version, shaderfx-bridge]
-    runs-on: ${{ fromJSON(github.repository == 'bryanthaboi/gen1recomp' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
+    runs-on: ${{ fromJSON(vars.CANONICAL_RELEASES == 'true' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
     steps:
       # The self-hosted runner lives under the machine owner's home
       # directory; mask it first so absolute paths in every later step's
@@ -862,7 +862,7 @@ jobs:
   linux-arm-sbc:
     name: build Linux ARM SBC PortMaster port
     needs: [version, shaderfx-bridge]
-    runs-on: ${{ fromJSON(github.repository == 'bryanthaboi/gen1recomp' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
+    runs-on: ${{ fromJSON(vars.CANONICAL_RELEASES == 'true' && '["self-hosted", "macOS"]' || '"macos-latest"') }}
     steps:
       # The self-hosted runner lives under the machine owner's home
       # directory; mask it first so absolute paths in every later step's
@@ -906,7 +906,7 @@ jobs:
   notes:
     name: write release notes
     needs: version
-    if: github.repository == 'bryanthaboi/gen1recomp'
+    if: vars.CANONICAL_RELEASES == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -1036,7 +1036,7 @@ jobs:
   windows-sign:
     name: build and sign Windows (separate run)
     needs: [version, love-payload, native-tls-win, shaderfx-bridge]
-    if: github.repository == 'bryanthaboi/gen1recomp'
+    if: vars.CANONICAL_RELEASES == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 100
     steps:
@@ -1090,7 +1090,7 @@ jobs:
 
   release:
     needs: [version, notes, love-payload, web, xbox-uwp, linux-arm64, linux-flatpak, desktop, windows-sign, android, ios, switch, ps4, rg34xxsp, linux-arm-sbc]
-    if: github.repository == 'bryanthaboi/gen1recomp'
+    if: vars.CANONICAL_RELEASES == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -1184,7 +1184,7 @@ jobs:
           path: dist/flatpak
 
       - name: Stage release assets
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         id: assets
         run: |
           set -euo pipefail
@@ -1266,7 +1266,7 @@ jobs:
           cat "$outdir/sha256sums.txt"
 
       - name: Publish GitHub Release
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1309,7 +1309,7 @@ jobs:
           echo "Published release $tag"
 
       - name: Update iOS app repository
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         run: |
           set -euo pipefail
           v="${{ needs.version.outputs.version }}"
@@ -1322,7 +1322,7 @@ jobs:
           size="$(wc -c < "$ipa" | tr -d '[:space:]')"
           download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${v}/gen1recomp++-${v}-ios.ipa"
           bundle_id="com.theboisclub.gen1recompplusplus"
-          localized_description="Gen1Recomp - A native Lua / LÖVE2D recreation of Gen 1 Poke"
+          localized_description="PK:GB - A native Lua / LÖVE2D recreation of Gen 1 Pokémon"
           release_notes="$(GH_TOKEN="${{ github.token }}" gh release view "v${v}" --json body --jq '.body // ""' 2>/dev/null || true)"
           if [ -n "$release_notes" ]; then
             localized_description="$release_notes"
@@ -1353,7 +1353,7 @@ jobs:
       # RELEASE_DEPLOY_KEY deploy key over SSH; the workflow's GITHUB_TOKEN
       # would be rejected by the branch protection.
       - name: Commit iOS app repository
-        if: github.repository == 'bryanthaboi/gen1recomp'
+        if: vars.CANONICAL_RELEASES == 'true'
         env:
           DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
         run: |

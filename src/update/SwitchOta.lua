@@ -8,7 +8,7 @@
 local SwitchOta = {}
 
 SwitchOta.RELEASES_API =
-  "https://api.github.com/repos/bryanthaboi/gen1recomp/releases/latest"
+  "https://api.github.com/repos/awest813/gen1recomp/releases/latest"
 SwitchOta.OTA_ASSET_PATTERN = "^gen1recomp%-(%d+%.%d+%.%d+)%-switch%.zip$"
 SwitchOta.CHECK_TIMEOUT_SEC = 6
 SwitchOta.GAME_NRO_NAME = "gen1recomp-game.nro"

@@ -19,7 +19,7 @@ concurrency:
 
 env:
   CART_ID: "{{CART_ID}}"
-  CARTKIT_REPO: bryanthaboi/gen1recomp
+  CARTKIT_REPO: awest813/gen1recomp
   CARTKIT_REF: dev
 
 jobs:

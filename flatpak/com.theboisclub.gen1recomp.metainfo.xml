@@ -15,11 +15,11 @@
   </description>
   <launchable type="desktop-id">com.theboisclub.gen1recomp.desktop</launchable>
   <url type="homepage">https://gen1re.com/</url>
-  <url type="vcs-browser">https://github.com/bryanthaboi/gen1recomp</url>
+  <url type="vcs-browser">https://github.com/awest813/gen1recomp</url>
   <screenshots>
     <screenshot type="default">
       <caption>Launcher</caption>
-      <image>https://raw.githubusercontent.com/bryanthaboi/gen1recomp/main/assets/logo/gen1recomp_cover.png</image>
+      <image>https://raw.githubusercontent.com/awest813/gen1recomp/main/assets/logo/gen1recomp_cover.png</image>
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1"/>

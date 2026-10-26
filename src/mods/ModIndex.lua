@@ -636,11 +636,13 @@ local function loadOptions()
   return require("src.core.SaveData").loadOptions()
 end
 
-local BUILTIN = ModIndex.resolveSource("bryanthaboi/gen1recomp-mod-index")
-BUILTIN.url = "bryanthaboi/gen1recomp-mod-index"
+-- No index ships built in: the player adds the indexes they trust (MODS >
+-- Search > indexes), and a mod .zip imports without one.  BUILTIN stays a
+-- named slot so a build that does ship one sets it here and nowhere else.
+local BUILTIN = nil
 
 function ModIndex.isBuiltIn(feed)
-  return feed == BUILTIN.feed
+  return BUILTIN ~= nil and feed == BUILTIN.feed
 end
 
 -- The player's index list plus the built-in source.  Rows are { url, feed, base, fallback,
@@ -659,7 +661,7 @@ function ModIndex.sources()
       if ModIndex.isBuiltIn(row.feed) then hasBuiltin = true end
     end
   end
-  if not hasBuiltin then
+  if BUILTIN and not hasBuiltin then
     local row = {}
     for k, v in pairs(BUILTIN) do row[k] = v end
     out[#out + 1] = row

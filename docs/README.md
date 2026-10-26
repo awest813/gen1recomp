@@ -1,8 +1,6 @@
 # Documentation
 
-These docs cover the port itself. Guides for modding, link play, the save
-editor, and developer setup live on the
-[project wiki](https://github.com/bryanthaboi/gen1recomp/wiki).
+These docs cover the port itself.
 
 ## Guides
 

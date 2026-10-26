@@ -15,6 +15,10 @@ local Kit = require("src.ui.kit.Kit")
 local RomImporter = require("src.import.RomImporter")
 local LauncherView = require("src.import.LauncherView")
 local PatchNotes = require("src.update.PatchNotes")
+-- a fixed two-release feed, so the checks below do not depend on what the
+-- shipped mobile/ios/app-repo.json happens to list
+local REPO_FIXTURE = "tests/fixture_data/app_repo_sample.json"
+PatchNotes.REPO_FILES = { REPO_FIXTURE }
 
 local function window(w, h)
   love.graphics.getDimensions = function() return w, h end
@@ -75,10 +79,10 @@ do
 end
 
 do
-  local f = assert(io.open("mobile/ios/app-repo.json", "rb"))
+  local f = assert(io.open(REPO_FIXTURE, "rb"))
   local list = PatchNotes.parseRepo(f:read("*a"))
   f:close()
-  check(#list >= 2, "app-repo.json stashes more than one release")
+  check(#list >= 2, "the feed stashes more than one release")
   local notes, ver = PatchNotes.fromRepo(list[2].version)
   eq(ver, list[2].version, "fromRepo can pick a specific stashed version")
   eq(notes, list[2].notes, "fromRepo returns that version's notes")

@@ -63,7 +63,7 @@ local osName    = (love.system and love.system.getOS and love.system.getOS()) or
 local isWindows = osName == "Windows"
 local saveDir   = love.filesystem.getSaveDirectory()
 
-local API_URL = "https://api.github.com/repos/bryanthaboi/gen1recomp/releases/latest"
+local API_URL = "https://api.github.com/repos/awest813/gen1recomp/releases/latest"
 
 -- ---------------------------------------------------------------------------
 -- shell / fetch

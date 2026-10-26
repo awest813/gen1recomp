@@ -1,15 +1,7 @@
 # Native modding
 
-The modding book lives on the
-[project wiki](https://github.com/bryanthaboi/gen1recomp/wiki).
-
-- [Getting started](https://github.com/bryanthaboi/gen1recomp/wiki/Getting-Started)
-  — install a mod, write a first one, enable and disable it.
-- [Tutorials](https://github.com/bryanthaboi/gen1recomp/wiki/Tutorials)
-  — twelve dependency-ordered rungs, each a runnable mod.
-- [Cookbook](https://github.com/bryanthaboi/gen1recomp/wiki/Cookbook)
-  — task-sized recipes.
-- [Registry reference](https://github.com/bryanthaboi/gen1recomp/wiki/Reference-Registries)
+- Shipped example mods, one per kind of author: [mods/](../mods/).
+- [Registry reference](modding/reference/registries.md)
   — every registry, generated from `src/mods/Schemas.lua`.
 
 Regenerate the reference. With no argument it writes in-repo, to

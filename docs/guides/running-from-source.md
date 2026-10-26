@@ -10,7 +10,6 @@ scripts/run.sh
 
 then `love .` for later launches.
 
-Windows PowerShell scripts, the optional developer data build, test suites,
-and cache management are covered in the
-[Developer Setup guide](https://github.com/bryanthaboi/gen1recomp/wiki/Guide-Developer-Setup).
+Windows PowerShell scripts live in `scripts/`; test suites run with
+`scripts/test.sh` (see its header for the tiers).
 Runtime internals are in [architecture.md](../architecture.md).

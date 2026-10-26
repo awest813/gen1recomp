@@ -47,8 +47,8 @@ VERSION="${GEN1RECOMP_VERSION:-}"
 
 # Official PortMaster LÖVE 11.5 aarch64 runtime (small love stub + liblove).
 PM_RUNTIME_BASE="https://raw.githubusercontent.com/PortsMaster/PortMaster-GUI/main/PortMaster/runtimes/love_${LOVE_VERSION}"
-RELEASES_LATEST_URL="https://github.com/bryanthaboi/gen1recomp/releases/latest"
-RELEASE_TARBALL_BASE="https://github.com/bryanthaboi/gen1recomp/archive/refs/tags"
+RELEASES_LATEST_URL="https://github.com/awest813/gen1recomp/releases/latest"
+RELEASE_TARBALL_BASE="https://github.com/awest813/gen1recomp/archive/refs/tags"
 
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2; }
@@ -441,7 +441,7 @@ cat > "$PORT_ROOT/port.json" <<EOF
   "attr": {
     "title": "gen1recomp-sbc",
     "desc": "Native LÖVE2D recreation of Pokemon Red and Blue. Supply your own legal US Red or Blue ROM.",
-    "source": "https://github.com/bryanthaboi/gen1recomp/releases/tag/$SOURCE_TAG",
+    "source": "https://github.com/awest813/gen1recomp/releases/tag/$SOURCE_TAG",
     "inst": "Requires a 64-bit Linux ARM handheld with PortMaster. Copy a canonical US Red or Blue .gb into gen1recomp-sbc/lovegame/, then launch and press Choose ROM.",
     "genres": ["adventure", "rpg"],
     "porter": ["gen1recomp-sbc"],

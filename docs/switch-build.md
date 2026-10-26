@@ -183,7 +183,7 @@ or the Switch-related workflow YAML), CI runs:
    `luajit tests/engine/nx_yellow_boot_test.lua`,
    `luajit tests/engine/cache_fs_gold_nx_load_test.lua`).
 2. **Fused NRO build** only on the **main** repository
-   (`bryanthaboi/gen1recomp`), on the self-hosted Mac runner
+   (the repository with the `CANONICAL_RELEASES` variable set), on the self-hosted Mac runner
    (`scripts/build_switch.sh --fetch --fused`), and only when the workflow
    head is that repo (same-repo push/PR). Fork CI never runs fused. Fork PRs into the main repo also skip Switch fused (offline selftest still runs) so untrusted head code is not executed on the self-hosted Mac; iOS device build eligibility is unchanged. Fused also waits for a successful offline selftest before starting on the Mac runner.
 3. On successful PR fused builds, a follow-up workflow posts a PR comment

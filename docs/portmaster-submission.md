@@ -6,7 +6,7 @@ Current requirements: https://portmaster.games/packaging.html
 
 ## Permission
 
-On 6 October 2026, project owner bryanthaboi replied “Explicit permission
+On 6 October 2026, the original project's owner replied “Explicit permission
 granted” to Nexhas's request to permit PortMaster distribution of the proprietary
 launcher. The supplied private-message screenshot is retained by the requester;
 it is not bundled or published. LICENSE.MD records the narrow distribution

@@ -81,7 +81,7 @@ Inboxes (drop files here via MTP / SD / FTP):
   imports/saves/red|blue|yellow|gold|silver|crystal/  - raw .sav import (Gen 2 cart .sav not yet)
   exports/red|blue|yellow|gold|silver|crystal/        - pull after Export save (Gen 2 not yet)
 
-Full guide: https://github.com/bryanthaboi/gen1recomp/blob/main/docs/switch-install.md
+Full guide: https://github.com/awest813/gen1recomp/blob/main/docs/switch-install.md
 EOF
 
 write_readme() {

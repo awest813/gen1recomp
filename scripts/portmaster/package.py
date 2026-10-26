@@ -58,7 +58,7 @@ def main():
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT))
     (game / "SOURCE.txt").write_text(
-        f"https://github.com/bryanthaboi/gen1recomp\nRevision: {revision}\n"
+        f"https://github.com/awest813/gen1recomp\nRevision: {revision}\n"
         f"Version: {args.version}\nTracked working-tree changes: {dirty}\n"
         "Testing candidate; hardware validation pending.\n")
     for name in ("Gen1Recomp.sh", "README.md"):

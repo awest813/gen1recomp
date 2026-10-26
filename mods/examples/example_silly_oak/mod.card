@@ -2,7 +2,7 @@
 return {
   summary = "Oak asks dumb questions during the intro and remembers your answers.",
   author = "Pokemon Gen 1 Recompilation Project",
-  contact = "https://github.com/bryanthaboi/gen1recomp",
+  contact = "https://github.com/awest813/gen1recomp",
   tags = { "intro", "ui", "oak", "hooks" },
   differences = {
     changed = {

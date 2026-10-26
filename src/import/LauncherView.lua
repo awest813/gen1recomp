@@ -55,7 +55,6 @@ function LauncherView.hasQuitButton(imp)
   return not imp.ios and not require("src.core.Platform").systemQuit()
 end
 
-local COMMUNITY_URL = "https://bois.icu"
 
 -- One dedup window covers a touch release plus the mouse click SDL
 -- synthesizes for the same tap.
@@ -3643,18 +3642,17 @@ end
 
 -- ------------------------------------------------------------------ footer
 
-local TRUST_WARNING = "if you did not get this from bryanthaboi's github "
-  .. "or a link from the discord that bryanthaboi himself posted, just know "
-  .. "it might have been tampered with. go to the discord to verify "
-  .. COMMUNITY_URL .. " (or click the logo above)"
+-- The attribution LICENSE.MD (Additional Terms, 1) requires inside any
+-- launcher.  Kept verbatim; the repository URL inside it is the link.
+local CREDIT_URL = "https://github.com/bryanthaboi/gen1recomp"
+local CREDIT = "Based on the Pokemon Gen 1 Recompilation Project by BOIS CLUB "
+  .. "GAMES, LLC (" .. CREDIT_URL .. ")"
+LauncherView.CREDIT = CREDIT
 
--- Mark + optional updater + Patch notes.  Chips match the mark's 22px
--- height so they do not read as bigger than the logo; the row can still
--- be tapMin tall for spacing.  On a phone the notes chip drops onto a
--- second row rather than overflowing the mark.
-local function footerLayout(imp, m, markW)
-  local markH = math.floor(22 * m.s)
-  local rowH = math.max(markH, Kit.tapMin())
+-- Optional updater + Patch notes, centred as one row of small chips.
+local function footerLayout(imp, m)
+  local chipH = math.floor(22 * m.s)
+  local rowH = math.max(chipH, Kit.tapMin())
   local notesLabel = Strings("Patch notes")
   -- Tight chip, still enough for Kit.button's labelInset so the words survive.
   local chipPad = math.floor(24 * m.s)
@@ -3663,125 +3661,66 @@ local function footerLayout(imp, m, markW)
   local uw = upStatus
     and (Kit.textWidth("micro", upLabel) + chipPad) or 0
   local gap = math.floor(10 * m.s)
-  local inner = m.w - 2 * m.pad
-  local topW = (markW or 0) + (upStatus and (gap + uw) or 0) + gap + nw
   return {
-    rowH = rowH, chipH = markH, gap = gap,
+    rowH = rowH, chipH = chipH, gap = gap,
     notesLabel = notesLabel, nw = nw,
     upStatus = upStatus, upLabel = upLabel, upAction = upAction, upGlow = upGlow,
-    uw = uw, wrap = topW > inner,
+    uw = uw, rowW = nw + (upStatus and (gap + uw) or 0),
   }
 end
 
--- Pinned to the bottom of the window; returns the y it starts at, so the
--- panels above know how much room they have.
--- Deliberately compact: at a large UI scale the footer is pure overhead
--- competing with the panel for a short window's height, so the mark and the
--- link share one line and the trust warning is capped at a single line.
+-- Pinned to the bottom of the page column; returns its height, so the
+-- panels above know how much room they have.  The credit wraps in full
+-- (truncating a required credit defeats it), and the bottom pad keeps its
+-- last line off the window edge.
 local function footerHeight(imp, m)
-  -- Top pad + mark/update row + optional notes wrap row + gap + the FULL
-  -- wrapped trust message + bottom pad.  The message wraps to as many lines
-  -- as it needs: truncating a trust warning defeats its purpose, and the
-  -- bottom pad is not optional either (without it the last line sits flush
-  -- on the window edge and its lower half clips off).  The row is tapMin
-  -- tall because the small update button rides beside the mark.
-  local f = footerLayout(imp, m, math.floor(130 * m.s))
-  local h = math.floor(8 * m.s) + f.rowH + math.floor(6 * m.s)
-  if f.wrap then h = h + f.chipH + math.floor(6 * m.s) end
-  return h + Kit.wrapHeight("micro", TRUST_WARNING, m.contentW)
-    + math.floor(8 * m.s)
+  local f = footerLayout(imp, m)
+  return math.floor(8 * m.s) + f.rowH + math.floor(6 * m.s)
+    + Kit.wrapHeight("micro", CREDIT, m.contentW) + math.floor(8 * m.s)
 end
 
 local function buildFooter(imp, m, y)
   Theme.fill(m.x, y, m.w, 1, PAL.line, Theme.A.hairline)
   local cy = y + math.floor(8 * m.s)
-  -- The BCG mark is dark ink; invert it for the black field.
-  -- false (not nil) once a compile has failed, so a driver that rejects it
-  -- (a strict GLSL ES / WebGL one) costs one attempt and the mark draws plain
-  if imp.invertShader == nil then
-    local ok, shader = pcall(love.graphics.newShader, [[
-      vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
-        vec4 p = Texel(tex, tc);
-        return vec4((vec3(1.0) - p.rgb) * color.rgb, p.a * color.a);
-      }
-    ]])
-    imp.invertShader = ok and shader or false
-  end
-  local bw, bh = imp.bcg:getDimensions()
-  local scale = math.min((130 * m.s) / bw, (22 * m.s) / bh)
-  local dw, dh = bw * scale, bh * scale
-  local f = footerLayout(imp, m, dw)
-  local rowH, gap, chipH = f.rowH, f.gap, f.chipH
-  -- The mark, the small self-update control, and Patch notes share the row,
-  -- centred as a group.  The updater moved down here from the header, where
-  -- it overlapped the wordmark on a phone; small on purpose, its glow still
-  -- carries the "act on me" signal.  Notes wrap under the mark on a phone.
-  local topW = dw + (f.upStatus and (gap + f.uw) or 0)
-  if not f.wrap then topW = topW + gap + f.nw end
-  local bx = m.x + math.floor((m.w - topW) / 2)
-  local my = cy + math.floor((rowH - dh) / 2)
-  local chipY = cy + math.floor((rowH - chipH) / 2)
-  local isFocused = Kit.focusable("bcg", bx, my, dw, dh)
-  local hot = Kit.hover(bx, my, dw, dh)
-  if isFocused then
-    local glowPulse = 0.5 + 0.5 * math.sin(Kit.time * 5)
-    Theme.strokeRounded(bx - 3, my - 3, dw + 6, dh + 6, PAL.ink, 0.35 + 0.25 * glowPulse, 2.5, 4)
-    Theme.strokeRounded(bx, my, dw, dh, PAL.ink, 0.95 + 0.05 * glowPulse, 2, 2)
-  end
-  love.graphics.setShader(imp.invertShader or nil)
-  love.graphics.setColor(1, 1, 1, (hot or isFocused) and 1 or 0.85)
-  love.graphics.draw(imp.bcg, Theme.snap(bx), Theme.snap(my), 0, scale, scale)
-  love.graphics.setShader()
-  love.graphics.setColor(1, 1, 1, 1)
-  if Kit.press(bx, my, dw, dh) or Kit._activateId == "bcg" then
-    queueAction(imp, "bcg", function() love.system.openURL(COMMUNITY_URL) end)
-  end
-  local cx = bx + dw
+  local f = footerLayout(imp, m)
+  local gap, chipH = f.gap, f.chipH
+  -- The small self-update control and Patch notes share the row, centred
+  -- as a group; the updater's glow carries the "act on me" signal.
+  local cx = m.x + math.floor((m.w - f.rowW) / 2)
+  local chipY = cy + math.floor((f.rowH - chipH) / 2)
   if f.upStatus then
-    cx = cx + gap
     btn(imp, cx, chipY, f.uw, chipH, "updater",
       f.upLabel, {
         kind = f.upGlow and "warn" or "ghost", font = "micro",
         glow = f.upGlow, action = f.upAction,
       })
-    cx = cx + f.uw
+    cx = cx + f.uw + gap
   end
-  local function notesBtn(x, y)
-    btn(imp, x, y, f.nw, chipH, "patch-notes", f.notesLabel, {
-      kind = "ghost", font = "micro",
-      action = function() imp._appPatchNotes = true end,
-    })
-  end
-  if f.wrap then
-    cy = cy + rowH + gap
-    notesBtn(m.x + math.floor((m.w - f.nw) / 2), cy)
-    cy = cy + chipH + math.floor(6 * m.s)
-  else
-    notesBtn(cx + gap, chipY)
-    cy = cy + rowH + math.floor(6 * m.s)
-  end
-  -- The trust message wraps in full, each line centred under the mark, and
-  -- the URL inside it IS the link -- no separate link floating elsewhere.
-  -- font:getWrap never splits an unspaced word, so the URL stays whole on
-  -- one line and a plain substring find locates it.
-  local lines = Kit.wrapLines("micro", TRUST_WARNING, m.contentW)
+  btn(imp, cx, chipY, f.nw, chipH, "patch-notes", f.notesLabel, {
+    kind = "ghost", font = "micro",
+    action = function() imp._appPatchNotes = true end,
+  })
+  cy = cy + f.rowH + math.floor(6 * m.s)
+  -- The credit wraps in full, each line centred, and the URL inside it IS
+  -- the link.  font:getWrap never splits an unspaced word, so the URL stays
+  -- whole on one line and a plain substring find locates it.
+  local lines = Kit.wrapLines("micro", CREDIT, m.contentW)
   local lh = Kit.textHeight("micro")
   for i, line in ipairs(lines or {}) do
     local lw = Kit.textWidth("micro", line)
     local lx = m.contentX + math.floor((m.contentW - lw) / 2)
     local ly = cy + (i - 1) * lh
-    local s0, e0 = line:find(COMMUNITY_URL, 1, true)
+    local s0, e0 = line:find(CREDIT_URL, 1, true)
     if s0 then
       local pre = line:sub(1, s0 - 1)
-      local url = line:sub(s0, e0)
       Kit.text("micro", pre, lx, ly, PAL.muted)
       local ux = lx + Kit.textWidth("micro", pre)
-      local uw = Kit.textWidth("micro", url)
-      Kit.text("micro", url, ux, ly, PAL.blue)
+      local uw = Kit.textWidth("micro", CREDIT_URL)
+      Kit.text("micro", CREDIT_URL, ux, ly, PAL.blue)
       Theme.fill(ux, ly + lh - 1, uw, 1, PAL.blue, 0.6)
       if Kit.press(ux, ly, uw, lh) then
-        queueAction(imp, "bois", function()
-          love.system.openURL(COMMUNITY_URL)
+        queueAction(imp, "credit-link", function()
+          love.system.openURL(CREDIT_URL)
         end)
       end
       Kit.text("micro", line:sub(e0 + 1), ux + uw, ly, PAL.muted)

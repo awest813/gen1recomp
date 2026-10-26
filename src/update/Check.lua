@@ -20,7 +20,7 @@
 local Check = {}
 local Platform = require("src.core.Platform")
 
-Check.REPO = "bryanthaboi/gen1recomp"
+Check.REPO = "awest813/gen1recomp"
 
 -- Full native packages are deliberately named by release target, not by the
 -- generic .love payload.  Keeping the mapping here makes the release parser,
@@ -308,7 +308,7 @@ function Check.fullUpdateAction()
   end
   if osName == "iOS" then
     return { label = "Re-sideload app", url =
-      "https://github.com/bryanthaboi/gen1recomp/raw/refs/heads/main/mobile/ios/app-repo.json" }
+      "https://github.com/awest813/gen1recomp/raw/refs/heads/main/mobile/ios/app-repo.json" }
   elseif osName == "UWP" then
     return { label = "Open Xbox install guide", url = Check.releaseUrl() }
   elseif osName == "Linux" and type(st.full) == "table"

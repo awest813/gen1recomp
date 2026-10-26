@@ -27,7 +27,7 @@ check(not xml:find("LicenseRef-proprietary", 1, true),
   "AppStream metainfo must not claim proprietary")
 check(xml:find('url type="homepage">https://gen1re.com/</url>', 1, true),
   "AppStream metainfo homepage is gen1re.com")
-check(xml:find('url type="vcs-browser">https://github.com/bryanthaboi/gen1recomp</url>', 1, true),
+check(xml:find('url type="vcs-browser">https://github.com/awest813/gen1recomp</url>', 1, true),
   "AppStream metainfo vcs-browser points at the public repo")
 
 print("ok")

@@ -6,11 +6,9 @@ real map editor and exported back out as a mod. The original had no map
 editor at all; the port's own map data is plain Lua, which is what makes
 this a data path rather than an asset path.
 
-Editing is done in our own Tiled build,
-[bryanthaboi/tiled_gen1recomp](https://github.com/bryanthaboi/tiled_gen1recomp/releases),
-which ships the `gen1-mod-export` extension the workspace relies on. Grab it
-from that repo's releases; upstream Tiled opens the workspace but cannot
-export a mod out of it.
+Editing needs a Tiled build that ships the `gen1-mod-export` extension the
+workspace relies on; upstream Tiled opens the workspace but cannot export a
+mod out of it.
 
 ```sh
 python3 tools/tiled_export.py          # -> build/tiled/ (gitignored)

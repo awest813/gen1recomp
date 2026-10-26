@@ -49,7 +49,7 @@ import zlib
 
 CARTKIT_VERSION = "1.0.0"
 USER_AGENT = ("cartkit/%s (gen1recomp custom carts; "
-              "+https://github.com/bryanthaboi/gen1recomp)" % CARTKIT_VERSION)
+              "+https://github.com/awest813/gen1recomp)" % CARTKIT_VERSION)
 
 CART_FILE = "cart.json"
 CART_EXT = ".g1rcart"

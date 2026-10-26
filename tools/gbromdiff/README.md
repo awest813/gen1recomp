@@ -82,7 +82,7 @@ point at it between iterations.
 ## Context
 
 The Spanish Red and Blue releases are supported in
-[gen1recomp](https://github.com/bryanthaboi/gen1recomp) by way of
+[gen1recomp](https://github.com/awest813/gen1recomp) by way of
 [einstein95/pokered-es](https://github.com/einstein95/pokered-es), a
 shift-matching disassembly whose `.sym` files provide Spanish addresses for
 every symbol.

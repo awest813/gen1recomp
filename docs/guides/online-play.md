@@ -17,6 +17,6 @@ The in-game LINK menu is still there and is local network only.
 
 ## More
 
-- [Link play guide](https://github.com/bryanthaboi/gen1recomp/wiki/Guide-Link-Play): START > LINK connects two copies directly over UDP.
+- Link play: START > LINK connects two copies directly over UDP.
 - [Link security](../link-security.md): what link play defends against, and what it doesn't.
 - [Rulesets](rulesets.md)

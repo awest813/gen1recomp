@@ -16,7 +16,7 @@ help from [booshankles](https://github.com/booshankles).
 ## 1. Download the zip
 
 1. Open
-   [Releases](https://github.com/bryanthaboi/gen1recomp/releases).
+   [Releases](https://github.com/awest813/gen1recomp/releases).
 2. Download `gen1recomp-*-switch.zip` for the version you want.
    (Optional: verify against `sha256sums.txt` in the same release.)
 

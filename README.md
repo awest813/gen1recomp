@@ -4,27 +4,8 @@ PK:GB (Pokémon GameBoy, formerly G1R Deluxe / Gen1Recomp) is a native [LÖVE](h
 
 <p align="center"><img src="assets/logo/logo.png" alt="PK:GB"></p>
 
-> [!CAUTION]
-> This project is not affiliated with `gen1recomp.com`. That site is not run by this project, was not authorized to speak for it, and has hosted adware. Do not download anything from it. The official sources are this GitHub repository, the [Discord](https://bois.icu), and <https://gen1re.com>.
-
-<p align="center">
-
-<a href="https://bois.icu"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-<a href="https://www.youtube.com/@bryanthaboi"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
-<a href="https://www.tiktok.com/@bryanthaboi"><img src="https://img.shields.io/badge/TikTok-000000?style=for-the-badge&logo=tiktok&logoColor=white" alt="TikTok"></a>
-<a href="https://x.com/bryanthaboi"><img src="https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white" alt="X"></a>
-<a href="https://bsky.app/profile/bryanthaboi.live"><img src="https://img.shields.io/badge/Bluesky-0285FF?style=for-the-badge&logo=bluesky&logoColor=white" alt="Bluesky"></a>
-<a href="https://www.instagram.com/bryanthaboi"><img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram"></a>
-
-</p>
-
-<p align="center">
-<a href="https://www.polygon.com/pokemon-red-blue-3d-voxel-mod-battle-pixels-gameplay-footage-remake/"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-POLYGON-ea2e49?style=for-the-badge" alt="As seen on Polygon"></a>
-<a href="https://kotaku.com/pokemon-red-blue-recompilation-project-voxel-3d-mod-2000720281"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-KOTAKU-ea2e49?style=for-the-badge" alt="As seen on Kotaku"></a>
-<a href="https://www.digitalfoundry.net/news/2026/07/pokemon-yellow-voxel-mod-turns-the-original-gameboy-code-into-a-stunning-world"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-DIGITAL%20FOUNDRY-ea2e49?style=for-the-badge" alt="As seen on Digital Foundry"></a>
-<a href="https://www.androidauthority.com/unofficial-android-port-pokemon-red-blue-yellow-3692724/"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-ANDROID%20AUTHORITY-ea2e49?style=for-the-badge" alt="As seen on Android Authority"></a>
-<a href="https://www.xda-developers.com/this-amazing-pokemon-red-and-blue-voxel-mod-adds-a-3d-perspective-without-an-emulator/"><img src="https://img.shields.io/badge/AS%20SEEN%20ON-XDA%20DEVELOPERS-ea2e49?style=for-the-badge" alt="As seen on XDA Developers"></a>
-</p>
+Based on the Pokemon Gen 1 Recompilation Project by BOIS CLUB GAMES, LLC
+(https://github.com/bryanthaboi/gen1recomp).
 
 AI use on this project is disclosed in [AIDisclosure.md](AIDisclosure.md).
 
@@ -44,7 +25,7 @@ Every **web** workflow run also uploads `gen1recomp-web`, and releases ship `gen
 
 ## Play on a computer or phone
 
-1. Download the build for your platform from the [latest release](https://github.com/bryanthaboi/gen1recomp/releases/latest).
+1. Download the build for your platform from the [latest release](https://github.com/awest813/gen1recomp/releases/latest).
 2. Launch it. The package contains no ROM, so the launcher asks for one.
 3. Choose a legally obtained `.gb`, `.gbc`, or `.gba` file, a `.zip` / `.7z` that holds one (where that build supports archives), or drop the file onto the window. Import takes a few seconds and the game starts.
 4. Repeat for any other game you own. Each one gets its own entry in the launcher library (the sidebar on a wide window, the game button in the bottom bar on a phone).
@@ -112,7 +93,7 @@ On a phone, the browser build shows on-screen buttons the first time you touch t
 
 ## Documentation
 
-Guides, platform notes, and the engine map live in [docs](docs/README.md). The [wiki](https://github.com/bryanthaboi/gen1recomp/wiki) has the modding book, link play, the save editor, and developer setup.
+Guides, platform notes, and the engine map live in [docs](docs/README.md).
 
 - [Rulesets](docs/guides/rulesets.md)
 - [Online play](docs/guides/online-play.md)
@@ -125,14 +106,13 @@ Guides, platform notes, and the engine map live in [docs](docs/README.md). The [
 
 ## Bugs
 
-A warp that drops you in the wrong place, battle math that does not match the original, text in the wrong box: [open a bug report](https://github.com/bryanthaboi/gen1recomp/issues/new?template=bug_report.yml). A screenshot saves a round trip. If you cannot get one, the form asks you to describe what you saw.
+A warp that drops you in the wrong place, battle math that does not match the original, text in the wrong box: [open a bug report](https://github.com/awest813/gen1recomp/issues/new?template=bug_report.yml). A screenshot saves a round trip. If you cannot get one, the form asks you to describe what you saw.
 
 ## License
 
-See [LICENSE.MD](LICENSE.MD).
+See [LICENSE.MD](LICENSE.MD). Its attribution terms require the credit line at the top of this file, in the launcher, and in any in-app credits.
 
 ## Special thanks
 
 This project depends on [pret](https://github.com/pret) and the [pokered](https://github.com/pret/pokered) disassembly.
 
-<p align="center"><a href="https://boisclub.games"><img src="assets/logo/bcg.png" alt="Bois Club Games"></a></p>

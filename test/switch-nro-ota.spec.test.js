@@ -240,7 +240,7 @@ function buildGithubReleaseJson() {
     '"name":"0.1.70",' +
     '"assets":[' +
     '{' +
-    '"url":"https://api.github.com/repos/bryanthaboi/gen1recomp/releases/assets/502823880",' +
+    '"url":"https://api.github.com/repos/awest813/gen1recomp/releases/assets/502823880",' +
     '"id":502823880,' +
     '"name":"gen1recomp-0.1.70-switch.zip",' +
     '"label":"",' +
@@ -250,7 +250,7 @@ function buildGithubReleaseJson() {
     '"content_type":"application/zip",' +
     '"state":"uploaded",' +
     '"size":9000573,' +
-    '"browser_download_url":"https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.70/gen1recomp-0.1.70-switch.zip"' +
+    '"browser_download_url":"https://github.com/awest813/gen1recomp/releases/download/v0.1.70/gen1recomp-0.1.70-switch.zip"' +
     '}' +
     ']' +
     '}'
@@ -293,7 +293,7 @@ test('AC-001: Launcher nativo verifica release no GitHub @spec:AC-001', () => {
   assert.equal(githubRelease.assetName, 'gen1recomp-0.1.70-switch.zip');
   assert.equal(
     githubRelease.downloadUrl,
-    'https://github.com/bryanthaboi/gen1recomp/releases/download/v0.1.70/gen1recomp-0.1.70-switch.zip'
+    'https://github.com/awest813/gen1recomp/releases/download/v0.1.70/gen1recomp-0.1.70-switch.zip'
   );
   assert.equal(M.decideUpdate('0.1.69', githubRelease).status, 'available');
 });

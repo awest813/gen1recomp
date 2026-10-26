@@ -46,7 +46,7 @@ local MODALS = {
     open = function(imp)
       imp.findSources = {}
       for i = 1, 6 do imp.findSources[i] = { feed = "https://x/" .. i, label = "Index " .. i } end
-      imp.findSources[1] = ModIndex.resolveSource("bryanthaboi/gen1recomp-mod-index")
+      imp.findSources[1] = ModIndex.resolveSource("exampledev/gen1recomp-mod-index")
       imp._indexManage = true
     end },
 }
@@ -104,7 +104,7 @@ for _, size in ipairs({ { 853, 480 }, { 780, 360 }, { 1280, 720 } }) do
     end
     T.check(closeSeen, tag .. " draws a pinned Close")
     if spec.key == "_indexManage" then
-      T.eq(removes, 5, tag .. " only offers Remove for the five custom indexes")
+      T.eq(removes, 6, tag .. " offers Remove for every listed index (none ships built in)")
     end
     T.check(#escaped == 0, tag .. " keeps every control on screen or in the scroll clip: "
       .. table.concat(escaped, ", "))

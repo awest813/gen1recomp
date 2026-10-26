@@ -16,17 +16,17 @@ local Json = require("src.link.Json")
 
 do
   local expectFeed =
-    "https://bryanthaboi.github.io/gen1recomp-mod-index/data/index.json"
-  local expectBase = "https://bryanthaboi.github.io/gen1recomp-mod-index/"
+    "https://exampledev.github.io/gen1recomp-mod-index/data/index.json"
+  local expectBase = "https://exampledev.github.io/gen1recomp-mod-index/"
 
-  local fromRepo = ModIndex.resolveSource("bryanthaboi/gen1recomp-mod-index")
+  local fromRepo = ModIndex.resolveSource("exampledev/gen1recomp-mod-index")
   eq(fromRepo.feed, expectFeed, "owner/repo resolves to the Pages feed")
   eq(fromRepo.base, expectBase, "owner/repo resolves the Pages base")
   check(fromRepo.fallback:find("raw.githubusercontent.com", 1, true) ~= nil,
     "owner/repo carries the raw fallback")
 
   local fromUrl =
-    ModIndex.resolveSource("https://github.com/bryanthaboi/gen1recomp-mod-index")
+    ModIndex.resolveSource("https://github.com/exampledev/gen1recomp-mod-index")
   eq(fromUrl.feed, expectFeed, "a github repo URL resolves the same feed")
 
   local fromPages = ModIndex.resolveSource(expectBase)
@@ -39,7 +39,7 @@ do
 
   -- a root without its trailing slash must not produce "...indexdata/index.json"
   local noSlash =
-    ModIndex.resolveSource("https://bryanthaboi.github.io/gen1recomp-mod-index")
+    ModIndex.resolveSource("https://exampledev.github.io/gen1recomp-mod-index")
   eq(noSlash.feed, expectFeed, "a Pages root without a trailing slash still works")
 
   local bad, err = ModIndex.resolveSource("not a url")
@@ -73,54 +73,36 @@ do
   local function cacheFile()
     return Ser.decode(files[ModIndex.CACHE_FILE])
   end
-  local main = ModIndex.resolveSource("bryanthaboi/gen1recomp-mod-index")
+  local main = ModIndex.resolveSource("exampledev/gen1recomp-mod-index")
   local custom = ModIndex.resolveSource("other/community-index")
   local cached = { checkedAt = 123, mods = { { id = "existing" } } }
 
+  -- No index ships built in: fresh options list none, and every index the
+  -- player saved is theirs to keep or remove.
   local sources = ModIndex.sources()
-  eq(#sources, 1, "fresh options include the main index")
-  eq(sources[1].feed, main.feed, "the default uses the main feed")
-  eq(sources[1].fallback, main.fallback, "the default includes the raw fallback")
-  sources[1].feed = "changed by caller"
-  eq(ModIndex.sources()[1].feed, main.feed, "callers cannot alter the built-in definition")
+  eq(#sources, 0, "fresh options list no index")
+  check(not ModIndex.isBuiltIn(main.feed), "no feed is protected as built in")
   eq(writes, 0, "reading sources does not rewrite options")
 
-  for _, url in ipairs({ "bryanthaboi/gen1recomp-mod-index",
-      "https://github.com/bryanthaboi/gen1recomp-mod-index",
-      main.base, main.base:sub(1, -2), main.feed }) do
-    local savedMain = ModIndex.resolveSource(url)
-    savedMain.url = url
-    opts = { modIndexes = { custom, savedMain, main } }
-    seedCache({ [main.feed] = cached })
-    sources = ModIndex.sources()
-    eq(#sources, 2, "an already-added main index is listed once: " .. url)
-    eq(sources[1], custom, "the existing source precedence is preserved")
-    eq(sources[2], savedMain, "the first saved main-index row is reused")
-    eq(sources[2].url, url, "the player's original URL is preserved")
-    same(ModIndex.readCache(main.feed), cached, "the existing main-index cache survives")
-    local added, addErr = ModIndex.addSource(url)
-    check(added == nil and addErr ~= nil, "the built-in source cannot be added again")
-    local removed, removeErr = ModIndex.removeSource(main.feed)
-    check(removed == nil and removeErr ~= nil, "an older main-index row cannot be removed")
-    same(cacheFile()[main.feed], cached, "blocked removal keeps its cache")
-  end
-  eq(writes, 0, "duplicate additions and blocked removals do not write options")
+  opts = { modIndexes = { custom, main } }
+  seedCache({ [main.feed] = cached })
+  sources = ModIndex.sources()
+  eq(#sources, 2, "saved indexes are listed")
+  eq(sources[1], custom, "in the order they were saved")
+  eq(sources[2], main, "including a formerly built-in one")
+  local again, againErr = ModIndex.addSource("exampledev/gen1recomp-mod-index")
+  check(again == nil and againErr ~= nil, "an index already saved is not added twice")
+  check(ModIndex.removeSource(main.feed), "any saved index can be removed")
+  eq(cacheFile()[main.feed], nil, "removal clears its cache")
 
   opts = { modIndexes = { custom } }
   seedCache({ [custom.feed] = cached })
-  sources = ModIndex.sources()
-  eq(#sources, 2, "existing custom-only options gain the default")
-  eq(sources[1], custom, "adding the default preserves custom-source precedence")
-  eq(sources[2].feed, main.feed, "the missing main source is appended")
-  check(ModIndex.isBuiltIn(main.feed), "the main index is protected")
-  check(not ModIndex.isBuiltIn(custom.feed), "a custom index remains removable")
-  check(ModIndex.removeSource(custom.feed), "a custom source can still be removed")
+  check(ModIndex.removeSource(custom.feed), "a custom source can be removed")
   eq(cacheFile()[custom.feed], nil, "custom-source removal clears its cache")
   eq(opts.modIndexCache, nil, "custom-source removal leaves options without a listing")
-
-  eq(#ModIndex.sources(), 1, "removing the last custom source leaves the main index")
-  check(ModIndex.addSource("other/community-index") ~= nil, "custom sources can still be added")
-  eq(#ModIndex.sources(), 2, "the added custom source appears beside the main index")
+  eq(#ModIndex.sources(), 0, "removing the last source leaves none")
+  check(ModIndex.addSource("other/community-index") ~= nil, "custom sources can be added")
+  eq(#ModIndex.sources(), 1, "and appear in the list")
 
   files["options.lua"] = Ser.encode({ modIndexes = { custom },
     modIndexCache = { [custom.feed] = cached } })
@@ -137,14 +119,14 @@ do
   eq(writes, 1, "cache reads and writes never rewrite options")
 
   package.loaded["src.core.SaveData"].loadOptions = function() error("unavailable options") end
-  eq(ModIndex.sources()[1].feed, main.feed, "the main index remains available if options cannot load")
+  eq(#ModIndex.sources(), 0, "no index is invented when options cannot load")
   package.loaded["src.core.SaveData"] = oldSaveData
 end
 
 do
-  local base = "https://bryanthaboi.github.io/gen1recomp-mod-index/"
-  eq(ModIndex.joinUrl(base, "data/mods/bryanthaboi@nuzlocke/thumbnail.png"),
-    base .. "data/mods/bryanthaboi@nuzlocke/thumbnail.png",
+  local base = "https://exampledev.github.io/gen1recomp-mod-index/"
+  eq(ModIndex.joinUrl(base, "data/mods/exampledev@nuzlocke/thumbnail.png"),
+    base .. "data/mods/exampledev@nuzlocke/thumbnail.png",
     "relative asset paths resolve against the Pages base")
   eq(ModIndex.joinUrl(base, "https://elsewhere/x.png"), "https://elsewhere/x.png",
     "an absolute asset URL is left alone")
@@ -162,28 +144,28 @@ local function feed(mods, overrides)
 end
 
 local NUZLOCKE = {
-  folder = "bryanthaboi@nuzlocke",
+  folder = "exampledev@nuzlocke",
   id = "nuzlocke",
   title = "Nuzlocke",
-  author = "bryanthaboi",
+  author = "exampledev",
   summary = "An enforced Gen 1 Nuzlocke: one catch per area.",
   version = "1.0.1",
   categories = { "GAMEPLAY" },
   tags = { "nuzlocke", "challenge" },
-  repo = "https://github.com/bryanthaboi/nuzlocke",
-  github = "bryanthaboi/nuzlocke",
+  repo = "https://github.com/exampledev/nuzlocke",
+  github = "exampledev/nuzlocke",
   api = 2,
   game_version = ">=0.0.0-dev <1.0.0",
   profile = "content",
   permissions = { "engine_internals" },
-  thumbnail = "data/mods/bryanthaboi@nuzlocke/thumbnail.png",
-  description_url = "data/mods/bryanthaboi@nuzlocke/description.md",
+  thumbnail = "data/mods/exampledev@nuzlocke/thumbnail.png",
+  description_url = "data/mods/exampledev@nuzlocke/description.md",
   latest = {
     version = "1.0.1", tag = "v1.0.1", name = "1.0.1", prerelease = false,
     published_at = "2026-07-31T14:17:23Z",
     zip = {
       name = "nuzlocke-1.0.1.zip",
-      url = "https://github.com/bryanthaboi/nuzlocke/releases/download/v1.0.1/nuzlocke-1.0.1.zip",
+      url = "https://github.com/exampledev/nuzlocke/releases/download/v1.0.1/nuzlocke-1.0.1.zip",
       size = 4396,
     },
   },
@@ -199,7 +181,7 @@ do
   eq(m.id, "nuzlocke", "id")
   eq(m.title, "Nuzlocke", "title")
   eq(m.latest.zip.url,
-    "https://github.com/bryanthaboi/nuzlocke/releases/download/v1.0.1/nuzlocke-1.0.1.zip",
+    "https://github.com/exampledev/nuzlocke/releases/download/v1.0.1/nuzlocke-1.0.1.zip",
     "the release asset URL survives parsing")
   eq(m.permissions[1], "engine_internals", "permissions are kept")
   eq(m.update_check, "ok", "update_check is kept")
@@ -460,7 +442,7 @@ end
 
 do
   local mods = {
-    { id = "nuzlocke", title = "Nuzlocke", author = "bryanthaboi",
+    { id = "nuzlocke", title = "Nuzlocke", author = "exampledev",
       summary = "one catch per area", categories = { "GAMEPLAY" },
       tags = { "challenge" } },
     { id = "palettes", title = "True Colour", author = "someone",
@@ -470,7 +452,7 @@ do
   eq(#ModIndex.filter(mods, { query = "nuz" }), 1, "search matches a title prefix")
   eq(ModIndex.filter(mods, { query = "colour" })[1].id, "palettes",
     "search matches the title")
-  eq(ModIndex.filter(mods, { query = "bryanthaboi" })[1].id, "nuzlocke",
+  eq(ModIndex.filter(mods, { query = "exampledev" })[1].id, "nuzlocke",
     "search matches the author")
   eq(ModIndex.filter(mods, { query = "SGB" })[1].id, "palettes",
     "search matches the summary and ignores case")
@@ -601,11 +583,11 @@ end
 -- The fixture below is the shape carts/<Author>@<id>/meta.json validates to.
 
 local OMEGA = {
-  folder = "bryanthaboi@omega_random_competition",
+  folder = "exampledev@omega_random_competition",
   id = "omega_random_competition",
   title = "OMEGA RANDOM COMPETITION",
-  author = "bryanthaboi",
-  summary = "Bois Club Randomizer as its own cartridge.",
+  author = "exampledev",
+  summary = "Example Randomizer as its own cartridge.",
   version = "1.0.0",
   base = "red",
   seal = "sealed",
@@ -613,14 +595,14 @@ local OMEGA = {
   finish = "holo",
   speeds = { 1, 2 },
   tags = { "randomizer", "competition" },
-  repo = "https://github.com/bryanthaboi/omega-random-competition",
-  github = "bryanthaboi/omega-random-competition",
+  repo = "https://github.com/exampledev/omega-random-competition",
+  github = "exampledev/omega-random-competition",
   automatic_version_check = true,
-  mods = { { id = "bcr", source = "github", repo = "bryanthaboi/bcr",
+  mods = { { id = "bcr", source = "github", repo = "exampledev/bcr",
              version = "1.0.0", sha256 = ("83a111b4"):rep(8) } },
   load_order = { "bcr" },
   license = "MIT",
-  description_url = "data/carts/bryanthaboi@omega_random_competition/description.md",
+  description_url = "data/carts/exampledev@omega_random_competition/description.md",
   update_check = "pending",
 }
 
@@ -666,7 +648,7 @@ do
   eq(c.load_order[1], "bcr", "its load order")
   eq(#c.mods, 1, "its pinned mod set")
   eq(c.mods[1].source, "github", "a github pin keeps its source")
-  eq(c.mods[1].repo, "bryanthaboi/bcr", "with the repo it comes from")
+  eq(c.mods[1].repo, "exampledev/bcr", "with the repo it comes from")
   eq(c.mods[1].version, "1.0.0", "the exact pinned version")
   eq(#c.mods[1].sha256, 64, "and the digest that gates it")
   check(ModIndex.isCart(c), "a parsed cart is marked as one")

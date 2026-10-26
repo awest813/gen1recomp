@@ -35,7 +35,7 @@ end
 return function(game)
   U.newGame(game)
   game.speedOverride = nil
-  local feed = ModIndex.resolveSource("bryanthaboi/gen1recomp-mod-index").feed
+  local feed = ModIndex.resolveSource("exampledev/gen1recomp-mod-index").feed
   game.save.options.speedOverworld = 1
   game:writeOptions()
   local small = timePresses(10)

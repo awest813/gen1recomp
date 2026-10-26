@@ -57,7 +57,7 @@ local function bigIndex(n)
     baseGames = { "red" }, mods = mods, carts = {} }
 end
 
-local feed = ModIndex.resolveSource("bryanthaboi/gen1recomp-mod-index").feed
+local feed = ModIndex.resolveSource("exampledev/gen1recomp-mod-index").feed
 
 do
   useFs(memfs())

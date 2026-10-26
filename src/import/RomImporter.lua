@@ -1557,7 +1557,6 @@ function RomImporter.new(onComplete, opts)
       return (okLO and LO.pendingTab) or os.getenv("POKEPORT_LAUNCHER_TAB") or "red"
     end)(),
     logo = love.graphics.newImage("assets/logo/logo.png"),
-    bcg = love.graphics.newImage("assets/logo/bcg.png"),
     ready = {}, returning = {}, romName = {},
     importing = nil,      -- the version currently extracting, or nil
     workState = nil,      -- "working" / "complete" / "error" for that import
@@ -3805,7 +3804,7 @@ function RomImporter:update(dt)
           title = "Install mod",
           yesLabel = "Install",
           lines = { "JP GREEN - Poketto Monsuta Midori v0.4.4",
-                    "by bryanthaboi",
+                    "by the mod author",
                     "Mods are not reviewed - trust the author." },
         }
       end
@@ -3884,7 +3883,7 @@ function RomImporter:update(dt)
         self._modConfirm = {
           kind = "update", title = "Install mod", yesLabel = "Install",
           lines = { "JP GREEN - Poketto Monsuta Midori v0.4.4",
-                    "by bryanthaboi",
+                    "by the mod author",
                     "Mods are not reviewed - trust the author." },
         }
       else
