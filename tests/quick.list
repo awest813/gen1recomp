@@ -551,6 +551,7 @@ tests/engine/options_submenu_marquee_test.lua
 tests/engine/options_write_readback_bug828.lua
 tests/engine/orientation_option.lua
 tests/engine/overworld_field_faint_heal_romtext.lua
+tests/engine/overworld_frame_alloc_perf.lua
 tests/engine/overworld_hidden_item_romtext.lua
 tests/engine/overworld_og_obp0_bug2689.lua
 tests/engine/overworld_slot_seat_over_hidden_coin.lua

@@ -31,9 +31,11 @@ local function realMetrics()
     math.max(1, pw), math.max(1, ph), dpiX, dpiY
 end
 
-local function clampRect(value, w, h)
+local function clampRect(value, w, h, into)
   if type(value) ~= "table" then
-    return { x = 0, y = 0, width = w, height = h }
+    local rect = into or {}
+    rect.x, rect.y, rect.width, rect.height = 0, 0, w, h
+    return rect
   end
   local x = finite(value.x) and math.floor(value.x) or 0
   local y = finite(value.y) and math.floor(value.y) or 0
@@ -50,19 +52,26 @@ local function sameSize(canvas, w, h)
   return canvas and canvas:getWidth() == w and canvas:getHeight() == h
 end
 
+-- With no render.viewport subscriber nothing outside this module ever sees
+-- the frame's context or rect, so the vanilla path refills these two every
+-- frame instead of building both anew.  A hooked frame still hands the mod
+-- fresh tables, since a mod may keep the ones it was given.
+local vanillaContext, vanillaRect = {}, {}
+
 function Viewport.begin(generation)
   local w, h, pw, ph, dpiX, dpiY = realMetrics()
-  local context = {
-    width = w, height = h, pixelWidth = pw, pixelHeight = ph,
-    dpiX = dpiX, dpiY = dpiY, generation = generation,
-  }
+  local hooked = Runtime.wantsHook("render.viewport")
+  local context = hooked and {} or vanillaContext
+  context.width, context.height = w, h
+  context.pixelWidth, context.pixelHeight = pw, ph
+  context.dpiX, context.dpiY, context.generation = dpiX, dpiY, generation
   local requested
-  if Runtime.wantsHook("render.viewport") then
+  if hooked then
     requested = Runtime.call("render.viewport", function(ctx)
       return { x = 0, y = 0, width = ctx.width, height = ctx.height }
     end, context)
   end
-  local rect = clampRect(requested, w, h)
+  local rect = clampRect(requested, w, h, not hooked and vanillaRect or nil)
   Viewport.full = context
   Viewport.rect = rect
   Viewport.generation = generation

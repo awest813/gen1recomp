@@ -878,13 +878,16 @@ end
 -- scissored through the shade-remap shader, later zones on top.
 -- When ShaderFX is active the composite is drawn into presentCanvas and
 -- presented through the shader chain as a final pass.
-function Renderer:frameRects()
+--
+-- fillFrameRects writes every field into `r` and returns it.  frameRects
+-- hands callers a fresh table; endFrame and playfieldRect, which run every
+-- frame, refill one private table each instead of building a ~30-field hash
+-- per frame (the largest single allocation of a steady overworld frame).
+local function fillFrameRects(self, r)
   local ww, wh, pw, ph, dpiX, dpiY, vx, vy, cut = displayMetrics()
-  local r = {
-    ww = ww, wh = wh, pw = pw, ph = ph, dpiX = dpiX, dpiY = dpiY,
-    vx = vx, vy = vy, cut = cut,
-    vux = vx / dpiX, vuy = vy / dpiY, vuw = pw / dpiX, vuh = ph / dpiY,
-  }
+  r.ww, r.wh, r.pw, r.ph, r.dpiX, r.dpiY = ww, wh, pw, ph, dpiX, dpiY
+  r.vx, r.vy, r.cut = vx, vy, cut
+  r.vux, r.vuy, r.vuw, r.vuh = vx / dpiX, vy / dpiY, pw / dpiX, ph / dpiY
   -- Sp = integer framebuffer pixels per GB pixel;
   -- Sx/Sy = LOVE-unit draw scales (may differ when dpiX ≠ dpiY).
   local Sp = self:fitScale()
@@ -919,6 +922,12 @@ function Renderer:frameRects()
   return r
 end
 
+function Renderer:frameRects()
+  return fillFrameRects(self, {})
+end
+
+local playfieldRects, endFrameRects = {}, {}
+
 function Renderer.clipToView(r, x, y, w, h)
   local x2, y2 = math.min(x + w, r.vux + r.vuw), math.min(y + h, r.vuy + r.vuh)
   x, y = math.max(x, r.vux), math.max(y, r.vuy)
@@ -926,13 +935,48 @@ function Renderer.clipToView(r, x, y, w, h)
 end
 
 function Renderer:playfieldRect()
-  local r = self:frameRects()
+  local r = fillFrameRects(self, playfieldRects)
   return r.vux, r.vuy, r.vuw, r.vuh, r.cut
+end
+
+-- see Renderer:blitCanvas; bound to the frame's dpi through R.  A module
+-- function, not a closure built inside endFrame, so a frame allocates none.
+local function blit(self, R, canvas, sx, sy, zoneList, zoneSx, zoneSy,
+                    bx, by, boxX, boxY, boxW, boxH)
+  return self:blitCanvas(canvas, sx, sy, zoneList, zoneSx, zoneSy,
+                         bx, by, boxX, boxY, boxW, boxH, R.dpiX, R.dpiY)
+end
+
+-- endFrame's return value.  The last one is handed back again while every
+-- field still holds this frame's value, so a steady frame builds no table;
+-- any change (a resize, a zoom step, a consumer overwriting a field) gets a
+-- fresh one, so a caller never reads a value other than what it always got.
+local lastViewport
+local function frameViewport(ww, wh, ox, oy, vpw, vph, Sp, dpiX, dpiY,
+                             vux, vuy, vuw, vuh)
+  local v = lastViewport
+  if v and v.width == ww and v.height == wh and v.gameX == ox
+     and v.gameY == oy and v.gameWidth == vpw and v.gameHeight == vph
+     and v.scale == Sp and v.dpiX == dpiX and v.dpiY == dpiY
+     and v.viewX == vux and v.viewY == vuy and v.viewWidth == vuw
+     and v.viewHeight == vuh then
+    return v
+  end
+  v = {
+    width = ww, height = wh,
+    gameX = ox, gameY = oy,
+    gameWidth = vpw, gameHeight = vph,
+    scale = Sp,
+    dpiX = dpiX, dpiY = dpiY,
+    viewX = vux, viewY = vuy, viewWidth = vuw, viewHeight = vuh,
+  }
+  lastViewport = v
+  return v
 end
 
 function Renderer:endFrame(zones, worldZones)
   GameViewport.setTarget()
-  local R = self:frameRects()
+  local R = fillFrameRects(self, endFrameRects)
   local ww, wh, pw, ph = R.ww, R.wh, R.pw, R.ph
   local dpiX, dpiY, vx, vy, cut = R.dpiX, R.dpiY, R.vx, R.vy, R.cut
   local vux, vuy, vuw, vuh = R.vux, R.vuy, R.vuw, R.vuh
@@ -1096,17 +1140,7 @@ function Renderer:endFrame(zones, worldZones)
     if cut then love.graphics.setScissor() end
   end
 
-  -- see Renderer:blitCanvas; bound here to the frame's dpi so the composite
-  -- call sites below stay unchanged.
-  local function blit(canvas, sx, sy, zoneList, zoneSx, zoneSy,
-                      bx, by, boxX, boxY, boxW, boxH)
-    return self:blitCanvas(canvas, sx, sy, zoneList, zoneSx, zoneSy,
-                           bx, by, boxX, boxY, boxW, boxH, dpiX, dpiY)
-  end
-
-  local function clipToView(x, y, w, h)
-    return Renderer.clipToView(R, x, y, w, h)
-  end
+  local clipToView = Renderer.clipToView
 
   -- ShaderFX shades the whole window at the UI's fixed GB-pixel scale, so
   -- menus and text boxes keep the same LCD/grid geometry at any survey zoom.
@@ -1160,9 +1194,11 @@ function Renderer:endFrame(zones, worldZones)
                                              present, vux, vuy, vuw, vuh)
     if not projected then
       if worldZones then
-        blit(self.worldCanvas, sx, sy, worldZones, sx, sy, wox, woy, vux, vuy, vuw, vuh)
+        blit(self, R, self.worldCanvas, sx, sy, worldZones, sx, sy,
+             wox, woy, vux, vuy, vuw, vuh)
       else
-        blit(self.worldCanvas, sx, sy, zones, Sx, Sy, wox, woy, vux, vuy, vuw, vuh)
+        blit(self, R, self.worldCanvas, sx, sy, zones, Sx, Sy,
+             wox, woy, vux, vuy, vuw, vuh)
       end
       -- engine/battle/battle_transitions.asm:28
       self.wipeWox, self.wipeWoy, self.wipeSx, self.wipeSy = wox, woy, sx, sy
@@ -1292,9 +1328,10 @@ function Renderer:endFrame(zones, worldZones)
   -- always been.
   local anchors = self.uiAnchors
   if not anchors or #anchors == 0 then
-    blit(self.canvas, Ux, Uy, zones, Ux, Uy, uox, uoy, clipToView(uox, uoy, uvpw, uvph))
+    blit(self, R, self.canvas, Ux, Uy, zones, Ux, Uy, uox, uoy,
+         clipToView(R, uox, uoy, uvpw, uvph))
   else
-    local rest = { { clipToView(uox, uoy, uvpw, uvph) } }
+    local rest = { { clipToView(R, uox, uoy, uvpw, uvph) } }
     local placed = {}
     for _, a in ipairs(anchors) do
       local dw, dh = a.w * Ux, a.h * Uy
@@ -1328,20 +1365,21 @@ function Renderer:endFrame(zones, worldZones)
       end
     end
     for _, r in ipairs(rest) do
-      blit(self.canvas, Ux, Uy, zones, Ux, Uy, uox, uoy, r[1], r[2], r[3], r[4])
+      blit(self, R, self.canvas, Ux, Uy, zones, Ux, Uy, uox, uoy,
+           r[1], r[2], r[3], r[4])
     end
     for _, p in ipairs(placed) do
       -- shift the draw origin so canvas pixel (a.x, a.y) lands on (dx, dy).
       -- The zone scissors are computed from the same origin, so an SGB
       -- region travels with the element instead of staying in the letterbox.
-      blit(p.a.canvas or self.canvas, Ux, Uy, zones, Ux, Uy,
+      blit(self, R, p.a.canvas or self.canvas, Ux, Uy, zones, Ux, Uy,
            p.dx - p.a.x * Ux, p.dy - p.a.y * Uy,
-           clipToView(p.dx, p.dy, p.dw, p.dh))
+           clipToView(R, p.dx, p.dy, p.dw, p.dh))
     end
   end
   local uiRedraws = PaletteFX.uiSpriteRedraws()
   if uiRedraws[1] then
-    local bx, by, bw, bh = clipToView(uox, uoy, uvpw, uvph)
+    local bx, by, bw, bh = clipToView(R, uox, uoy, uvpw, uvph)
     for _, r in ipairs(uiRedraws) do
       local c = r.clip
       if c then
@@ -1380,7 +1418,7 @@ function Renderer:endFrame(zones, worldZones)
     if self.wipeSprites and self.wipeWox
        and (self.battleWipe.prog or 0) < 1 then
       love.graphics.setColor(1, 1, 1, 1)
-      love.graphics.setScissor(clipToView(vux, vuy, vuw, vuh))
+      love.graphics.setScissor(clipToView(R, vux, vuy, vuw, vuh))
       love.graphics.push()
       love.graphics.translate(self.wipeWox, self.wipeWoy)
       love.graphics.scale(self.wipeSx, self.wipeSy)
@@ -1476,14 +1514,8 @@ function Renderer:endFrame(zones, worldZones)
   self.uprightActive = false
   self.worldOverride = nil
   PaletteFX.setPass(nil)
-  return {
-    width = ww, height = wh,
-    gameX = ox, gameY = oy,
-    gameWidth = vpw, gameHeight = vph,
-    scale = Sp,
-    dpiX = dpiX, dpiY = dpiY,
-    viewX = vux, viewY = vuy, viewWidth = vuw, viewHeight = vuh,
-  }
+  return frameViewport(ww, wh, ox, oy, vpw, vph, Sp, dpiX, dpiY,
+                       vux, vuy, vuw, vuh)
 end
 
 return Renderer

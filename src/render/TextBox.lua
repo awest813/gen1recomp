@@ -777,14 +777,13 @@ function TextBox:draw()
   -- (home/text.asm:283) copies the rows up whole and waits 5 frames, so
   -- nothing in the original is ever drawn between two rows.
   local off = self.scrollPx or 0
-  local ys = { self.line1Y, self.line2Y }
   -- home/text.asm:264
   local coverX, coverY
   if self.fixedGen1Rows and self:arrowVisible() then
     coverX, coverY = arrowX, arrowY
   end
   for i, line in ipairs(self.shown) do
-    local y = (ys[i] or self.line2Y) + (i == 1 and off or 0)
+    local y = i == 1 and (self.line1Y or self.line2Y) + off or self.line2Y
     -- the pen advances per glyph, matching the pixel budget paginate
     -- measured with; every fixed-width page still lands on the 8px grid
     local pen = self.textX

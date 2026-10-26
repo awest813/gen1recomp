@@ -929,6 +929,23 @@ function OverworldState:screenPaletteName()
   return self:paletteNameFor(self.map)
 end
 
+-- Both zone lists below are asked for every overworld frame and almost
+-- always come out the same, so the last one is handed back while it is
+-- still exactly what would be built: one zone of `colors` at x, y, w, h and
+-- nothing else.  Anything that touched it since (a consumer adding a zone
+-- or a key, or retinting one) fails the check and gets a fresh list.
+local function countKeys(t)
+  local n = 0
+  for _ in pairs(t) do n = n + 1 end
+  return n
+end
+
+local function steadyZones(zones, colors, x, y, w, h)
+  local z = zones and zones[1]
+  return z ~= nil and z.colors == colors and z.x == x and z.y == y
+    and z.w == w and z.h == h and countKeys(zones) == 1 and countKeys(z) == 5
+end
+
 -- UI-pass palette (text boxes and menus tint with the current map).  OG RED
 -- resolves every name to the one global red BG palette inside PaletteFX.pal,
 -- so this needs no mode-specific branch.
@@ -951,7 +968,15 @@ function OverworldState:sgbPalettes()
     end
     return zones
   end
-  return PaletteFX.wholeNamed(Game.data, mapName)
+  -- PaletteFX.wholeNamed, keeping the last list while it holds
+  local base = PaletteFX.pal(Game.data, mapName)
+  if not base then return nil end
+  local zones = self._uiZones
+  if not steadyZones(zones, base, 0, 0, 160, 144) then
+    zones = { PaletteFX.whole(base) }
+    self._uiZones = zones
+  end
+  return zones
 end
 
 -- `ld de, BlkPacket_WholeScreen` (engine/gfx/palettes.asm:178)
@@ -977,14 +1002,26 @@ end
 function OverworldState:sgbWorldZones()
   local PaletteFX = require("src.render.PaletteFX")
   if PaletteFX.usesGbcPack() and self.map.renderer and self.map.renderer.gbcAtlas then
-    return {}
+    local none = self._noWorldZones
+    if not none or next(none) ~= nil then
+      none = {}
+      self._noWorldZones = none
+    end
+    return none
   end
   local base = PaletteFX.pal(Game.data, self:screenPaletteName())
   if not base then return nil end
   local vw, vh = Game.renderer:worldViewSize()
   local cam = self.camera
+  if not OverworldState.perMapWorldPalettes() then
+    local zones = self._worldZones
+    if not steadyZones(zones, base, 0, 0, vw, vh) then
+      zones = { { colors = base, x = 0, y = 0, w = vw, h = vh } }
+      self._worldZones = zones
+    end
+    return zones
+  end
   local zones = { { colors = base, x = 0, y = 0, w = vw, h = vh } }
-  if not OverworldState.perMapWorldPalettes() then return zones end
   for _, nb in ipairs(self.neighbors) do
     local colors = PaletteFX.pal(Game.data, self:paletteNameFor(nb.map))
     if colors then
