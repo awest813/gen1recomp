@@ -20,6 +20,7 @@ local ImportJob = require("src.import.ImportJob")
 
 -- SaveData seam: two Gold saves, slot creation recorded.
 local created, active, deleted, renamed = {}, {}, {}, {}
+local savedOptions, saves = { musicVol = 5, sfxVol = 7, videoMode = "windowed" }, 0
 local imported, exported = {}, {}
 package.loaded["src.import.SaveFileIO"] = {
   importToSlot = function(source, version)
@@ -45,6 +46,8 @@ package.loaded["src.core.SaveData"] = {
   end,
   activeSlot = function(version) return active[version] or "slot1" end,
   setActiveSlot = function(version, id) active[version] = id return true end,
+  loadOptions = function() return savedOptions end,
+  saveOptions = function(opts) savedOptions = opts; saves = saves + 1 return true end,
   deleteSlot = function(version, id) deleted[#deleted + 1] = version .. ":" .. id return true end,
   renameSlot = function(version, id, name) renamed[#renamed + 1] = { id = id, name = name } return true end,
   createSlot = function(version)
@@ -212,5 +215,39 @@ check(Launcher.isSaveName("x.SRM") and not Launcher.isSaveName("x.gbc"),
 l.selected = "red"
 l:importSave("bytes", "Red.sav")
 eq(#imported, 1, "a save for a game without its ROM is refused")
+
+-- -------------------------------------------------------------- settings
+-- (listing games runs SecretGames' unlock check, which may itself write the
+-- options; start this section from a known options table)
+l = fresh()
+savedOptions, saves = { musicVol = 5, sfxVol = 7, videoMode = "windowed" }, 0
+l.opts_ = nil
+eq(l:options().musicVol, 5, "settings read the saved options")
+l:setOption("musicVol", 6)
+eq(savedOptions.musicVol, 6, "a change is written straight to the options")
+eq(saves, 1, "once")
+local applied
+package.loaded["src.core.VideoMode"] = { apply = function(m) applied = m end,
+  fixedDisplay = function() return false end,
+  normalize = function(m) return m == "borderless" and m or "windowed" end }
+l:setOption("videoMode", "borderless")
+eq(applied, "borderless", "the display mode applies to the live window")
+window(1280, 720)
+l.page = "settings"
+local stext = drawText(l)
+check(stext:find("Music volume", 1, true) and stext:find("Sound volume", 1, true)
+  and stext:find("Fullscreen", 1, true), "the settings page draws its rows")
+check(stext:find("BOIS CLUB", 1, true) ~= nil, "with the credit still on screen")
+l:queue(function() end)
+local rects2 = {}
+local realButton2 = Kit.button
+Kit.button = function(x, y, w, h, label, opts)
+  if opts and opts.id then rects2[opts.id] = { x = x + w / 2, y = y + h / 2 } end
+  return realButton2(x, y, w, h, label, opts)
+end
+l:draw()
+Kit.button = realButton2
+check(rects2["musicVol-up"] and rects2["sfxVol-down"] and rects2["video-mode"],
+  "every setting has a control")
 
 T.finish("pkgb launcher")

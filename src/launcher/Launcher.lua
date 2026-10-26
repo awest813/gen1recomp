@@ -235,6 +235,31 @@ function Launcher:renameSave(name)
   if ok == false then return self:say("Could not rename: " .. tostring(err), "error") end
 end
 
+-- --------------------------------------------------------------- settings
+
+-- The options this launcher edits, read and written through SaveData so the
+-- game sees exactly what was chosen.
+function Launcher:options()
+  if not self.opts_ then
+    local ok, SaveData = pcall(require, "src.core.SaveData")
+    local okL, opts = false, nil
+    if ok then okL, opts = pcall(SaveData.loadOptions) end
+    self.opts_ = (okL and type(opts) == "table") and opts or {}
+  end
+  return self.opts_
+end
+
+function Launcher:setOption(key, value)
+  local opts = self:options()
+  opts[key] = value
+  local ok, SaveData = pcall(require, "src.core.SaveData")
+  if ok then pcall(SaveData.saveOptions, opts) end
+  if key == "videoMode" then
+    local okV, VideoMode = pcall(require, "src.core.VideoMode")
+    if okV then VideoMode.apply(value) end
+  end
+end
+
 function Launcher:quit()
   local okP, Platform = pcall(require, "src.core.Platform")
   if okP and Platform.systemQuit and Platform.systemQuit() then return end
@@ -390,13 +415,64 @@ function Launcher:drawGameList(x, y, w, h, s)
       ry + (rowH - Kit.textHeight("micro")) / 2,
       self.selected == v and (ink or PAL.text) or color)
     if clicked then
-      self:queue(function() self.selected = v; self:say(nil) end)
+      self:queue(function() self.selected = v; self.page = nil; self:say(nil) end)
     end
   end
   Kit.scrollEnd(x, top, w, viewH, self.listScroll, maxAt)
 end
 
+function Launcher:drawSettings(x, y, w, h, s)
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  Kit.textBold("title", "Settings", cx, cy, PAL.heading)
+  cy = cy + Kit.textHeight("title") + math.floor(16 * s)
+  local opts = self:options()
+  local rowH = math.max(Kit.tapMin(), math.floor(40 * s))
+  local stepW = math.max(Kit.tapMin(), math.floor(40 * s))
+  local function label(text, ry)
+    Kit.text("button", text, cx, ry + (rowH - Kit.textHeight("button")) / 2, PAL.text)
+  end
+  local function stepper(key, text, lo, hi, ry)
+    label(text, ry)
+    local value = tonumber(opts[key]) or hi
+    local vx = cx + cw - stepW
+    if Kit.button(vx, ry, stepW, rowH, "+", { id = key .. "-up", enabled = value < hi }) then
+      self:queue(function() self:setOption(key, math.min(hi, value + 1)) end)
+    end
+    local mid = math.floor(60 * s)
+    Kit.textCenter("button", tostring(value), vx - mid, ry
+      + (rowH - Kit.textHeight("button")) / 2, mid, PAL.heading)
+    if Kit.button(vx - mid - stepW, ry, stepW, rowH, "-",
+        { id = key .. "-down", enabled = value > lo }) then
+      self:queue(function() self:setOption(key, math.max(lo, value - 1)) end)
+    end
+  end
+
+  local okV, VideoMode = pcall(require, "src.core.VideoMode")
+  if okV and not VideoMode.fixedDisplay() then
+    label("Display", cy)
+    local full = VideoMode.normalize(opts.videoMode) == "borderless"
+    local bw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - bw, cy, bw, rowH, full and "Fullscreen" or "Windowed",
+        { id = "video-mode" }) then
+      self:queue(function()
+        self:setOption("videoMode", full and "windowed" or "borderless")
+      end)
+    end
+    cy = cy + rowH + math.floor(10 * s)
+  end
+  stepper("musicVol", "Music volume", 0, 7, cy)
+  cy = cy + rowH + math.floor(10 * s)
+  stepper("sfxVol", "Sound volume", 0, 7, cy)
+  cy = cy + rowH + math.floor(10 * s)
+  Kit.textWrapped("micro", "More options (colors, zoom, speed, controls) are in "
+    .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
+end
+
 function Launcher:drawDetail(x, y, w, h, s)
+  if self.page == "settings" then return self:drawSettings(x, y, w, h, s) end
   local v = self.selected
   if not v then return end
   local info = GameVersion.info(v)
@@ -571,9 +647,18 @@ function Launcher:draw()
   Kit.textBold("headline", Version.NAME or "PK:GB", x, y, PAL.heading)
   local hh = Kit.textHeight("headline")
   local qw = math.max(Kit.tapMin(), math.floor(80 * s))
-  if Kit.button(x + w - qw, y + (hh - Kit.tapMin()) / 2, qw,
-      math.max(Kit.tapMin(), math.floor(34 * s)), "Quit", { id = "quit" }) then
+  local bh = math.max(Kit.tapMin(), math.floor(34 * s))
+  local by = y + (hh - Kit.tapMin()) / 2
+  if Kit.button(x + w - qw, by, qw, bh, "Quit", { id = "quit" }) then
     self:queue(function() self:quit() end)
+  end
+  local sw = math.max(Kit.tapMin(), math.floor(110 * s))
+  if Kit.button(x + w - qw - math.floor(8 * s) - sw, by, sw, bh,
+      self.page == "settings" and "Close" or "Settings",
+      { id = "settings", active = self.page == "settings" }) then
+    self:queue(function()
+      self.page = self.page ~= "settings" and "settings" or nil
+    end)
   end
   y = y + hh + math.floor(14 * s)
 
