@@ -504,6 +504,17 @@ end
 -- game" shortcut keeps working for anyone who never touches the ring.
 function LauncherView.keypressed(imp, key)
   if not imp._flex then return false end
+  -- Ctrl+Tab / Ctrl+PageDown walk the nav forward (games, then tools), the
+  -- shifted / PageUp forms walk it back -- the keyboard twin of the pad's
+  -- shoulder buttons.  Ctrl keeps it clear of typing in a text field.
+  local kb = love.keyboard
+  if (key == "tab" or key == "pageup" or key == "pagedown")
+      and kb and kb.isDown and kb.isDown("lctrl", "rctrl")
+      and LauncherView.modalKey(imp) == nil and imp._cycleTab then
+    local back = key == "pageup" or (key == "tab" and kb.isDown("lshift", "rshift"))
+    imp:_cycleTab(back and -1 or 1)
+    return true
+  end
   if key == "up" or key == "down" or key == "left" or key == "right" then
     imp._ringArmed = true
     Kit.navigate(key)
@@ -4618,39 +4629,32 @@ local function buildModScopeModal(imp, m)
 end
 
 -- The cartridge picker uses two columns and spatial controller navigation.
+-- The game picker: the same rows as the nav rail's library (cartridge pip,
+-- name, import dot), one column on a phone and two where they fit.
 local function buildGameModal(imp, m)
+  local Nav = require("src.import.LauncherNav")
   local pad = math.floor(18 * m.s)
   local headH = Kit.textHeight("button") + math.floor(12 * m.s)
-  local avail = m.H - 2 * m.pad
-  local cols, gap, btnH = 2, math.floor(8 * m.s), m.btnH
+  local gap, rowH = math.floor(4 * m.s), Nav.rowHeight(m)
   local tabs = gameTabs(imp)
-  local function rows() return math.ceil(#tabs / cols) + 1 end
-  local function total() return 2 * pad + headH + rows() * btnH
-    + (rows() - 1) * gap end
-  if total() > avail then gap = math.max(2, math.floor(3 * m.s)) end
-  if total() > avail then
-    btnH = math.max(Kit.tapMin(),
-      btnH - math.ceil((total() - avail) / rows()))
-  end
-  local nrows = rows() - 1
-  local w = math.floor(440 * m.s)
+  local w = math.floor(math.min(480 * m.s, m.W - 2 * m.pad))
+  local cols = (w - 2 * pad) >= 2 * math.floor(170 * m.s) and 2 or 1
+  local nrows = math.ceil(#tabs / cols)
   local px, py, pw, footY, open = modalFrame(imp, m, "_gamePopup", w, pad,
-    headH, nrows * (btnH + gap) - gap, btnH, gap)
+    headH, nrows * (rowH + gap) - gap, m.btnH, math.floor(10 * m.s))
   Kit.text("button", Strings("Choose game"), px + pad, py + pad, PAL.heading)
   local _, rw, mark, done = open()
-  local chrome = headerChrome(imp)
   local colW = math.floor((rw - (cols - 1) * gap) / cols)
   for i, g in ipairs(tabs) do
     local bx = px + pad + ((i - 1) % cols) * (colW + gap)
     local id = "gamepop-" .. g.id
-    btn(imp, bx, mark(id, math.floor((i - 1) / cols) * (btnH + gap), btnH), colW, btnH, id,
-      Strings(g.label), {
-        face = "tab", font = "small", letter = g.letter, color = g.color,
-        active = imp.tab == g.id,
-        action = chrome.tab[g.id] })
+    local o = Nav.gameRow(LauncherView, imp, g)
+    o.active = imp.tab == g.id
+    btn(imp, bx, mark(id, math.floor((i - 1) / cols) * (rowH + gap), rowH),
+      colW, rowH, id, "", o)
   end
   done()
-  btn(imp, px + pad, footY, pw - 2 * pad, btnH, "gamepop-close",
+  btn(imp, px + pad, footY, pw - 2 * pad, m.btnH, "gamepop-close",
     Strings("Close"), { font = "small",
       action = function() imp._gamePopup = nil end })
 end

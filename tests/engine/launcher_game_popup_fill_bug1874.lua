@@ -69,20 +69,39 @@ local function drawGamePopup(tab)
   return rects
 end
 
+-- The picker rows share the nav rail's face: the open game carries the
+-- solid raised fill (plus its cartridge-colour accent mark); a row the
+-- focus ring merely parks on gets the ring, never that fill.
+local function accented(rect, color)
+  for _, f in ipairs(fills) do
+    if math.abs(f.x - rect.x) < 1 and f.y > rect.y and f.y < rect.y + rect.h
+        and f.w < rect.w / 4 and sameColor(f.color, color) then
+      return true
+    end
+  end
+  return false
+end
+
 local rects = drawGamePopup("blue")
 check(rects["gamepop-blue"] and rects["gamepop-red"],
   "the Choose-game list is in the nav graph")
-check(filledWith(rects["gamepop-blue"], PAL.railBlue),
-  "Blue cartridge: only the Blue row carries a solid rail fill")
-check(not filledWith(rects["gamepop-red"], PAL.railRed),
+check(filledWith(rects["gamepop-blue"], PAL.raised),
+  "Blue cartridge: the Blue row carries the solid selected fill")
+check(accented(rects["gamepop-blue"], PAL.railBlue),
+  "Blue cartridge: and the Blue accent mark")
+check(not filledWith(rects["gamepop-red"], PAL.raised),
   "Blue cartridge: Red is not filled even when the ring parks on it")
 
 Kit.setFocus("gamepop-blue")
 rects = drawGamePopup("red")
-check(filledWith(rects["gamepop-red"], PAL.railRed),
+check(filledWith(rects["gamepop-red"], PAL.raised),
   "Red cartridge: Red stays filled while the ring sits elsewhere")
-check(not filledWith(rects["gamepop-blue"], PAL.railBlue),
+check(accented(rects["gamepop-red"], PAL.railRed),
+  "Red cartridge: and keeps its accent mark")
+check(not filledWith(rects["gamepop-blue"], PAL.raised),
   "Red cartridge: the focused Blue row is ring-only")
+check(not accented(rects["gamepop-blue"], PAL.railBlue),
+  "Red cartridge: and carries no accent mark")
 
 local function tabFace(opts)
   Kit.blockClicks = false

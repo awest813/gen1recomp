@@ -102,6 +102,7 @@ Rebind these in-game under **OPTIONS > CONTROLS**.
 | `F1` | Save |
 | `F2` | Load |
 | `F10` | Open / close the mod manager |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Launcher: next / previous game or tool (also `Ctrl+PageDown` / `Ctrl+PageUp`; controller: L1 / R1) |
 
 Colors, tilt, zoom, shader FX, game speed, and void fill are also in the Options menu and persist in `options.lua`.
 

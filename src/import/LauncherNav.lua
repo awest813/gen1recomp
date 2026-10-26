@@ -175,7 +175,7 @@ local function navInk(opts, x, y, w, h)
   return Kit.hover(x, y, w, h) and PAL.text or PAL.muted
 end
 
-local function gameRowOpts(V, imp, m, c, g)
+local function gameRowOpts(V, imp, c, g)
   local o = c.rows[g.id]
   if o then return o end
   o = { face = "nav", color = g.color, action = c.head.tab[g.id] }
@@ -332,7 +332,7 @@ local function drawRail(V, imp, m, L)
   local py = Kit.scrollBegin(ix, libTop, iw, viewH, at, maxAt)
   local rowW = maxAt > 0 and iw - Kit.scrollGutter(m.s) or iw
   for i, g in ipairs(games) do
-    local o = gameRowOpts(V, imp, m, c, g)
+    local o = gameRowOpts(V, imp, c, g)
     o.active = imp.tab == g.id
     V.btn(imp, ix, py + (i - 1) * (rowH + gap), rowW, rowH, g.key, "", o)
   end
@@ -440,6 +440,12 @@ local function drawBottomNav(V, imp, m, L)
 end
 
 -- ------------------------------------------------------------------ entry
+
+-- Shared with the game picker so a cartridge reads the same everywhere.
+Nav.rowHeight = railRowH
+function Nav.gameRow(V, imp, g)
+  return gameRowOpts(V, imp, chrome(V, imp), g)
+end
 
 -- The top of the page column: the top bar's bottom edge in BAR mode, a
 -- breathing margin under the window top beside the rail.

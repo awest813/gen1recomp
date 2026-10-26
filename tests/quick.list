@@ -454,6 +454,7 @@ tests/engine/launcher_gold_touch_rows.lua
 tests/engine/launcher_mod_downloads.lua
 tests/engine/launcher_mod_scope_dropdown.lua
 tests/engine/launcher_modal_focus_input_test.lua
+tests/engine/launcher_nav_rail_test.lua
 tests/engine/launcher_navigation_perf.lua
 tests/engine/launcher_nx_pad_cursor_test.lua
 tests/engine/launcher_nx_version_chip_test.lua
