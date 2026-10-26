@@ -230,6 +230,44 @@ run_tier "T0 NX Gold cache load (maps.lua prefix)" "$LUA" tests/engine/cache_fs_
 run_tier "T0 touch-controls pad cursor" "$LUA" tests/engine/touch_controls_pad_cursor_test.lua
 run_tier "T0 URI launch arguments" "$LUA" tests/engine/launch_uri_args_test.lua
 run_tier "T1/T2 engine invariants + parity gates" "$LUA" tests/run_engine.lua
+
+# Standalone top-level suites no directory runner or glob picks up.  They
+# need no ROM (the Gen 3 online ones self-skip without a FireRed cache), and
+# left out of every tier they rot unnoticed: chip_synth_bulk_pcm_test went
+# red for a whole round before anyone ran it.  A new top-level suite that no
+# runner globs belongs on this list.
+STANDALONE_SUITES=(
+  tests/chip_synth_bulk_pcm_test.lua
+  tests/crypto_ed25519_test.lua
+  tests/crypto_sha512_test.lua
+  tests/gold_flag_names_test.lua
+  tests/gold_route_validate_test.lua
+  tests/launcher_mods_shadow_copy_bug801_834_test.lua
+  tests/lz77_test.lua
+  tests/online_panel.lua
+  tests/online_panel_c1.lua
+  tests/online_panel_c2.lua
+  tests/online_arena_data_gen3_test.lua
+  tests/online_fingerprint3_test.lua
+  tests/online_mon3_test.lua
+  tests/online_trade_gen3.lua
+  tests/online_trade_interop3_test.lua
+  tests/online_trade_relay3_test.lua
+  tests/online_trade_remote3_test.lua
+  tests/rom_importer_cursor_bug781_test.lua
+  tests/rom_importer_ios_save_export_test.lua
+  tests/test_surfing_minigame.lua
+  tests/yellow_title_palette_test.lua
+)
+run_standalone_suites() {
+  local t rc=0
+  for t in "${STANDALONE_SUITES[@]}"; do
+    "$LUA" "$t" >/dev/null 2>&1 || { echo "FAIL $t"; rc=1; }
+  done
+  [ "$rc" -eq 0 ] && echo "${#STANDALONE_SUITES[@]}/${#STANDALONE_SUITES[@]} standalone suites passed"
+  return $rc
+}
+run_tier "T2 standalone top-level suites" run_standalone_suites
 # Gen 2 / Crystal: ROM-free (own fixtures, or a self-skip on a missing cache),
 # so it runs here rather than behind the Red content gate below.
 ACTIVE_GROUP=gen2
@@ -493,6 +531,9 @@ if [ "$HAVE_RED_DATA" = "1" ]; then
     run_tier "T3 save editor: bag / PC move" "$LUA" tests/save_editor_item_move_bug1951_test.lua
     run_tier "T3 save editor: mobile properties" "$LUA" tests/save_editor_mobile_properties_tests.lua
     run_tier "T5 link (loopback lockstep)" "$LUA" tests/run_link_tests.lua
+    run_tier "T5 link: 16-player tournament" "$LUA" tests/link_tournament16.lua
+    run_tier "T3 save conversion (Gen 1)" "$LUA" tests/save_convert_tests.lua
+    run_tier "T3 save conversion: Yellow (#838)" "$LUA" tests/save_convert_yellow_bug838_test.lua
     # The oversize-save vendor oracle (tests/save_oversize_vendor_test.lua)
     # cross-checks the launcher's footer-truncation import against the
     # INDEPENDENT PKHeX-derived gen1lib codec, which cannot run under luajit

@@ -897,3 +897,4 @@ tests/engine/save_editor_map_point_buttons_s8.lua
 tests/engine/love_run_shell_matrix.lua
 tests/engine/void_fill_bake_retry_test.lua
 tests/engine/legacy_compat_asset_path_test.lua
+tests/engine/test_wiring_test.lua

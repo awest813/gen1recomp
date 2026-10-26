@@ -224,7 +224,15 @@ do
   local queued = {}
   local source = { free = 32, playing = false }
   function source:getFreeBufferCount() return self.free end
-  function source:queue(sd) self.free = self.free - 1; queued[#queued + 1] = sd end
+  -- Source:queue copies the PCM into an OpenAL buffer (alBufferData), and
+  -- ChipAudio reuses the queued SoundData as its next staging buffer, so the
+  -- mock keeps a copy, not the object
+  function source:queue(sd)
+    self.free = self.free - 1
+    local copy = { samples = sd.samples, channels = sd.channels, buf = {} }
+    for i = 0, sd.samples * sd.channels - 1 do copy.buf[i] = sd.buf[i] end
+    queued[#queued + 1] = copy
+  end
   function source:play() self.playing = true end
   function source:stop() self.playing = false end
   function source:isPlaying() return self.playing end
