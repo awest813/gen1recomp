@@ -207,6 +207,7 @@ check(l.message.text:find("slot2.sav", 1, true) ~= nil, "and says where it went"
 l = fresh()
 local dropped = { getFilename = function() return "/home/me/Gold.sav" end }
 l:filedropped(dropped)
+l:update(0)
 eq(imported[1] and imported[1].source, dropped, "a dropped .sav is imported as a save")
 eq(imported[1].version, "gold", "into the selected game")
 eq(l.selectedSlot.gold, "slot7", "and the new save is selected")
@@ -394,12 +395,14 @@ local zipFile = { getFilename = function() return "/home/x/thing.zip" end,
   open = function() end, close = function() end, read = function() return "zipbytes" end }
 local before = #modCalls.installed
 l:filedropped(zipFile)
+l:update(0)
 eq(#modCalls.installed, before + 1, "a .zip dropped on the Mods page installs as a mod")
 l.page = nil
 local importedData
 local realImport = l.importData
 l.importData = function(_, data) importedData = data end
 l:filedropped(zipFile)
+l:update(0)
 eq(importedData, "zipbytes", "elsewhere a dropped .zip is a ROM archive")
 l.importData = realImport
 window(390, 844)
@@ -539,6 +542,7 @@ eq(l:activeCart("gold"), nil, "and the game goes back to the original")
 local cartFile = { getFilename = function() return "C:\\carts\\x.g1rcart" end,
   open = function() end, close = function() end, read = function() return "cartbytes" end }
 l:filedropped(cartFile)
+l:update(0)
 eq(#cartCalls.installed, 3, "a dropped .g1rcart installs as a cart")
 window(390, 844)
 l.page = "carts"
@@ -655,5 +659,77 @@ for _, size in ipairs({ { 360, 640 }, { 800, 600 }, { 1024, 768 } }) do
     drawText(l)
   end
 end
+
+-- ------------------------------------------------------- audit fixes
+window(1280, 720)
+l = fresh()
+-- an import in progress blocks leaving the launcher
+l.job = { state = "working", version = "red", step = function() return "working" end }
+launched = {}
+l:play("gold", "slot1")
+l:newGame("gold")
+eq(#launched, 0, "nothing launches while an import is running")
+check(l.message.text:find("import", 1, true) ~= nil, "and the launcher says why")
+l.job = nil
+-- shortcut boots: no launch options, and autoUpdateAll answers
+local gotOpts = "unset"
+l.onLaunch = function(_, _, o) gotOpts = o end
+l:play("gold", "slot1")
+eq(gotOpts, nil, "a launch passes no options (main.lua's shortcut boot matches on that)")
+local answered
+l:autoUpdateAll(function(r) answered = r end)
+check(answered and answered.skipped, "autoUpdateAll reports skipped so the shortcut boots")
+-- the last game played opens next time
+eq(savedOptions.lastVersion, "gold", "the game played is remembered")
+-- typing into Rename reaches the field
+l = fresh()
+l.selected = "gold"
+drawText(l)
+l.selectedSlot[l:scopeKey("gold")] = "slot1"
+local realButton3 = Kit.button
+Kit.button = function(x, y, w, h, label, o)
+  if o and o.id == "save-rename" then return true end
+  return realButton3(x, y, w, h, label, o)
+end
+drawText(l)
+Kit.button = realButton3
+l:update(0)
+eq(Kit.focus, "rename-field", "Rename puts typing into its field")
+-- switching games drops a half-done rename
+l.renaming = "slot1"
+l:selectCart("gold", nil)
+eq(l.renaming, nil, "changing cart or game cancels a rename")
+-- the Box hands its buttons back when it closes
+local BoxHost = require("src.import.BoxHost")
+BoxHost.use(BoxHost.kit)
+l:closeBox()
+eq(BoxHost.installed(), nil, "closing the Box restores its default host")
+-- a save with an emulator footer asks first
+package.loaded["src.import.SaveFileIO"].importToSlot = function(source, version, force)
+  imported[#imported + 1] = { source = source, version = version, force = force }
+  if not force then return false, nil, { needsConfirm = true, size = 32768 + 48 } end
+  return true, "slot7"
+end
+local cleaned = false
+eq(l:importSave("/tmp/x.sav", "x.sav", nil, function() cleaned = true end), "confirm",
+  "a padded save asks before dropping its extra bytes")
+check(l.message.text:find("48 extra bytes", 1, true) ~= nil, "naming how many")
+check(not cleaned, "and keeps the picked file until answered")
+check(drawText(l):find("Import without them", 1, true) ~= nil, "the panel offers the choice")
+l:confirmSave(true)
+check(imported[#imported].force == true, "yes imports with the extra bytes dropped")
+check(cleaned, "and then lets the picked file go")
+eq(l.saveConfirm, nil, "the question is gone")
+-- a cancelled web pick is not an error
+local pickErr = "cancelled:No file was selected."
+love.system.pickFile = function() return true end
+love.system.getPickedFile = function() return nil end
+love.system.getPickError = function() local e = pickErr; pickErr = nil; return e end
+l:say(nil)
+l:requestHostPick("sav")
+l:update(0)
+eq(l.message, nil, "closing the web picker shows no error")
+eq(l.pendingPick, nil, "and stops waiting for it")
+love.system.pickFile, love.system.getPickedFile, love.system.getPickError = nil, nil, nil
 
 T.finish("pkgb launcher")

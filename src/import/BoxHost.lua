@@ -14,6 +14,7 @@ local BoxHost = {}
 local current
 
 function BoxHost.use(host) current = host end
+function BoxHost.installed() return current end
 
 local function host()
   return current or require("src.import.LauncherView")

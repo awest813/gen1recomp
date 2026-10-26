@@ -80,8 +80,10 @@ function Launcher.new(onLaunch, opts)
   for _, v in ipairs(self.games) do
     if self.ready[v] then first = first or v end
   end
+  local last = okO and type(saved) == "table" and saved.lastVersion or nil
   self.selected = (opts.initialGame and self.ready[opts.initialGame]
-    and opts.initialGame) or first or self.games[1]
+    and opts.initialGame) or (last and self.ready[last] and last)
+    or first or self.games[1]
   -- ask the self-updater (src/update/Check.lua) whether a release is out;
   -- it works on a worker thread and is a no-op where it cannot run
   if not opts.noUpdateCheck then
@@ -198,6 +200,7 @@ function Launcher:cartProblem(version)
 end
 
 function Launcher:selectCart(version, id)
+  self.renaming, self.saveConfirm = nil, nil
   self.cart[version] = id
   self.cartPlans = nil
   self:rememberCarts()
@@ -374,8 +377,8 @@ function Launcher:pollHostPick()
     if kind == "sav" then
       -- by path: SaveFileIO only takes raw bytes for a bare 32 KiB image,
       -- and a Gen 2 save (RTC footer) or a Gen 3 one is larger
-      self:importSave(path, name)
-      pcall(os.remove, path)
+      local cleanup = function() pcall(os.remove, path) end
+      if self:importSave(path, name, nil, cleanup) ~= "confirm" then cleanup() end
       return
     end
     local data, err = FilePicker.read(path)
@@ -389,7 +392,8 @@ function Launcher:pollHostPick()
   if type(sys.getPickError) == "function" then okE, err = pcall(sys.getPickError) end
   if okE and type(err) == "string" and err ~= "" then
     self.pendingPick = nil
-    self:say(err, "error")
+    -- closing the picker is not an error
+    if not err:match("^cancelled:") then self:say(err, "error") end
   end
 end
 
@@ -452,7 +456,7 @@ end
 
 function Launcher:installMod(data, name)
   local ModLibrary = require("src.mods.ModLibrary")
-  local ok, manifest, err = pcall(ModLibrary.installZip, data, name)
+  local ok, manifest, err = pcall(ModLibrary.installZip, data, name, { upgrade = true })
   if not ok then manifest, err = nil, manifest end
   self.modRows, self.cartPlans = nil, nil
   if not manifest then
@@ -526,11 +530,15 @@ function Launcher:closeBox()
   end)
   self.page, self.tab = nil, nil
   self.slots = {}
+  -- hand the Box back to its default host: a launcher built after this one
+  -- (the classic one, after a switch) does not take queued actions
+  require("src.import.BoxHost").use(nil)
 end
 
 -- BoxPrompt asks its host to take typed text for its rename field.
 function Launcher:_armTextInput()
   Kit.setFocus("box-prompt")
+  Kit.focus = "box-prompt"
   if love.keyboard and love.keyboard.setTextInput then pcall(love.keyboard.setTextInput, true) end
 end
 function Launcher:_disarmTextInput() Kit.blur() end
@@ -559,7 +567,14 @@ function Launcher:chooseBoxImport()
   self:importBox(data, err)
 end
 
+function Launcher:importing()
+  return self.job ~= nil and self.job.state == "working"
+end
+
 function Launcher:play(version, slotId)
+  -- the import only advances while this launcher runs; leaving now would
+  -- strand it with that game's old data already cleared
+  if self:importing() then return self:say("Wait for the import to finish.", "error") end
   local problem = self:cartProblem(version)
   if problem then return self:say(problem, "error") end
   local store = self:store(version)
@@ -567,12 +582,18 @@ function Launcher:play(version, slotId)
   -- the next start opens on this game, playing as this cart
   local opts = self:options()
   opts.lastVersion = version
+  local ok, SaveData = pcall(require, "src.core.SaveData")
+  if ok then pcall(SaveData.saveOptions, opts) end
   self:rememberCarts()
+  pcall(function() require("src.import.BoxHost").use(nil) end)
   self.launched = version
-  if self.onLaunch then self.onLaunch(version, store.cart, {}) end
+  -- no launch options: main.lua's shortcut boot reads opts ~= nil as a
+  -- different request than the one it is waiting for
+  if self.onLaunch then self.onLaunch(version, store.cart, nil) end
 end
 
 function Launcher:newGame(version)
+  if self:importing() then return self:say("Wait for the import to finish.", "error") end
   local problem = self:cartProblem(version)
   if problem then return self:say(problem, "error") end
   local id = self:store(version).create()
@@ -589,7 +610,10 @@ function Launcher:selectedSaveId(version)
 end
 
 -- `source` is a dropped LÖVE file, an absolute path, or raw bytes.
-function Launcher:importSave(source, name)
+-- Returns "confirm" when SaveFileIO asks before dropping an emulator footer;
+-- the source must stay readable until confirmSave answers (`cleanup` then
+-- runs).
+function Launcher:importSave(source, name, force, cleanup)
   local v = self.selected
   if not (v and self.ready[v]) then
     return self:say("Import the game's ROM before importing a save for it.", "error")
@@ -598,13 +622,33 @@ function Launcher:importSave(source, name)
     return self:say("Save files import into the original game, not a cart.", "error")
   end
   local SaveFileIO = require("src.import.SaveFileIO")
-  local ok, result = SaveFileIO.importToSlot(source, v)
+  local ok, result, info = SaveFileIO.importToSlot(source, v, force)
   self.slots[v] = nil
+  if not ok and type(info) == "table" and info.needsConfirm then
+    self.saveConfirm = { source = source, name = name, cleanup = cleanup, version = v,
+      extra = (tonumber(info.size) or 32768) - 32768 }
+    self:say(("%s has %d extra bytes after the save (an emulator's clock data). "
+      .. "Import it without them?"):format(tostring(name or "This file"),
+      self.saveConfirm.extra), "info")
+    return "confirm"
+  end
   if not ok then return self:say("Save import failed: " .. tostring(result), "error") end
   local SaveData = require("src.core.SaveData")
   local okA, active = pcall(SaveData.activeSlot, v)
   if okA and active then self.selectedSlot[v] = active end
   self:say((name and (name .. " ") or "The save ") .. "was imported as a new save.", "info")
+end
+
+function Launcher:confirmSave(yes)
+  local c = self.saveConfirm
+  self.saveConfirm = nil
+  if not c then return end
+  if yes and c.version == self.selected then
+    self:importSave(c.source, c.name, true)
+  else
+    self:say(nil)
+  end
+  if c.cleanup then c.cleanup() end
 end
 
 function Launcher:pickSave()
@@ -725,7 +769,11 @@ end
 -- ------------------------------------------------------------- host hooks
 
 function Launcher:update(dt)
-  self:pollHostPick()
+  local okP, errP = pcall(self.pollHostPick, self)
+  if not okP then
+    self.pendingPick = nil
+    self:say(tostring(errP), "error")
+  end
   if self.page == "box" then
     local ok, err = pcall(require("src.import.BoxPanel").update, self, dt)
     if not ok then self:say(tostring(err), "error") end
@@ -872,6 +920,10 @@ end
 Launcher.isSaveName = isSaveName
 
 function Launcher:filedropped(file)
+  self:queue(function() self:handleDrop(file) end)
+end
+
+function Launcher:handleDrop(file)
   local fname = file.getFilename and file:getFilename() or ""
   local lower = fname:lower()
   if self.page == "box" and (lower:match("%.gci$") or lower:match("%.sav$")) then
@@ -922,7 +974,11 @@ function Launcher:savesChanged() self.slots = {} end
 function Launcher:resumeAfterOverlay() self:refresh() end
 function Launcher:prepareOverlayHandoff() end
 function Launcher:ignoreReturningPointer() self.pressAt, self.click = nil, nil end
-function Launcher:autoUpdateAll() end
+-- main.lua asks a launcher to update mods before a shortcut boots; this one
+-- has no mod updater, so it says so and the boot goes ahead.
+function Launcher:autoUpdateAll(done)
+  if done then done({ skipped = true }) end
+end
 
 -- ------------------------------------------------------------------- draw
 
@@ -947,15 +1003,22 @@ function Launcher:drawGameList(x, y, w, h, s)
     local info = GameVersion.info(v)
     local clicked, ink = Kit.row(x, ry, w - Kit.scrollGutter(s), rowH,
       self.selected == v, "game-" .. v)
-    Kit.text("button", info.displayName, x + math.floor(12 * s),
-      ry + (rowH - Kit.textHeight("button")) / 2, ink or PAL.text)
     local status, color = statusText(self, v)
     local sw = Kit.textWidth("micro", status)
+    local nameW = w - Kit.scrollGutter(s) - sw - math.floor(36 * s)
+    -- "Pokemon Red" when it fits, else "Red": the part that tells them apart
+    local name = info.displayName
+    if Kit.textWidth("button", name) > nameW then name = info.label or name end
+    Kit.text("button", Kit.ellipsize("button", name, math.max(0, nameW)),
+      x + math.floor(12 * s), ry + (rowH - Kit.textHeight("button")) / 2, ink or PAL.text)
     Kit.text("micro", status, x + w - Kit.scrollGutter(s) - sw - math.floor(12 * s),
       ry + (rowH - Kit.textHeight("micro")) / 2,
       self.selected == v and (ink or PAL.text) or color)
     if clicked then
-      self:queue(function() self.selected = v; self.page = nil; self:say(nil) end)
+      self:queue(function()
+        self.selected, self.page, self.renaming, self.saveConfirm = v, nil, nil, nil
+        self:say(nil)
+      end)
     end
   end
   Kit.scrollEnd(x, top, w, viewH, self.listScroll, maxAt)
@@ -1024,7 +1087,8 @@ function Launcher:drawSettings(x, y, w, h, s)
     self:queue(function()
       self:setOption("launcherUi", classic and "new" or "classic")
       self:say(classic and "This launcher stays." or
-        "The classic launcher opens the next time PK:GB starts.", "info")
+        "The classic launcher opens the next time you come back from a game "
+          .. "or start PK:GB.", "info")
     end)
   end
   cy = cy + rowH + math.floor(10 * s)
@@ -1049,6 +1113,8 @@ function Launcher:drawSettings(x, y, w, h, s)
   end
   Kit.textWrapped("micro", "More options (colors, zoom, speed, controls) are in "
     .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
+  return cy + Kit.wrapHeight("micro", "More options (colors, zoom, speed, controls) are in "
+    .. "the game's own OPTIONS menu.", cw) + pad - y
 end
 
 function Launcher:drawNotes(x, y, w, h, s)
@@ -1277,8 +1343,35 @@ function Launcher:detailNeed(w, s)
   return h
 end
 
+-- Draw a panel that reports the height it used; when that is more than the
+-- window gives it, the panel scrolls instead of drawing over its neighbours.
+function Launcher:drawFitted(key, x, y, w, h, s, draw)
+  self.fit, self.fitScroll = self.fit or {}, self.fitScroll or {}
+  local need = self.fit[key]
+  if not need or need <= h + 1 then
+    self.fitScroll[key] = 0
+    self.fit[key] = draw(self, x, y, w, h, s) or h
+    return
+  end
+  local maxAt = need - h
+  local at = Kit.scrollInput(math.min(self.fitScroll[key] or 0, maxAt), maxAt, x, y, w, h)
+  self.fitScroll[key] = at
+  local py = Kit.scrollBegin(x, y, w, h, at, maxAt)
+  self.fit[key] = draw(self, x, py, w, need, s) or need
+  Kit.scrollEnd(x, y, w, h, at, maxAt, PAL.field)
+end
+
 function Launcher:drawDetail(x, y, w, h, s)
-  if self.page == "settings" then return self:drawSettings(x, y, w, h, s) end
+  if not self.page then
+    return self:drawFitted("detail:" .. tostring(self.selected), x, y, w, h, s, self.drawGame)
+  end
+  return self:drawPage(x, y, w, h, s)
+end
+
+function Launcher:drawPage(x, y, w, h, s)
+  if self.page == "settings" then
+    return self:drawFitted("settings", x, y, w, h, s, self.drawSettings)
+  end
   if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
   if self.page == "mods" and self.selected and self.ready[self.selected] then
     return self:drawMods(x, y, w, h, s)
@@ -1286,6 +1379,12 @@ function Launcher:drawDetail(x, y, w, h, s)
   if self.page == "carts" and self.selected and self.ready[self.selected] then
     return self:drawCarts(x, y, w, h, s)
   end
+  return self:drawGame(x, y, w, h, s)
+end
+
+-- The chosen game: import, or its saves with Continue / New game.  Returns
+-- the height it needs (drawFitted scrolls it on a short window).
+function Launcher:drawGame(x, y, w, h, s)
   local v = self.selected
   if not v then return end
   local info = GameVersion.info(v)
@@ -1311,7 +1410,7 @@ function Launcher:drawDetail(x, y, w, h, s)
     Kit.text("small", self.job.stage or "Importing", cx, cy, PAL.text)
     cy = cy + Kit.textHeight("small") + math.floor(8 * s)
     Theme.meter(cx, cy, cw, math.floor(10 * s), self.job.progress or 0, PAL.green)
-    return
+    return cy + math.floor(10 * s) + pad - y
   end
 
   if not self.ready[v] then
@@ -1327,7 +1426,7 @@ function Launcher:drawDetail(x, y, w, h, s)
     cy = cy + btnH + math.floor(8 * s)
     Kit.text("micro", "Or drop the .gb / .gbc / .gba file onto this window.",
       cx, cy, PAL.faint)
-    return
+    return cy + Kit.textHeight("micro") + pad - y
   end
 
   local slots = self:slotsFor(v)
@@ -1412,7 +1511,17 @@ function Launcher:drawDetail(x, y, w, h, s)
   local ty = y + h - pad - btnH - math.floor(10 * s) - toolsH
   local chosen = self.selectedSlot[scope]
   local has = chosen ~= nil and #slots > 0
-  if self.renaming == chosen and has then
+  if self.saveConfirm and self.saveConfirm.version == v then
+    local half2 = math.floor((cw - math.floor(10 * s)) / 2)
+    if Kit.button(cx, ty, half2, smallH, "Import without them",
+        { id = "save-confirm-yes", kind = "primary", font = "small" }) then
+      self:queue(function() self:confirmSave(true) end)
+    end
+    if Kit.button(cx + cw - half2, ty, half2, smallH, "Cancel",
+        { id = "save-confirm-no", font = "small" }) then
+      self:queue(function() self:confirmSave(false) end)
+    end
+  elseif self.renaming == chosen and has then
     local okW = math.floor(90 * s)
     local fw = cw - 2 * (okW + math.floor(8 * s))
     self.renameText = Kit.textfield("rename-field", cx, ty, fw, smallH,
@@ -1439,6 +1548,7 @@ function Launcher:drawDetail(x, y, w, h, s)
           for _, sl in ipairs(slots) do if sl.id == chosen then slot = sl end end
           self.renameText = slot and (slot.label or slot.name) or ""
           Kit.setFocus("rename-field")
+          Kit.focus = "rename-field"
         end },
       { id = "save-delete", label = self.armedDelete == v .. ":" .. tostring(chosen)
           and "Confirm delete" or "Delete", enabled = has, danger = true,
@@ -1459,13 +1569,15 @@ function Launcher:drawDetail(x, y, w, h, s)
   local half = math.floor((cw - math.floor(10 * s)) / 2)
   if Kit.button(cx, by, half, btnH, "Continue",
       { id = "continue", kind = "primary",
-        enabled = chosen ~= nil and #slots > 0 and not problem }) then
+        enabled = chosen ~= nil and #slots > 0 and not problem and not self:importing() }) then
     self:queue(function() self:play(v, chosen) end)
   end
+  local need = self:detailNeed(w, s)
   if Kit.button(cx + cw - half, by, half, btnH, "New game",
-      { id = "newgame", kind = "accent", enabled = not problem }) then
+      { id = "newgame", kind = "accent", enabled = not problem and not self:importing() }) then
     self:queue(function() self:newGame(v) end)
   end
+  return need
 end
 
 function Launcher:boxMetrics(s)
@@ -1631,7 +1743,9 @@ function Launcher:draw()
   if self.message then footH = footH + Kit.textHeight("small") * 2 + math.floor(8 * s) end
   local bodyH = H - y - pad - footH
 
-  local wide = w >= 700 * s
+  -- side by side on a wide window, and on a landscape phone too: stacking
+  -- there leaves neither half tall enough to use
+  local wide = w >= 700 * s or (w >= 520 and w >= H * 1.3)
   if self.page == "box" then
     self:drawBox(x, y, w, bodyH, s)
   elseif self.page and not wide then

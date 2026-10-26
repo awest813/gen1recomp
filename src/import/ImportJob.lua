@@ -121,6 +121,11 @@ end
 function ImportJob:fail(err)
   self.state, self.error = "error", tostring(err)
   self.thread, self.worker = nil, nil
+  -- a coroutine that died mid-step leaves CacheFs pointed at this game
+  if self.savedPrefix ~= nil then
+    require("src.import.CacheFs").prefix = self.savedPrefix
+    self.savedPrefix = nil
+  end
   return self
 end
 
@@ -145,6 +150,7 @@ function ImportJob:_startCoroutine(data)
   self.worker = coroutine.create(function()
     local CacheFs = require("src.import.CacheFs")
     local saved = CacheFs.prefix
+    job.savedPrefix = saved
     CacheFs.prefix = job.prefix
     local manifest = require("src.import.RomManifest").decode(job.version)
     local extractor = extractorFor(job.version).new(data, manifest,
@@ -152,8 +158,11 @@ function ImportJob:_startCoroutine(data)
         job.stage, job.progress = stage, progress / math.max(1, total)
         coroutine.yield()
       end, job.sha1)
-    local ok, err = pcall(extractor.run, extractor)
+    -- the progress callback yields: PUC Lua 5.1 (the browser build) cannot
+    -- yield through a plain pcall, so use the yield-safe one
+    local ok, err = require("src.core.LuaCompat").coPcall(extractor.run, extractor)
     CacheFs.prefix = saved
+    job.savedPrefix = nil
     if not ok then error(err, 0) end
   end)
 end

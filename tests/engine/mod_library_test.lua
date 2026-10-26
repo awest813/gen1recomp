@@ -184,4 +184,22 @@ check(not fs.getInfo("mods/flat") and not files["mods/flat/main.lua"], "with its
 check(not ModLibrary.uninstall("mods/../save"), "but never climbs out of mods/")
 check(not ModLibrary.uninstall("save/options"), "or touches anything else")
 
+-- -------------------------------------------------- upgrade and shadowing
+local v2 = "PK\3\4v2"
+archives[v2] = { ["manifest.json"] = manifest("cool"):gsub('"1.0.0"', '"1.1.0"'), ["main.lua"] = "v2" }
+local up = ModLibrary.installZip(v2, "cool.zip", { upgrade = true })
+check(up and up.version == "1.1.0", "an upgrade installs a newer version over the old")
+eq(files["mods/cool/main.lua"], "v2", "replacing its files")
+local same, sameErr = ModLibrary.installZip(v2, "cool.zip", { upgrade = true })
+check(not same and sameErr:find("already installed", 1, true), "the same version is not reinstalled")
+fs.write("mods/shadow/manifest.json", manifest("shadow"))
+fs.getRealDirectory = function() return "/game" end
+fs.getSaveDirectory = function() return "/save" end
+local realRemove = fs.remove
+fs.remove = function(p) if p == "mods/shadow" then return false end return realRemove(p) end
+fs.write("mods/shadow/x", "y")
+dirs["mods/shadow"] = true
+check(ModLibrary.uninstall("mods/shadow"), "uninstalling over a built-in copy of the same mod succeeds")
+fs.remove, fs.getRealDirectory, fs.getSaveDirectory = realRemove, nil, nil
+
 T.finish("mod library")

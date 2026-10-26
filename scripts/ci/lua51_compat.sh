@@ -83,6 +83,7 @@ echo "-- suites under lua5.1"
 "$LUA" tests/engine/fixed_step_sustained_catchup_test.lua || fail=1
 "$LUA" tests/engine/fetch_web_transport_test.lua || fail=1
 "$LUA" tests/engine/lua_goto_rewrite_test.lua || fail=1
+"$LUA" tests/engine/import_job_coroutine_test.lua || fail=1
 
 if [ "$fail" = 0 ]; then
   echo "lua 5.1 compat gate: PASS"

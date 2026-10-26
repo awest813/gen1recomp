@@ -19,6 +19,7 @@ local Json = require("src.link.Json")
 local Manifest = require("src.mods.Manifest")
 local ModTargets = require("src.mods.ModTargets")
 local GameVersion = require("src.core.GameVersion")
+local Semver = require("src.mods.Semver")
 
 local ModLibrary = {}
 
@@ -148,7 +149,8 @@ local function findModRoot(fs, mount)
 end
 
 -- Install a mod from .zip bytes.  Returns the manifest, or nil plus a reason.
--- An installed mod with the same id is replaced only when opts.replace.
+-- An installed mod with the same id is replaced when opts.replace, or when
+-- opts.upgrade and the archive's version is newer.
 function ModLibrary.installZip(bytes, name, opts)
   opts = opts or {}
   local fs = fsys(opts.fs)
@@ -171,7 +173,13 @@ function ModLibrary.installZip(bytes, name, opts)
     end
     local target = ModLibrary.ROOT .. "/" .. manifest.id
     if fs.getInfo(target) then
-      if not opts.replace then
+      local replace = opts.replace
+      if not replace and opts.upgrade then
+        local have = readManifest(fs, target)
+        local order = have and Semver.compare(manifest.version, have.version)
+        replace = have == nil or (order ~= nil and order > 0)
+      end
+      if not replace then
         err = manifest.id .. " is already installed"
         result = { exists = true, manifest = manifest }
         return
@@ -195,7 +203,13 @@ function ModLibrary.uninstall(folder, fs)
     return false, "not an installed mod folder"
   end
   removeTree(fs, folder)
-  return fs.getInfo(folder) == nil
+  if fs.getInfo(folder) == nil then return true end
+  -- a game-folder mod of the same name still shows through; the player's
+  -- copy is gone, which is what uninstalling it means
+  local real = fs.getRealDirectory and fs.getRealDirectory(folder)
+  local saveDir = fs.getSaveDirectory and fs.getSaveDirectory()
+  if real and saveDir and real ~= saveDir then return true end
+  return false, "the mod's files could not all be removed"
 end
 
 -- Ids a manifest depends on that are not installed.
