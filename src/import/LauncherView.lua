@@ -5069,7 +5069,7 @@ end
 -- Per-mod actions for the MODS tab: the row itself only carries the enable
 -- toggle, everything episodic (update check, versions, delete) lives here.
 local SKIN_EXPORTS = {
-  { id = "native", key = "skinact-exp-native", label = "Export as gen1recomp .zip" },
+  { id = "native", key = "skinact-exp-native", label = "Export as PK:GB .zip" },
   { id = "retroarch", key = "skinact-exp-ra", label = "Export as RetroArch .zip" },
   { id = "delta", key = "skinact-exp-delta", label = "Export as Delta .deltaskin" },
 }

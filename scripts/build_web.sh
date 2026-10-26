@@ -212,7 +212,7 @@ fi
 cp "$NATIVE_OUT/love.js" "$NATIVE_OUT/love.wasm" "$WORK/lovejs/src/compat/"
 rm -rf "$OUT"
 mkdir -p "$OUT"
-node "$WORK/lovejs/index.js" -c -t "G1R Deluxe" -m "$MEMORY" "$LOVE_FILE" "$OUT" >/dev/null
+node "$WORK/lovejs/index.js" -c -t "PK:GB" -m "$MEMORY" "$LOVE_FILE" "$OUT" >/dev/null
 python3 "$ROOT/scripts/patch_web_openal.py" "$OUT/love.js"
 python3 "$ROOT/scripts/patch_web_gl.py" "$OUT/love.js"
 python3 "$ROOT/scripts/patch_web_idbfs.py" "$OUT/love.js"

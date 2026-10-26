@@ -1,9 +1,9 @@
-# Build Gen1Recomp for Nintendo Switch
+# Build PK:GB for Nintendo Switch
 
 Want to play a release build instead? Download the SD-ready zip and extract it
 at your microSD root. See [switch-install.md](switch-install.md).
 
-This guide is for contributors who build Gen1Recomp for Switch from source.
+This guide is for contributors who build PK:GB for Switch from source.
 
 > Releases ship `gen1recomp-*-switch.zip` (SD tree under `switch/gen1recomp/`).
 > Runtime target is pinned [love-nx](https://github.com/retronx-team/love-nx)

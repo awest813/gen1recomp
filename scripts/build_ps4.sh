@@ -134,7 +134,7 @@ if [ "$FUSED" -eq 1 ]; then
   icon="$ROOT/scripts/ps4/icon0.png"
   [ -f "$icon" ] || icon=""
   mkdir -p "$DIST"
-  "$fuse" --love "$love" --title-id "$TITLE_ID" --title "Gen1Recomp" \
+  "$fuse" --love "$love" --title-id "$TITLE_ID" --title "PK:GB" \
     --version "$(app_ver "$VERSION")" --content-label GEN1RECOMP --out-dir "$WORK/ps4-pkg" \
     ${icon:+--icon "$icon"}
   cp "$WORK"/ps4-pkg/IV0000-"$TITLE_ID"_00-*.pkg "$DIST/gen1recomp-$VERSION-ps4.pkg"

@@ -99,7 +99,7 @@ local previousEngine = Version.engine
 Version.engine = "0.1.50"
 local _, versionFields, versionInfo = IssueReport.build({}, { mods = {} })
 check(versionFields.version == "0.1.50"
-    and versionInfo.metadata:find("App: gen1recomp v0.1.50", 1, true) ~= nil,
+    and versionInfo.metadata:find("App: PK:GB v0.1.50", 1, true) ~= nil,
   "report uses the stamped app version")
 Version.engine = previousEngine
 local _, _, developmentInfo = IssueReport.build({}, { mods = {} })

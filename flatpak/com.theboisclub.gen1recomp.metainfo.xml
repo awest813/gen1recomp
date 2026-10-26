@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>com.theboisclub.gen1recomp</id>
-  <name>gen1recomp</name>
+  <name>PK:GB</name>
   <summary>Pokémon Gen 1/2 recompilation</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>

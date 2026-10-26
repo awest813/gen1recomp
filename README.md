@@ -1,8 +1,8 @@
-# G1R Deluxe
+# PK:GB
 
-G1R Deluxe (Gen1Recomp) is a native [LÖVE](https://love2d.org) recreation of Pokémon Red, Blue, Yellow, Gold, Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald. The engine is hand-written Lua, ported from the [pret](https://github.com/pret) disassemblies. Graphics, audio programs, and game data are decoded on your machine from a ROM you already own. This repository does not include a ROM, does not emulate the Game Boy, and does not download a disassembly.
+PK:GB (Pokémon GameBoy, formerly G1R Deluxe / Gen1Recomp) is a native [LÖVE](https://love2d.org) recreation of Pokémon Red, Blue, Yellow, Gold, Silver, Crystal, FireRed, LeafGreen, Ruby, Sapphire, and Emerald. The engine is hand-written Lua, ported from the [pret](https://github.com/pret) disassemblies. Graphics, audio programs, and game data are decoded on your machine from a ROM you already own. This repository does not include a ROM, does not emulate the Game Boy, and does not download a disassembly.
 
-<p align="center"><img src="assets/logo/logo.png" alt="G1R Deluxe"></p>
+<p align="center"><img src="assets/logo/logo.png" alt="PK:GB"></p>
 
 > [!CAUTION]
 > This project is not affiliated with `gen1recomp.com`. That site is not run by this project, was not authorized to speak for it, and has hosted adware. Do not download anything from it. The official sources are this GitHub repository, the [Discord](https://bois.icu), and <https://gen1re.com>.

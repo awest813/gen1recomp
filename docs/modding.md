@@ -158,7 +158,7 @@ selectively reading the payloads a transform actually needs.
 
 MD5 here identifies a known dump because ROM databases commonly publish it;
 it is not a security or authenticity guarantee. Do not paste the SHA-1 used by
-Gen1Recomp's own game-ROM importer into an import's `md5` field. Mod archives
+PK:GB's own game-ROM importer into an import's `md5` field. Mod archives
 must not include anything beneath `baseroms/`. The engine records a validation
 receipt keyed by file size and modification time so launcher refreshes and
 later boots do not repeatedly hash an unchanged imported ROM.

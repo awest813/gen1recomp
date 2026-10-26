@@ -35,7 +35,7 @@ check((love.filesystem.read("lua-error.log") or ""):find(
 
 eq(love.errorhandler("src/core/Game2.lua:42: crash"),
   "blue handler result", "engine errors also use the blue handler")
-check(shown:find("Likely source: Game itself (gen1recomp)", 1, true) ~= nil,
+check(shown:find("Likely source: Game itself (PK:GB)", 1, true) ~= nil,
   "blue handler identifies engine errors")
 
 -- With an active window, the game's own screen keeps the useful summary and
@@ -91,7 +91,7 @@ local blueLoop = love.errorhandler("src/core/Game2.lua:42: startup crash")
 eq(type(blueLoop), "function", "startup failure gets a custom crash screen")
 blueLoop()
 display = table.concat(drawn, "\n")
-check(display:find("gen1recomp", 1, true) ~= nil,
+check(display:find("PK:GB", 1, true) ~= nil,
   "blue variant identifies the engine")
 check(display:find("Restart the game", 1, true) ~= nil,
   "blue variant gives a plain-language next step")

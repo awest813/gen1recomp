@@ -296,7 +296,7 @@ local function modSource(folder, id)
 end
 
 local function engineSource()
-  return "Likely source: gen1recomp", { kind = "engine", name = "gen1recomp" }
+  return "Likely source: PK:GB", { kind = "engine", name = "gen1recomp" }
 end
 
 function SwitchDiagnostics.errorSource(msg, traceback)

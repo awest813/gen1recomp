@@ -1,6 +1,6 @@
 # Switch file transfer (MTP / SD / FTP)
 
-Ways to put Gen1Recomp artifacts and inbox files onto a Nintendo Switch.
+Ways to put PK:GB artifacts and inbox files onto a Nintendo Switch.
 **Any method is valid** if the bytes land in the destinations below.
 
 This is the runbook for contributors on **macOS, Linux, and Windows**.
@@ -37,7 +37,7 @@ files, or third-party mod zips to git.
 
 ### 1. MTP (DBI responder + host client)
 
-On the Switch: close Gen1Recomp → open **DBI** → **Run MTP responder** (often
+On the Switch: close PK:GB → open **DBI** → **Run MTP responder** (often
 **X** on the main screen) → keep that screen up → USB-C data cable to the host.
 
 On the host: open **one** MTP client, navigate to **`1: SD Card`**, then the
@@ -117,7 +117,7 @@ only; pick what your CFW setup already uses.
 2. From the host, connect with any FTP client and upload to the same
    `switch/gen1recomp/`, `imports/`, `imports/mods/`, `imports/saves/<game>/`,
    and `exports/<game>/` paths.
-3. Stop the FTP server cleanly before launching Gen1Recomp.
+3. Stop the FTP server cleanly before launching PK:GB.
 
 If credentials or chroots differ by app, trust the **destination paths**, not
 a single vendor tutorial.

@@ -68,7 +68,7 @@ def main():
     metadata = {
         "version": 4, "name": "gen1recomp.zip",
         "items": ["Gen1Recomp.sh", "gen1recomp"], "items_opt": [],
-        "attr": {"title": "Gen1Recomp", "porter": ["Nexhas28"],
+        "attr": {"title": "PK:GB", "porter": ["Nexhas28"],
                  "desc": "Native Pokemon recreation in LÖVE. Requires your own supported US ROM; no ROM is included.",
                  "desc_md": None,
                  "inst": "Copy a supported canonical US ROM into gen1recomp/lovegame/, then launch and choose the ROM. Start with Red or Blue. Update through PortMaster.",
@@ -79,7 +79,7 @@ def main():
     date = datetime.date.today().strftime("%Y%m%d")
     (port / "gameinfo.xml").write_text(f'''<?xml version="1.0" encoding="utf-8"?>
 <gameList><game>
-<path>./Gen1Recomp.sh</path><name>Gen1Recomp</name>
+<path>./Gen1Recomp.sh</path><name>PK:GB</name>
 <desc>Native Pokemon recreation. Supply your own supported US ROM.
 Based on the Pokemon Gen 1 Recompilation Project by BOIS CLUB GAMES, LLC
 (https://github.com/bryanthaboi/gen1recomp)</desc>

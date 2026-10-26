@@ -94,11 +94,17 @@ function Version.isDev()
   return engine == "0.0.0-dev" or engine:find("%-dev", 1) ~= nil
 end
 
+-- The project's display name.  Only what people read: the save identity,
+-- package and bundle ids, the repository and update endpoints keep their
+-- gen1recomp names so existing saves, installs and updates carry over.
+Version.NAME = "PK:GB"
+Version.LONG_NAME = "Pokémon GameBoy"
+
 -- Window / chrome title.  Dev builds keep the version visible
--- ("gen1recomp v0.0.0-dev"); release builds are just the base name so Linux
--- window chrome and taskbars do not read "gen1recomp 0.1.73".
+-- ("PK:GB v0.0.0-dev"); release builds are just the base name so Linux
+-- window chrome and taskbars do not read "PK:GB 0.1.73".
 function Version.title(base)
-  base = base or "gen1recomp"
+  base = base or Version.NAME
   if Version.isDev() then
     return base .. " v" .. Version.engine
   end

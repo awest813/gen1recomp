@@ -10,7 +10,7 @@ the x64 package under `Dependencies`.
 
 1. Put your legally obtained ROMs on an external drive. Mod ZIPs can go on the
    same drive.
-2. Connect the drive to the Xbox and open Gen1Recomp.
+2. Connect the drive to the Xbox and open PK:GB.
 3. Select **Import ROM** or **Import Mod**, then choose the file with the Xbox
    file picker.
 4. Repeat the ROM import for each version you want to use.
@@ -20,11 +20,11 @@ the x64 package under `Dependencies`.
 1. Create a folder named `baseroms` on your PC and place your legally obtained
    ROMs inside it.
 2. ZIP the folder, keeping `baseroms` at the top level of the archive.
-3. Launch Gen1Recomp once, then close it.
+3. Launch PK:GB once, then close it.
 4. Open Xbox Device Portal and upload the ZIP to
    `Gen1Recomp/LocalState/pokemon-love2d/`.
 5. Choose **Yes** when Device Portal asks whether to extract the archive.
-6. Open Gen1Recomp. The launcher checks baseroms once at startup. When it
+6. Open PK:GB. The launcher checks baseroms once at startup. When it
    finds a compatible ROM, that game's tab shows ROM FOUND and an Import
    detected ROM button.
 

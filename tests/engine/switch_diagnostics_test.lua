@@ -58,7 +58,7 @@ eq(hint, "Error log: /tmp/pokeport-stub-save/lua-error.log",
 SwitchDiagnostics.logLuaError(romErr)
 local errLog = love.filesystem.read("lua-error.log") or ""
 check(errLog:find("probe failure", 1, true) ~= nil, "lua-error.log records message")
-check(errLog:find("Likely source: gen1recomp", 1, true) ~= nil,
+check(errLog:find("Likely source: PK:GB", 1, true) ~= nil,
   "unattributed errors identify gen1recomp")
 check(errLog:find("<redacted>", 1, true) ~= nil, "lua-error.log strips ROM bytes")
 check(not errLog:find(romErr, 1, true), "lua-error.log omits raw ROM bytes")
@@ -87,13 +87,13 @@ eq(SwitchDiagnostics.errorSource("plain failure",
   'Likely source: mod "Sample Mod" (sample_mod)',
   "traceback identifies a mod after engine dispatch frames")
 eq(SwitchDiagnostics.errorSource("src/mods/Loader.lua:12: crash", ""),
-  "Likely source: gen1recomp", "engine mod loader is not a user mod")
+  "Likely source: PK:GB", "engine mod loader is not a user mod")
 eq(SwitchDiagnostics.errorSource(
   "/game/mods/sample_mod/src/mods/helper.lua:12: crash", ""),
   'Likely source: mod "Sample Mod" (sample_mod)',
   "a mod's own src/mods directory stays attributed to the mod")
 eq(SwitchDiagnostics.errorSource("src/ui/gen2/WideBattle.lua:37: crash", ""),
-  "Likely source: gen1recomp", "engine crash is attributed to gen1recomp")
+  "Likely source: PK:GB", "engine crash is attributed to the game itself")
 love.filesystem.remove("mods/sample_mod/manifest.json")
 
 local originalWrite = love.filesystem.write

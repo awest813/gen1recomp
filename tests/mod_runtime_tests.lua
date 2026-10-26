@@ -152,14 +152,14 @@ do
   local saved = Version.engine
   Version.engine = "0.1.73"
   check(Version.isDev() == false, "a stamped X.Y.Z is not a dev build")
-  check(Version.title() == "gen1recomp",
+  check(Version.title() == "PK:GB",
     "release window title omits the version number")
   check(Version.title("Gen 1 Recompilation Project")
       == "Gen 1 Recompilation Project",
     "release titles keep the base string alone")
   Version.engine = "1.2.3-dev"
   check(Version.isDev() == true, "a -dev pre-release still counts as dev")
-  check(Version.title() == "gen1recomp v1.2.3-dev",
+  check(Version.title() == "PK:GB v1.2.3-dev",
     "and still shows the version in the title")
   Version.engine = saved
 end

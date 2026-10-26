@@ -1,4 +1,4 @@
-# Install Gen1Recomp on PlayStation 4
+# Install PK:GB on PlayStation 4
 
 Releases that include PS4 support ship `gen1recomp-*-ps4.pkg`: the game and its
 runtime in one installable package. Install it, then import your own legal
@@ -20,7 +20,7 @@ Silver, Crystal, FireRed and LeafGreen. They may work; reports are welcome.
    download `gen1recomp-*-ps4.pkg` (optionally check it against its `.sha256`).
 2. Copy it to a USB drive formatted **exFAT** and plug it into the console.
 3. **Settings → Debug Settings → Game → Package Installer**, pick the file.
-4. Launch **Gen1Recomp** from the home screen.
+4. Launch **PK:GB** from the home screen.
 
 Updating: install the newer `.pkg` the same way; it installs over the old one.
 Saves, imported ROMs and mods live in `/data/love/pokemon-love2d/`, outside the

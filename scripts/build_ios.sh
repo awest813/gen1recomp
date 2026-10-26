@@ -40,7 +40,7 @@ LOVE_FILE="$RESOURCES_DIR/game.love"
 LIBS_DIR="$XCODE_DIR/ios/libraries"
 
 APP_NAME="gen1recomp++"
-DISPLAY_NAME="gen1recomp++"
+DISPLAY_NAME="PK:GB"
 PRODUCT_NAME="gen1recomp++"
 # Bundle ID resolution, most specific wins:
 #   1. GEN1_BUNDLE_ID env var

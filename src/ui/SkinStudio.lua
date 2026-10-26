@@ -67,7 +67,7 @@ Studio.FORMAT_LABEL = {
 }
 
 Studio.EXPORTS = {
-  { id = "native", label = "gen1recomp .zip",
+  { id = "native", label = "PK:GB .zip",
     hint = "Reopens here and in the launcher." },
   { id = "retroarch", label = "RetroArch .zip",
     hint = "An overlay .cfg RetroArch can load." },

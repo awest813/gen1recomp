@@ -7,7 +7,7 @@
   <Identity Name="Gen1RecompUWP" Publisher="@UWP_PUBLISHER_XML@" Version="@UWP_PACKAGE_VERSION@" />
   <mp:PhoneIdentity PhoneProductId="5074018d-a46b-4dd3-b7fa-93a1e39858ad" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
-    <DisplayName>Gen1Recomp</DisplayName>
+    <DisplayName>PK:GB</DisplayName>
     <PublisherDisplayName>Gen1Recomp</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -20,8 +20,8 @@
   <Applications>
     <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="Gen1RecompUWP.App">
       <uap:VisualElements
-        DisplayName="Gen1Recomp"
-        Description="Gen1Recomp for Xbox Dev Mode"
+        DisplayName="PK:GB"
+        Description="PK:GB (Pokémon GameBoy) for Xbox Dev Mode"
         BackgroundColor="#101820"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

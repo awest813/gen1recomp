@@ -29,7 +29,7 @@ local function textFor(report)
   local owner = report.owner or {}
   local isMod = owner.kind == "mod"
   local source = isMod and ("Mod: " .. tostring(owner.name or owner.id or "Unknown mod"))
-    or "Game itself (gen1recomp)"
+    or "Game itself (PK:GB)"
   if isMod and owner.id and owner.name ~= owner.id then
     source = source .. " (" .. tostring(owner.id) .. ")"
   end

@@ -1,4 +1,4 @@
-# Install Gen1Recomp on Nintendo Switch
+# Install PK:GB on Nintendo Switch
 
 Every GitHub Release that includes Switch support ships an SD-ready zip:
 `gen1recomp-*-switch.zip`. Extract it at the root of your microSD (install

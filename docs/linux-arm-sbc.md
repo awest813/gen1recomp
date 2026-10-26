@@ -1,6 +1,6 @@
 # Linux ARM SBC Handhelds (PortMaster)
 
-Download `gen1recomp-*-sbc-portmaster.zip` from the [Gen1Recomp releases](https://github.com/bryanthaboi/gen1recomp/releases). This build targets 64-bit Linux ARM handhelds with PortMaster, including compatible H700 devices.
+Download `gen1recomp-*-sbc-portmaster.zip` from the [PK:GB releases](https://github.com/bryanthaboi/gen1recomp/releases). This build targets 64-bit Linux ARM handhelds with PortMaster, including compatible H700 devices.
 
 ## Install
 
@@ -81,7 +81,7 @@ Environment variables for fine-tuning (configured in `gen1recomp-sbc.sh`):
 
 ## Building
 
-Release workflows build this automatically. Standalone builds resolve the latest published Gen1Recomp release by default:
+Release workflows build this automatically. Standalone builds resolve the latest published PK:GB release by default:
 
 ```sh
 ./build-linux-arm-sbc.sh --version 0.1.75

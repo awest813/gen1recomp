@@ -1,6 +1,6 @@
 {
-  "name": "G1R Deluxe",
-  "short_name": "G1R Deluxe",
+  "name": "PK:GB",
+  "short_name": "PK:GB",
   "description": "Pokémon Red, Blue and Yellow, rebuilt natively. Bring your own ROM.",
   "start_url": "./",
   "scope": "./",

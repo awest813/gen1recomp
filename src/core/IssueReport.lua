@@ -231,7 +231,7 @@ local function metadata(options, context)
   -- chrome hides it on release builds (Version.title).  Unstamped
   -- working-tree builds stay as plain "gen1recomp" so the placeholder
   -- never lands in a filed issue.
-  add("App", version ~= "" and ("gen1recomp v" .. version) or "gen1recomp")
+  add("App", version ~= "" and ("PK:GB v" .. version) or "PK:GB")
   add("LÖVE", loveVersion())
   if safeMode then add("Safe mode", "on") end
   local guardOk, guardPresent = pcall(function()

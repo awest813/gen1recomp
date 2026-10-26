@@ -17,7 +17,7 @@ LOVE_NX_DIR="$ROOT/.bazinga/love-nx/$LOVE_NX_TAG"
 LOVE_ELF="$LOVE_NX_DIR/love.elf"
 # Regenerated from assets/logo/gen1recomp_cover.png by tools/brand_platform_icons.py.
 ICON="$ROOT/ports/switch/assets/icon.jpg"
-APP_NAME="gen1recomp"
+APP_NAME="PK:GB"
 APP_AUTHOR="bryanthaboi, port by andrewqsantos"
 DKP_IMAGE_FILE="$ROOT/scripts/switch/dkp-docker.image"
 

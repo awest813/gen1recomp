@@ -491,7 +491,7 @@ local function buildActivity()
     timestamps = { start = state.startedAt },
     assets = {
       large_image = "logo",
-      large_text = "Pokemon Gen1Recomp",
+      large_text = "PK:GB - Pokémon GameBoy",
     },
   }
   if state.joinSecret then

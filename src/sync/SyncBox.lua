@@ -401,7 +401,7 @@ function SyncBox:apply(snapshot, entries, syncState, expected)
       reg.list[#reg.list + 1] = slot; reg.active = reg.active or slot; created = true
     end
     local path = slot and pathOf({ version = row.version, cart = cart, slot = slot })
-    if slot and not path then return nil, "A local save slot is invalid. Restart G1R before syncing Box." end
+    if slot and not path then return nil, "A local save slot is invalid. Restart PK:GB before syncing Box." end
     if oldLink and path then mapping[oldLink.path] = { path = path, slot = slot, cart = cart } end
     options.playthroughIds = options.playthroughIds or {}
     options.playthroughIds[scope] = options.playthroughIds[scope] or {}
