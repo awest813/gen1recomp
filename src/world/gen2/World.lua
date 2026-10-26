@@ -203,14 +203,7 @@ local MAPSETUP_FADE_OUT = {
 }
 -- data/maps/setup_scripts.asm:27-32
 local MAPSETUP_WARP_WINDOW = { [MAPSETUP.TELEPORT] = true }
-local MAPSETUP_FADE_IN = {
-  [MAPSETUP.DOOR] = true, [MAPSETUP.FALL] = true, [MAPSETUP.TELEPORT] = true,
-  [MAPSETUP.WARP] = true, [MAPSETUP.BADWARP] = true, [MAPSETUP.TRAIN] = true,
-  [MAPSETUP.LINKRETURN] = true, [MAPSETUP.CONTINUE] = true,
-  [MAPSETUP.RELOADMAP] = true,
-}
--- MapSetupScript_Connection and _Submenu are the two with no FadeInFromWhite;
--- naming them keeps the table above readable as the whole eleven-row set.
+-- MapSetupScript_Connection and _Submenu are the two with no FadeInFromWhite.
 local MAPSETUP_NO_FADE = {
   [MAPSETUP.CONNECTION] = true, [MAPSETUP.SUBMENU] = true,
 }

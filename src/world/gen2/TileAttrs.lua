@@ -4,14 +4,6 @@
 
 local TileAttrs = {}
 
-local DEFAULT = {
-  palette = 1,
-  vramBank = 0,
-  priority = false,
-  xFlip = false,
-  yFlip = false,
-}
-
 function TileAttrs.forTile(tileset, tileId)
   local attrs = tileset and tileset.tileAttrs
   if attrs then

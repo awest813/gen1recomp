@@ -1249,11 +1249,6 @@ local function sideTable(target, key)
   return side
 end
 
-local function ensureSlot(t, key)
-  if t[key] == nil then t[key] = {} end
-  return t[key]
-end
-
 local function writeMon(target, t, num, value)
   local moveIndex = moveIndexFor(sibling(target, "gen3Moves"), t.moveNames)
   local items = itemIndex(target)

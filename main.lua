@@ -1782,7 +1782,7 @@ function love.run()
   _G.POKEPORT_LOOP_PANEL_SYNC = not web
   if not web then FrameCap.bootPanelSync() end
   local RefreshRate = require("src.core.RefreshRate")
-  local FixedStep = require("src.core.FixedStep")
+  local FixedStep = require("src.core.FixedStep") -- luacheck: ignore 211 (pinned love.run shell text)
   local VSync = require("src.core.VSync")
   local PresentSync = require("src.core.PresentSync")
   local paced = pacingEnabled() and not web

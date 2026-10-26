@@ -1414,7 +1414,6 @@ function ManagerState:drawApply()
   end
   if #staged == 0 then
     Font.draw(Runtime.safeMode and "SAFE MODE" or Strings("NO CHANGES"), 16, y * 8)
-    y = y + 1
   end
   local rows = self:rowsForScreen()
   local base = 12

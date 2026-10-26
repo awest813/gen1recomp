@@ -84,7 +84,6 @@ end
 --   money == 0: SafariZoneEntranceGetLowCostAdmissionText nags four times
 --   (LowCostText5/6/7/8), then relents -- free entry, one ball.
 local function yellowLowCost(game, ow, t, done, back)
-  local TextBox = require("src.render.TextBox")
   if game.save.money > 0 then
     local balls = math.min(math.floor(game.save.money / 23) + 1, 29)
     game.save.money = 0

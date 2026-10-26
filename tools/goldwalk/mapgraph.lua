@@ -269,7 +269,6 @@ end
 
 -- Where does an exit deposit the player on the destination map?
 local function landingOf(id, exit)
-  local def = maps[id]
   local destDef = maps[exit.to]
   if not destDef then return nil end
   if exit.kind == "warp" then

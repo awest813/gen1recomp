@@ -3,7 +3,6 @@
 -- surfing, Cut trees, trainer sight lines, and dispatches interactions to
 -- map scripts (data/scripts/), marts, nurses or extracted text.
 
-local Assets = require("src.render.Assets")
 local Camera = require("src.render.Camera")
 local PixelCanvas = require("src.render.PixelCanvas")
 local Collision = require("src.world.Collision")

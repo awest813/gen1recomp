@@ -5,7 +5,6 @@
 
 local Assets = require("src.render.Assets")
 local Chrome = require("src.ui.gen2.Chrome")
-local Font = require("src.render.Font")
 local GbcPalette = require("src.render.GbcPalette")
 local Palettes = require("src.world.gen2.Palettes")
 local Sound = require("src.core.Sound")

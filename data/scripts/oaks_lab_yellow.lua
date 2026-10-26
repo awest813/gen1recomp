@@ -165,7 +165,7 @@ return {
         }, { onDone = done })
         return
       end
-      local px, py = ow.player.cellX, ow.player.cellY
+      local py = ow.player.cellY
       local rows = {
         -- OaksLabRivalExclamationScript: "!" over the rival
         { "emote", RIVAL, "shock" },

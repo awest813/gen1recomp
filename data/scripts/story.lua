@@ -949,11 +949,6 @@ end
 -- player (IsPlayerOnDungeonWarp + DungeonWarpList/Data -> 2F at 22,16).
 -- -------------------------------------------------------------------
 
-local function boulderAt(ow, x, y)
-  local npc = ow:npcAtCell(x, y)
-  return npc and npc.def.sprite == "SPRITE_BOULDER" and npc or nil
-end
-
 -- Each barrier is stamped BOTH ways on entry.  pokered only ever stamps the
 -- OPEN block (ReplaceTileBlock edits the loaded block map, which the next map
 -- load throws away, so a fresh entry always shows the .blk's closed barrier),

@@ -96,7 +96,7 @@ T.eq(byId.silly_trust.pic, "rival", "trust question shows the rival pic")
 local oakImg = OakSpeech.resolvePic({ data = Data }, "oak", speech)
 local rivalImg = OakSpeech.resolvePic({ data = Data }, "rival", speech)
 local playerImg = OakSpeech.resolvePic({ data = Data }, "player", speech)
-local mewImg, mewFlip = OakSpeech.resolvePic({ data = Data },
+local _, mewFlip = OakSpeech.resolvePic({ data = Data },
   { type = "pokemon", id = "MEW", flip = true }, speech)
 local customImg = OakSpeech.resolvePic({ data = Data },
   { type = "image", path = toastPath }, speech)

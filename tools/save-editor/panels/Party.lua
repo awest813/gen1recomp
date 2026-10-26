@@ -27,7 +27,7 @@ local function hpFrac(mon)
 end
 
 local function toolbar(S, Kit, x, y, w, vertical)
-  local s, row, gap = Kit.scale, Kit.controlH(), 8 * Kit.scale
+  local row, gap = Kit.controlH(), 8 * Kit.scale
   local selected = S.save.party[S.selectedParty or 0] ~= nil and S.editingMon == S.save.party[S.selectedParty]
   local n = #S.save.party
   if Kit.iconButton(x, y, row, row, vertical and "arrow-up" or "arrow-left", "Move up",

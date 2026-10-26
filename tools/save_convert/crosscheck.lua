@@ -261,7 +261,7 @@ end
 
 -- PC: GenSave keeps only a {id->qty} map (order dropped); compare as a set.
 do
-  local count, raw = rawItemList(RAW.PCItems, 50)
+  local _, raw = rawItemList(RAW.PCItems, 50)
   local rawMap, rawCount = {}, 0
   for _, r in ipairs(raw) do
     local id = cw.itemsByIndex[r.idByte]

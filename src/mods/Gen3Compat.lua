@@ -2086,7 +2086,6 @@ local function samePath(path) return path end
 
 local function hookedEntry(side, species, form, vanilla, kind)
   if not Runtime.wantsHook("pokemon.sprite") then return vanilla end
-  local P = g3("pokemon")
   local path = spriteOverrides[side][species]
     or ("data/generated/gba/pokemon/" .. side .. "/" .. species .. ".rgba")
   local g = live()

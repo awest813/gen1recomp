@@ -92,7 +92,6 @@ local BOXES = { 0x4000, 0x4450, 0x48A0, 0x4CF0, 0x5140, 0x5590, 0x59E0,
                 0x6000, 0x6450, 0x68A0, 0x6CF0, 0x7140, 0x7590, 0x79E0 }
 
 local Gen2State = require("src.save_convert.Gen2State")
-local Gen2Layout = require("src.save_convert.Gen2Layout")
 
 local SKIP_ROWS = { gameData = true, mysteryGift = true, rtcStatusFlags = true, luckyNumber = true,
                     linkBattleStats = true, hallOfFame = true, gsBallFlag = true, gsBallFlagBackup = true,

@@ -1,7 +1,6 @@
 package.path = "./?.lua;./?/init.lua;" .. package.path
 love = love or require("tests.love_stub")
 
-local K = require("tests.save_compat._codec")
 local GenSave = require("src.save_convert.GenSave")
 local SaveConvert = require("src.save_convert.SaveConvert")
 local Random = require("tests.save_compat._gen1_random")
