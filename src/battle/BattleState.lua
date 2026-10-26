@@ -5982,6 +5982,25 @@ local HudTiles = require("src.render.HudTiles")
 local hudTile = HudTiles.tile
 local drawHPBar = HudTiles.drawHPBar
 
+-- The HUDs draw every frame.  drawHPBar (captured above, so never a mod's)
+-- only reads hp and stats off the record it is handed and keeps nothing, so
+-- each side refills one record instead of building one a frame.
+local enemyBarMon, playerBarMon = {}, {}
+local function barMon(rec, battler)
+  rec.hp, rec.stats = shownHP(battler), battler.mon.stats
+  return rec
+end
+
+-- The HUD's status label.  The stock method only reads .status, so it is
+-- asked directly; an overridden one still gets its own fresh record.
+local stockStatusLabel = BattleState.statusLabel
+local function hudStatusLabel(self, status)
+  if self.statusLabel == stockStatusLabel then
+    return Status.hudLabelFor(self.data.statuses, status)
+  end
+  return self:statusLabel({ status = status })
+end
+
 -- One reusable row-clip quad per battler for the faint / slide pic effects
 -- (drawn every frame they run): re-aimed with setViewport instead of a new
 -- Quad per frame.  A quad without setViewport (headless stubs) is simply
@@ -6006,7 +6025,7 @@ end
 -- Counted in glyphs, not bytes: a nickname carrying "é" or "♂" is one
 -- charmap sequence per glyph, and byte length would push it a tile left.
 local function nameX(tx, name)
-  local n = #Font.split(name)
+  local n = Font.glyphCount(name)
   return tx * 8 + (n <= 2 and 16 or n <= 4 and 8 or 0)
 end
 
@@ -6430,6 +6449,33 @@ function BattleState:colorMode()
   return self.colorFxReady
 end
 
+local function keyCount(t)
+  local n = 0
+  for _ in pairs(t) do n = n + 1 end
+  return n
+end
+
+-- home/palettes.asm:38
+local function battleBarPal(self, pals, b)
+  local PaletteFX = require("src.render.PaletteFX")
+  if not b then
+    return PaletteFX.pal(self.data, "GREENBAR") or pals.GREENBAR
+  end
+  local hp = b.shownHP or b.mon.hp
+  return PaletteFX.pal(self.data,
+                       PaletteFX.barPalName(hp, b.mon.stats.hp, b.shownPx))
+         or pals.GREENBAR
+end
+
+local function battleMonPal(self, pals, b, placeholder)
+  local PaletteFX = require("src.render.PaletteFX")
+  if placeholder or not b then
+    if PaletteFX.usesYellowCgb() then return pals.MEWMON or pals.GREENBAR end
+    return PaletteFX.pal(self.data, "MEWMON") or pals.MEWMON or pals.GREENBAR
+  end
+  return PaletteFX.monPal(self.data, b.mon.species) or pals.MEWMON
+end
+
 -- The four SGB palettes SetPal_Battle would currently send: bar
 -- palettes track the drawn HP bars (GetHealthBarColor), the mon slots
 -- hold MonsterPalettes[wBattleMonSpecies]/[wEnemyMonSpecies2] --
@@ -6447,29 +6493,20 @@ function BattleState:sgbBattlePals()
               or PaletteFX.pal(self.data, "BLACK") or pals.BLACK
     return { [0] = b, [1] = b, [2] = b, [3] = b }
   end
-  -- home/palettes.asm:38
-  local function bar(b)
-    if not b then
-      return PaletteFX.pal(self.data, "GREENBAR") or pals.GREENBAR
-    end
-    local hp = b.shownHP or b.mon.hp
-    return PaletteFX.pal(self.data,
-                         PaletteFX.barPalName(hp, b.mon.stats.hp, b.shownPx))
-           or pals.GREENBAR
+  local p0, p1 = battleBarPal(self, pals, self.player),
+    battleBarPal(self, pals, self.enemy)
+  local p2 = battleMonPal(self, pals, self.player,
+    self.showPlayerBack or self.safari or self.demo)
+  local p3 = battleMonPal(self, pals, self.enemy, self.showEnemyTrainer)
+  -- asked several times a frame and nearly always the same four, so the
+  -- last set is handed back while it is still exactly what would be built;
+  -- a caller that wrote to it gets a fresh one
+  local out = self._battlePals
+  if not (out and p0 and p1 and p2 and p3 and out[0] == p0 and out[1] == p1
+          and out[2] == p2 and out[3] == p3 and keyCount(out) == 4) then
+    out = { [0] = p0, [1] = p1, [2] = p2, [3] = p3 }
+    self._battlePals = out
   end
-  local function mon(b, placeholder)
-    if placeholder or not b then
-      if PaletteFX.usesYellowCgb() then return pals.MEWMON or pals.GREENBAR end
-      return PaletteFX.pal(self.data, "MEWMON") or pals.MEWMON or pals.GREENBAR
-    end
-    return PaletteFX.monPal(self.data, b.mon.species) or pals.MEWMON
-  end
-  local out = {
-    [0] = bar(self.player),
-    [1] = bar(self.enemy),
-    [2] = mon(self.player, self.showPlayerBack or self.safari or self.demo),
-    [3] = mon(self.enemy, self.showEnemyTrainer),
-  }
   return out
 end
 
@@ -6644,10 +6681,12 @@ end
 function BattleState:drawAnimLayer(colorized)
   -- engine/items/item_effects.asm:543
   if self.fieldCleared then return end
+  local drawing = self.animPlayer and (self.animPlaying or self.lockedBall)
   local colorFn
-  if colorized then
+  if colorized and drawing then
     -- fresh per-frame memo (palette set + color triples), one long-lived
-    -- closure: colorFn runs up to four times per OAM tile
+    -- closure: colorFn runs up to four times per OAM tile.  Only built on
+    -- a frame that draws OAM, the only time colorFn is called.
     self.animColorMemo = {}
     colorFn = self.animColorFn
     if not colorFn then
@@ -6905,14 +6944,13 @@ function BattleState:drawHUDs(slide)
       love.graphics.setColor(0, 0, 0, 1)
     end
     if self.enemy.shownStatus then
-      Font.draw(self:statusLabel({ status = self.enemy.shownStatus }), 40, 8)
+      Font.draw(hudStatusLabel(self, self.enemy.shownStatus), 40, 8)
     elseif LevelDisplay.visible(self.enemy.mon, "battle.enemy", self.game) then
       hudTile(0x6E, 32, 8) -- <LV>
       Font.draw(tostring(self.enemy.mon.level), 40, 8)
     end
     hudTile(0x73, 8, 16)
-    drawHPBar(barData, 2, 2,
-              { hp = shownHP(self.enemy), stats = self.enemy.mon.stats },
+    drawHPBar(barData, 2, 2, barMon(enemyBarMon, self.enemy),
               nil, grayFill, nil, self.enemy.shownPx)
     hudTile(0x74, 8, 24)
     for i = 2, 9 do hudTile(0x76, i * 8, 24) end
@@ -6989,13 +7027,12 @@ function BattleState:drawHUDs(slide)
     love.graphics.setColor(0, 0, 0, 1)
     Font.draw(self.player.name, nameX(10, self.player.name), 56)
     if self.player.shownStatus then
-      Font.draw(self:statusLabel({ status = self.player.shownStatus }), 120, 64)
+      Font.draw(hudStatusLabel(self, self.player.shownStatus), 120, 64)
     elseif LevelDisplay.visible(self.player.mon, "battle.player", self.game) then
       hudTile(0x6E, 112, 64) -- <LV>
       Font.draw(tostring(self.player.mon.level), 120, 64)
     end
-    drawHPBar(barData, 10, 9,
-              { hp = shownHP(self.player), stats = self.player.mon.stats },
+    drawHPBar(barData, 10, 9, barMon(playerBarMon, self.player),
               1, grayFill, nil, self.player.shownPx) -- wHPBarType 1: the $6D cap
     Font.draw(("%3d/%3d"):format(shownHP(self.player), self.player.mon.stats.hp), 88, 80)
     hudTile(0x73, 144, 80)
@@ -7004,6 +7041,28 @@ function BattleState:drawHUDs(slide)
     hudTile(0x6F, 72, 88)
   end
 end
+
+-- drawTextArea's box and label drawing, as plain functions rather than two
+-- closures built every frame.  Chrome is Chrome2 on Gold, nil otherwise;
+-- drawGlyph is the frame's glyph writer.
+local function areaBox(Chrome, tx, ty, tw, th)
+  if Chrome then
+    Chrome.paletteBox(tx, ty, tw, th)
+  else
+    Font.drawBox(tx, ty, tw, th)
+    love.graphics.setColor(0, 0, 0, 1)
+  end
+end
+
+local function areaText(drawGlyph, str, x, y)
+  local pen = x
+  for _, code in ipairs(Font.codes(str)) do
+    drawGlyph(code, pen, y)
+    pen = pen + Font.advanceOf(code)
+  end
+end
+
+local NO_LINES = {}
 
 function BattleState:drawTextArea()
   if not self:bottomUIVisible() then return end
@@ -7014,28 +7073,13 @@ function BattleState:drawTextArea()
   local gold = self.game and self.game.save
     and (self.game.save.generation == 2 or self.game.save.version == "gold")
   local Chrome = gold and Chrome2 or nil
-  local function box(tx, ty, tw, th)
-    if Chrome then
-      Chrome.paletteBox(tx, ty, tw, th)
-    else
-      Font.drawBox(tx, ty, tw, th)
-      love.graphics.setColor(0, 0, 0, 1)
-    end
-  end
   local drawGlyph, finishGlyph = Font.drawCode, nil
   if Chrome then
     local _, dg, fg = Chrome.paletteGlyphs(Chrome.DEFAULT_BOX_PALETTE)
     drawGlyph, finishGlyph = dg, fg
   end
-  local function text(str, x, y)
-    local pen = x
-    for _, code in ipairs(Font.encode(str)) do
-      drawGlyph(code, pen, y)
-      pen = pen + Font.advanceOf(code)
-    end
-  end
 
-  box(0, 12, 20, 6)
+  areaBox(Chrome, 0, 12, 20, 6)
   if self.phase == "messages"
      and (self.current or self.animPlaying or self.msgHold) then
     -- during the move animation self.current is nil but shown still holds
@@ -7046,12 +7090,11 @@ function BattleState:drawTextArea()
     -- the lines up one row (ScrollTextUpOneLine) so a 3rd line scrolls into
     -- view instead of drawing off-screen at y=144 (#216).
     local off = self.scrollPx or 0
-    local ys = { 112, 128 }
     -- home/text.asm:264
     local arrowCell = (self.msgWaiting or self.msgPrompt) and off == 0
       and self:arrowOwnsCell()
-    for li, line in ipairs(self.shown or {}) do
-      local y = (ys[li] or 128) + off
+    for li, line in ipairs(self.shown or NO_LINES) do
+      local y = (li == 1 and 112 or 128) + off
       local pen = 8
       for i = 1, #line do
         if not (arrowCell and li == 2 and i == 18) then
@@ -7070,10 +7113,11 @@ function BattleState:drawTextArea()
     -- the old-man script (DisplayBattleMenu, core.asm:2038-2049): the
     -- standard menu, with the '▶' hand drawn by the scripted keystrokes
     -- -- next to FIGHT (9,14) for the first 80 frames, then ITEM (9,16)
-    box(8, 12, 12, 6)
-    text(Strings("FIGHT", "battle"), 80, 112)
+    areaBox(Chrome, 8, 12, 12, 6)
+    areaText(drawGlyph, Strings("FIGHT", "battle"), 80, 112)
     drawGlyph(0xE1, 128, 112); drawGlyph(0xE2, 136, 112)
-    text(Strings("ITEM", "battle"), 80, 128); text(Strings("RUN", "battle"), 128, 128)
+    areaText(drawGlyph, Strings("ITEM", "battle"), 80, 128)
+    areaText(drawGlyph, Strings("RUN", "battle"), 128, 128)
     drawGlyph(0xED, 72, (self.demoTimer or 0) <= 80 and 112 or 128)
   elseif self.phase == "menu" then
     local col = (self.menuIndex - 1) % 2
@@ -7081,22 +7125,25 @@ function BattleState:drawTextArea()
     if self.safari then
       -- SAFARI_BATTLE_MENU_TEMPLATE: full-width box, "BALLx  BAIT /
       -- THROW ROCK  RUN" from (2,14)
-      box(0, 12, 20, 6)
-      text(Strings("BALLx"), 16, 112); text(Strings("BAIT"), 112, 112)
-      text(Strings("THROW ROCK"), 16, 128); text(Strings("RUN", "battle"), 112, 128)
+      areaBox(Chrome, 0, 12, 20, 6)
+      areaText(drawGlyph, Strings("BALLx"), 16, 112)
+      areaText(drawGlyph, Strings("BAIT"), 112, 112)
+      areaText(drawGlyph, Strings("THROW ROCK"), 16, 128)
+      areaText(drawGlyph, Strings("RUN", "battle"), 112, 128)
       -- DisplayBattleMenu .safariLeftColumn / .safariRightColumn print
       -- wNumSafariBalls at hlcoord 7,14 with `lb bc, 1, 2` -- one byte, two
       -- digits, space padded -- right after the "BALLx" label at columns
       -- 2..6 (engine/battle/core.asm:2074-2079, 2107-2112) (#540)
-      text(("%2d"):format(self.safari.balls), 56, 112)
+      areaText(drawGlyph, ("%2d"):format(self.safari.balls), 56, 112)
       drawGlyph(0xED, (col == 0 and 8 or 104), 112 + row * 16)
     else
       -- BATTLE_MENU_TEMPLATE: box (8,12)-(19,17), "FIGHT <PK><MN> /
       -- ITEM  RUN" from (10,14); cursor columns 9 / 15
-      box(8, 12, 12, 6)
-      text(Strings("FIGHT", "battle"), 80, 112)
+      areaBox(Chrome, 8, 12, 12, 6)
+      areaText(drawGlyph, Strings("FIGHT", "battle"), 80, 112)
       drawGlyph(0xE1, 128, 112); drawGlyph(0xE2, 136, 112)
-      text(Strings("ITEM", "battle"), 80, 128); text(Strings("RUN", "battle"), 128, 128)
+      areaText(drawGlyph, Strings("ITEM", "battle"), 80, 128)
+      areaText(drawGlyph, Strings("RUN", "battle"), 128, 128)
       drawGlyph(0xED, (col == 0 and 72 or 120), 112 + row * 16)
     end
   elseif self.phase == "moveSelect" then

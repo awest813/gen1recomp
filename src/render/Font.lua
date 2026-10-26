@@ -507,6 +507,15 @@ end
 
 local stockEncode = Font.encode
 
+-- The codes Font.encode would return, without the copy: the SHARED cached
+-- array while encode is stock (read it, never modify or keep it), else
+-- whatever the replaced encode hands back.  For per-frame draws that walk
+-- the codes themselves.
+function Font.codes(text)
+  if Font.encode ~= stockEncode then return Font.encode(text) end
+  return cachedCodes(text)
+end
+
 -- Number of glyphs `text` draws as (#Font.split(text), without the spans).
 function Font.glyphCount(text)
   return #cachedCodes(text)

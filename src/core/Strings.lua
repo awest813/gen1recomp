@@ -85,6 +85,8 @@ end
 -- Count `%`-directives so a translation that drops or adds one is caught
 -- here rather than as a mid-battle `string.format` error.
 local function specifiers(s)
+  -- most sources carry none, and gmatch builds an iterator per call
+  if not s:find("%", 1, true) then return 0 end
   local n = 0
   for spec in s:gmatch("%%(.)") do
     if spec ~= "%" then n = n + 1 end

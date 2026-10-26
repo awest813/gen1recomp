@@ -1,7 +1,8 @@
 -- Steady frames off the plain overworld build no Lua garbage either: the
 -- rarer Renderer:endFrame paths (a DYNAMIC-layout docked box, the battle
 -- dim and void veil around the letterbox, the paper surround behind an
--- opaque screen).  Same harness as overworld_frame_alloc_perf.lua: the
+-- opaque screen) and the Gen 1 battle screen at its command menu and under
+-- a message.  Same harness as overworld_frame_alloc_perf.lua: the
 -- fixture overworld through Game:draw on tests/love_stub, the collector
 -- stopped, KB per frame on the interpreter love.js runs.
 --   luajit tests/engine/ui_frame_alloc_perf.lua
@@ -10,8 +11,12 @@ if not _G.love then _G.love = require("tests.love_stub") end
 if rawget(_G, "jit") then jit.off() end
 
 -- model LOVE's images, quads and colour state (see
--- overworld_frame_alloc_perf.lua), so the count below is the engine's alone
+-- overworld_frame_alloc_perf.lua), so the count below is the engine's alone.
+-- A shader object too: the battle colours itself through the SGB zone pass
+-- only when one compiles, and that is the path every real build takes.
 do
+  local shader = { send = function() end, hasUniform = function() return true end }
+  love.graphics.newShader = function() return shader end
   getmetatable(love.graphics.newImage("x")).setWrap = function() end
   local newQuad = love.graphics.newQuad
   local function setViewport(q, x, y, w, h) q.x, q.y, q.w, q.h = x, y, w, h end
@@ -199,5 +204,78 @@ do
   Game.stack:pop()
   bigWindow(false)
 end
+
+-- ------------------------------------------------ Gen 1 battle
+local BattleState = require("src.battle.BattleState")
+local Pokemon = require("src.pokemon.Pokemon")
+local Font = require("src.render.Font")
+local Strings = require("src.core.Strings")
+Game.save.party = { Pokemon.new(Data, "FIXMON_A", 10, function(_, b) return b end) }
+
+local pressA = false
+Game.input.wasPressed = function(_, key) return pressA and key == "a" end
+local battle = BattleState.newWild(Game, "FIXMON_C", 10)
+Game.stack:push(battle)
+check(battle:colorMode(), "the battle takes the SGB zone pass")
+
+-- the intro's first text page, typed out and waiting for A
+local n = 0
+while not battle.msgPrompt and n < 2000 do frame(); n = n + 1 end
+check(battle.msgPrompt, "the intro text waits on its prompt")
+steady("a battle frame under a waiting message")
+
+-- A through the intro to the FIGHT / PKMN / ITEM / RUN menu
+n = 0
+while battle.phase ~= "menu" and n < 5000 do
+  pressA = n % 4 == 0
+  frame()
+  n = n + 1
+end
+pressA = false
+eq(battle.phase, "menu", "the battle reaches its command menu")
+steady("a battle frame at the command menu")
+battle.player.shownStatus = "PSN"
+battle.enemy.shownStatus = "PAR"
+steady("the command menu with both statuses up")
+battle.player.shownStatus, battle.enemy.shownStatus = nil, nil
+
+-- what the zone pass and the OAM colours still see
+do
+  local p1, p2 = battle:sgbBattlePals(), battle:sgbBattlePals()
+  check(p1 == p2, "the battle palette set is reused while it holds")
+  eq(p2[0], Data.palettes.palettes.GREENBAR, "a full player bar is GREENBAR")
+  eq(p2[2], Data.palettes.palettes.MEWMON, "the player slot's species palette")
+  p2.extra = true
+  local p3 = battle:sgbBattlePals()
+  check(p3 ~= p2 and p3.extra == nil, "a set someone wrote to is rebuilt")
+  local px = battle.player.shownPx
+  battle.player.shownPx = 2
+  local p4 = battle:sgbBattlePals()
+  check(p4 ~= p3, "a bar colour change builds a fresh set")
+  eq(p4[0], Data.palettes.palettes.REDBAR, "the low bar turns REDBAR")
+  eq(p3[0], Data.palettes.palettes.GREENBAR, "and the old set is left alone")
+  battle.player.shownPx = px
+end
+
+-- the cached codes the menu labels draw from are what encode returns
+do
+  local codes = Font.codes("FIGHT")
+  local fresh = Font.encode("FIGHT")
+  eq(#codes, #fresh, "Font.codes has every glyph")
+  for i = 1, #fresh do eq(codes[i], fresh[i], "Font.codes glyph " .. i) end
+  check(Font.codes("FIGHT") == codes, "and hands back the cached array")
+  check(fresh ~= Font.encode("FIGHT"), "while encode still copies")
+  eq(Font.glyphCount("POK\195\169MON"), #Font.split("POK\195\169MON"),
+    "glyphCount counts what split does")
+  local encode = Font.encode
+  local seen
+  Font.encode = function(text) seen = text return encode(text) end
+  Font.codes("RUN")
+  Font.encode = encode
+  eq(seen, "RUN", "a replaced encode is still asked")
+  eq(Strings("FIGHT", "battle"), "FIGHT", "a context lookup still resolves")
+  eq(Strings("%d LEFT", 3), "3 LEFT", "and a format still formats")
+end
+Game.stack:pop()
 
 T.finish("ui_frame_alloc_perf")
