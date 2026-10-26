@@ -61,5 +61,4 @@ def cover(size=1024):
 if __name__ == "__main__":
     out = sys.argv[1]
     wordmark(168).save(out + "/logo.png")
-    wordmark(99, sub=False).save(out + "/minilogo.png")
     cover().save(out + "/cover.png")
