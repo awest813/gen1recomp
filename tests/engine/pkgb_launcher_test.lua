@@ -932,4 +932,35 @@ do
   window(1280, 720)
 end
 
+-- ------------------------------------------------------- the game list
+do
+  window(1280, 720)
+  local g = fresh()
+  local captions = {}
+  local realCaption = Kit.caption
+  Kit.caption = function(x, y, text, ...) captions[#captions + 1] = text return realCaption(x, y, text, ...) end
+  local t = drawText(g)
+  Kit.caption = realCaption
+  local joined = table.concat(captions, ",")
+  check(joined:find("GEN 1", 1, true) and joined:find("GEN 2", 1, true), "games are grouped by generation")
+  check(t:find("GOLD  -  3:15", 1, true) ~= nil, "an imported game shows its trainer and play time")
+  check(t:find("Import", 1, true) ~= nil, "a game not imported offers Import")
+  local picked
+  g.pickRom = function(self) picked = self.selected end
+  local realB = Kit.button
+  Kit.button = function(x, y, w, h, label, o)
+    if o and o.id == "game-import-red" then return true end
+    return realB(x, y, w, h, label, o)
+  end
+  drawText(g)
+  Kit.button = realB
+  g:update(0)
+  eq(picked, "red", "Import on a row picks a ROM for that game")
+  for _, size in ipairs({ { 390, 844 }, { 640, 360 } }) do
+    window(size[1], size[2])
+    drawText(g)
+  end
+  window(1280, 720)
+end
+
 T.finish("pkgb launcher")

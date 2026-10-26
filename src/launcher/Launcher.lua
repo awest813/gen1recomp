@@ -1373,40 +1373,107 @@ local function statusText(self, version)
   return "Not imported", PAL.muted
 end
 
+-- The save a game opens on: the chosen one, else the first.
+function Launcher:currentSave(version)
+  if not self.ready[version] then return nil end
+  local slots = self:slotsFor(version)
+  local key = self:scopeKey(version)
+  for _, slot in ipairs(slots) do
+    if slot.id == self.selectedSlot[key] then return slot end
+  end
+  return slots[1]
+end
+
+-- One line about a save: trainer and play time.
+local function saveLine(slot)
+  if not slot then return nil end
+  local parts = { tostring(slot.label or slot.name or slot.id) }
+  local meta = slot.meta
+  if meta and meta.timeText then parts[#parts + 1] = tostring(meta.timeText) end
+  return table.concat(parts, "  -  ")
+end
+
+-- The game list, grouped by generation: a colour stripe per game, and for
+-- an imported one its trainer and play time; the rest offer Import.
 function Launcher:drawGameList(x, y, w, h, s)
-  Kit.caption(x, y, "GAMES", PAL.caption)
-  local top = y + Kit.textHeight("caption") + math.floor(8 * s)
-  local rowH = math.max(Kit.tapMin(), math.floor(38 * s))
-  local gap = math.floor(4 * s)
-  local viewH = h - (top - y)
-  local contentH = #self.games * (rowH + gap)
-  local maxAt = Kit.scrollExtent(contentH, viewH)
-  self.listScroll = Kit.scrollInput(self.listScroll, maxAt, x, top, w, viewH)
-  local py = Kit.scrollBegin(x, top, w, viewH, self.listScroll, maxAt)
-  for i, v in ipairs(self.games) do
-    local ry = py + (i - 1) * (rowH + gap)
-    local info = GameVersion.info(v)
-    local clicked, ink = Kit.row(x, ry, w - Kit.scrollGutter(s), rowH,
-      self.selected == v, "game-" .. v)
-    local status, color = statusText(self, v)
-    local sw = Kit.textWidth("micro", status)
-    local nameW = w - Kit.scrollGutter(s) - sw - math.floor(36 * s)
-    -- "Pokemon Red" when it fits, else "Red": the part that tells them apart
-    local name = info.displayName
-    if Kit.textWidth("button", name) > nameW then name = info.label or name end
-    Kit.text("button", Kit.ellipsize("button", name, math.max(0, nameW)),
-      x + math.floor(12 * s), ry + (rowH - Kit.textHeight("button")) / 2, ink or PAL.text)
-    Kit.text("micro", status, x + w - Kit.scrollGutter(s) - sw - math.floor(12 * s),
-      ry + (rowH - Kit.textHeight("micro")) / 2,
-      self.selected == v and (ink or PAL.text) or color)
-    if clicked then
-      self:queue(function()
-        self.selected, self.page, self.renaming, self.saveConfirm = v, nil, nil, nil
-        self:say(nil)
-      end)
+  local rowH = math.max(Kit.tapMin(), math.floor(50 * s))
+  local gap = Theme.space("xs", s)
+  local headH = Kit.textHeight("caption") + Theme.space("m", s)
+  -- lay the list out once per frame: headers and rows in order
+  local items, gens = {}, {}
+  for _, v in ipairs(self.games) do
+    local gen = GameVersion.generation(v) or 1
+    if not gens[gen] then
+      gens[gen] = true
+      items[#items + 1] = { header = "GEN " .. gen }
+    end
+    items[#items + 1] = { version = v }
+  end
+  local contentH = 0
+  for _, it in ipairs(items) do contentH = contentH + (it.header and headH or rowH + gap) end
+  local maxAt = Kit.scrollExtent(contentH, h)
+  self.listScroll = Kit.scrollInput(self.listScroll, maxAt, x, y, w, h)
+  local py = Kit.scrollBegin(x, y, w, h, self.listScroll, maxAt)
+  local rw = w - Kit.scrollGutter(s)
+  local inset = Theme.space("m", s)
+  for i, it in ipairs(items) do
+    if it.header then
+      Kit.caption(x + Theme.space("xs", s), py + (i > 1 and Theme.space("s", s) or 0), it.header, PAL.caption)
+      py = py + headH
+    else
+      local v = it.version
+      local info = GameVersion.info(v)
+      local chosen = self.selected == v
+      local clicked, ink = Kit.row(x, py, rw, rowH, chosen, "game-" .. v)
+      local color = Theme.gameColor(v)
+      local ready = self.ready[v]
+      local stripe = Theme.space("xs", s)
+      Theme.fillRounded(x + Theme.space("s", s), py + Theme.space("s", s), stripe,
+        rowH - 2 * Theme.space("s", s), color, ready and 1 or 0.35, stripe / 2)
+      local tx = x + Theme.space("s", s) + stripe + inset
+      -- right side: Import chip, or an importing note
+      local rightW = 0
+      local importing = self.job and self.job.version == v
+      if importing then
+        local note = math.floor((self.job.progress or 0) * 100) .. "%"
+        rightW = Kit.textWidth("micro", note) + inset
+        Kit.text("micro", note, x + rw - rightW, py + (rowH - Kit.textHeight("micro")) / 2, PAL.yellow)
+      elseif not ready then
+        local cw = Kit.textWidth("micro", "Import") + Theme.BUTTON.labelInset * s + Theme.space("s", s)
+        local ch = math.max(Kit.tapMin() * 0.7, math.floor(24 * s))
+        rightW = cw + inset
+        if Kit.button(x + rw - cw - inset, py + (rowH - ch) / 2, cw, ch, "Import",
+            { id = "game-import-" .. v, face = "chip", active = chosen, color = color }) then
+          self:queue(function()
+            self.selected, self.page = v, nil
+            self:pickRom()
+          end)
+        end
+      end
+      local nameW = rw - (tx - x) - rightW - inset
+      -- "Pokemon Red" when it fits, else "Red": the part that tells them apart
+      local name = info.displayName
+      if Kit.textWidth("button", name) > nameW then name = info.label or name end
+      local line = ready and (saveLine(self:currentSave(v)) or "No saves yet") or nil
+      if line then
+        local top = py + (rowH - Kit.textHeight("button") - Kit.textHeight("micro")) / 2
+        Kit.text("button", Kit.ellipsize("button", name, math.max(0, nameW)), tx, top, ink or PAL.text)
+        Kit.text("micro", Kit.ellipsize("micro", line, math.max(0, nameW)), tx,
+          top + Kit.textHeight("button"), chosen and (ink or PAL.text) or PAL.muted)
+      else
+        Kit.text("button", Kit.ellipsize("button", name, math.max(0, nameW)), tx,
+          py + (rowH - Kit.textHeight("button")) / 2, ink or (ready and PAL.text or PAL.muted))
+      end
+      if clicked and not (not ready and Kit.hit(x + rw - rightW, py, rightW, rowH)) then
+        self:queue(function()
+          self.selected, self.page, self.renaming, self.saveConfirm = v, nil, nil, nil
+          self:say(nil)
+        end)
+      end
+      py = py + rowH + gap
     end
   end
-  Kit.scrollEnd(x, top, w, viewH, self.listScroll, maxAt)
+  Kit.scrollEnd(x, y, w, h, self.listScroll, maxAt)
 end
 
 -- The one page header: title, an optional subtitle (wrapped), an optional
