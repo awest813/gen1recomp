@@ -46,8 +46,9 @@ The embedded `game.love` deliberately excludes `data/generated/`,
 ROM / mod / save import on Android uses `love.system.pickFile([kind])` →
 `GameActivity.showFilePicker` (Storage Access Framework), which copies the
 chosen file under the app save directory as `picked_rom.gb`,
-`picked_mod.zip`, or `picked_save.sav`. `RomImporter` imports pending files
-from that folder on Choose / refocus; see `docs/launcher.md`. The APK payload
+`picked_mod.zip`, or `picked_save.sav`. The launcher's `Launcher:pollHostPick`
+(`src/launcher/Launcher.lua`) picks the file up from that folder once the
+picker returns. The APK payload
 itself remains data-free (no embedded ROM or generated cache).
 
 ### Step bridge (Pokéwalker mod)

@@ -149,28 +149,6 @@ do
   reset()
 end
 
-do
-  pose(800, 720, "OS X")
-  local LauncherSettings = require("src.import.LauncherSettings")
-  for _, version in ipairs({ "gold", "silver", "crystal" }) do
-    local model = LauncherSettings.open({}, version)
-    local found, prev
-    for _, section in ipairs(model.sections) do
-      for _, r in ipairs(section.rows) do
-        if r.label == "FAITHFUL RATIO" then found = r end
-        if not found then prev = r.label end
-      end
-    end
-    check(found ~= nil, version .. " launcher gear offers FAITHFUL RATIO")
-    eq(prev, "VIDEO MODE", version .. " next to VIDEO MODE")
-    if found then
-      local before = found.value()
-      found.step(1)
-      check(found.value() ~= before, version .. " launcher row steps")
-    end
-  end
-end
-
 g.getDimensions, g.getPixelDimensions = realDims, realPixelDims
 love.system.getOS = realOS
 love.window = realWindow

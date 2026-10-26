@@ -38,7 +38,7 @@ local CART_KIND = { label = "Custom cart", exts = { "g1rcart" } }
 local function cacheReady(version)
   local ok, CacheContract = pcall(require, "src.import.CacheContract")
   if not ok then return false end
-  local okR, ready = pcall(CacheContract.isReady, version)
+  local okR, ready = pcall(CacheContract.isImported or CacheContract.isReady, version)
   return okR and ready or false
 end
 
@@ -51,8 +51,16 @@ local function visibleGame(version)
   return true
 end
 
+-- Once per process, before the first launcher reads the cache: move a
+-- pre-#899 Red cache into red/ (src/import/CacheFs.lua).
+local migrated = false
+
 function Launcher.new(onLaunch, opts)
   opts = opts or {}
+  if not migrated then
+    migrated = true
+    pcall(function() require("src.import.CacheFs").migrateLegacyRedCache() end)
+  end
   local self = setmetatable({
     onLaunch = onLaunch,
     opts = opts,
@@ -90,6 +98,11 @@ function Launcher.new(onLaunch, opts)
     local okC, Check = pcall(require, "src.update.Check")
     if okC then pcall(Check.start) end
   end
+  -- a portable install whose game folder cannot be written says so up front
+  local okF, portableErr = pcall(function()
+    return require("src.import.CacheFs").portableError()
+  end)
+  if okF and portableErr then self:say(tostring(portableErr), "error") end
   -- back from an online battle: reopen Online and sign back in
   if opts.initialGame == "online" then
     self:openOnline()
@@ -114,6 +127,22 @@ function Launcher:refresh()
   end
   for _, v in ipairs(self.games) do self.ready[v] = cacheReady(v) end
   self.slots = {}
+  self:publishShortcuts()
+end
+
+-- Android: one home-screen shortcut per imported game
+-- (love.system.updateShortcuts, mobile/android/.../wrap_System.cpp), sent
+-- again only when the set changes.
+function Launcher:publishShortcuts()
+  local sys = love and love.system
+  if not (sys and type(sys.updateShortcuts) == "function") then return end
+  local list = {}
+  for _, v in ipairs(self.games) do
+    if self.ready[v] then list[#list + 1] = v end
+  end
+  local key = table.concat(list, ",")
+  if key == Launcher.shortcutsSent then return end
+  if pcall(sys.updateShortcuts, list) then Launcher.shortcutsSent = key end
 end
 
 -- ------------------------------------------------------------------ carts
@@ -321,31 +350,63 @@ function Launcher:importData(data, name)
   end
 end
 
--- The browser (and UWP) build opens files through an async bridge on
--- love.system: pickFile(kind) shows the picker, and the chosen file later
--- appears through getPickedFile() as a temporary path (or getPickError()
--- explains why not).  See ports/web/native/lovejs_bridge.cpp.
+-- Hosts without a desktop file dialog open files through love.system:
+-- pickFile(kind) shows the platform's picker, and the chosen file arrives
+-- one of two ways.
+--   path:    the browser and UWP builds hand it back through getPickedFile()
+--            as a temporary path, or getPickError() explains why not
+--            (ports/web/native/lovejs_bridge.cpp).
+--   savedir: Android and iOS copy it into the save directory under a fixed
+--            name per kind (mobile/android/.../System.cpp,
+--            mobile/ios/native/GRPickerBridge.swift).
+local PICKED = { rom = "picked_rom.gb", mod = "picked_mod.zip", sav = "picked_save.sav",
+                 cart = "picked_cart.g1rcart" }
+
 local function hostPicker()
   local sys = love and love.system
-  if sys and type(sys.pickFile) == "function"
-      and type(sys.getPickedFile) == "function" then
-    return sys
-  end
+  if not (sys and type(sys.pickFile) == "function") then return nil end
+  if type(sys.getPickedFile) == "function" then return sys, "path" end
+  local os_ = type(sys.getOS) == "function" and sys.getOS() or ""
+  if os_ == "Android" or os_ == "iOS" then return sys, "savedir" end
   return nil
 end
 
 -- `as` names what the picked file is for when it differs from the picker's
 -- filter (a Box save is picked with the "sav" filter).
 function Launcher:requestHostPick(kind, as)
-  local sys = hostPicker()
+  local sys, mode = hostPicker()
   if not sys then return false end
+  if mode == "savedir" and PICKED[kind] then
+    -- a file left from an earlier pick must not be taken for this one
+    pcall(love.filesystem.remove, PICKED[kind])
+  end
   local ok, started = pcall(sys.pickFile, kind)
   if not ok or started == false then
     self:say("The file picker could not open.", "error")
     return true
   end
-  self.pendingPick = as or kind
+  self.pendingPick, self.pendingPickFile = as or kind, mode == "savedir" and PICKED[kind] or nil
   return true
+end
+
+-- Hand a picked file to what asked for it.  `path` is absolute; `read`
+-- returns its bytes; `release` deletes it once nothing needs it.
+function Launcher:takePick(kind, path, name, read, release)
+  if kind == "sav" then
+    -- by path: SaveFileIO only takes raw bytes for a bare 32 KiB image,
+    -- and a Gen 2 save (RTC footer) or a Gen 3 one is larger
+    if self:importSave(path, name, nil, release) ~= "confirm" then release() end
+    return
+  end
+  local data, err = read()
+  release()
+  if kind == "box" then return self:importBox(data, err) end
+  if not data then
+    return self:say("Could not read that file: " .. tostring(err), "error")
+  end
+  if kind == "cart" then return self:installCart(data, name) end
+  if kind == "mod" then return self:installMod(data, name) end
+  return self:importData(data, name)
 end
 
 -- Collect a finished host pick; called from update().
@@ -353,50 +414,29 @@ function Launcher:pollHostPick()
   local sys = self.pendingPick and hostPicker()
   if not sys then return end
   local kind = self.pendingPick
-  local okP, path = pcall(sys.getPickedFile)
-  if okP and type(path) == "string" and path ~= "" then
-    self.pendingPick = nil
-    local FilePicker = require("src.core.FilePicker")
-    local name = FilePicker.basename(path)
-    if kind == "box" then
-      local data, err = FilePicker.read(path)
-      pcall(os.remove, path)
-      return self:importBox(data, err)
+  local file = self.pendingPickFile
+  if file then
+    local lfs = love.filesystem
+    if lfs.getInfo(file) then
+      self.pendingPick, self.pendingPickFile = nil, nil
+      return self:takePick(kind, lfs.getSaveDirectory() .. "/" .. file, file,
+        function() return lfs.read(file) end,
+        function() pcall(lfs.remove, file) end)
     end
-    if kind == "cart" then
-      local data, err = FilePicker.read(path)
-      pcall(os.remove, path)
-      if not data then
-        return self:say("Could not read that file: " .. tostring(err), "error")
-      end
-      return self:installCart(data, name)
+  else
+    local okP, path = pcall(sys.getPickedFile)
+    if okP and type(path) == "string" and path ~= "" then
+      self.pendingPick = nil
+      local FilePicker = require("src.core.FilePicker")
+      return self:takePick(kind, path, FilePicker.basename(path),
+        function() return FilePicker.read(path) end,
+        function() pcall(os.remove, path) end)
     end
-    if kind == "mod" then
-      local data, err = FilePicker.read(path)
-      pcall(os.remove, path)
-      if not data then
-        return self:say("Could not read that file: " .. tostring(err), "error")
-      end
-      return self:installMod(data, name)
-    end
-    if kind == "sav" then
-      -- by path: SaveFileIO only takes raw bytes for a bare 32 KiB image,
-      -- and a Gen 2 save (RTC footer) or a Gen 3 one is larger
-      local cleanup = function() pcall(os.remove, path) end
-      if self:importSave(path, name, nil, cleanup) ~= "confirm" then cleanup() end
-      return
-    end
-    local data, err = FilePicker.read(path)
-    pcall(os.remove, path)
-    if not data then
-      return self:say("Could not read that file: " .. tostring(err), "error")
-    end
-    return self:importData(data, name)
   end
   local okE, err = false, nil
   if type(sys.getPickError) == "function" then okE, err = pcall(sys.getPickError) end
   if okE and type(err) == "string" and err ~= "" then
-    self.pendingPick = nil
+    self.pendingPick, self.pendingPickFile = nil, nil
     -- closing the picker is not an error
     if not err:match("^cancelled:") then self:say(err, "error") end
   end
@@ -535,8 +575,7 @@ function Launcher:closeBox()
   end)
   self.page, self.tab = nil, nil
   self.slots = {}
-  -- hand the Box back to its default host: a launcher built after this one
-  -- (the classic one, after a switch) does not take queued actions
+  -- hand the Box back to its default host
   require("src.import.BoxHost").use(nil)
 end
 
@@ -644,6 +683,12 @@ function Launcher:importSave(source, name, force, cleanup)
   self:say((name and (name .. " ") or "The save ") .. "was imported as a new save.", "info")
 end
 
+function Launcher:editSave()
+  local v, id = self.selected, self:selectedSaveId()
+  if not (v and id and self.opts.onEditSave) then return end
+  self.opts.onEditSave(v, id)
+end
+
 function Launcher:confirmSave(yes)
   local c = self.saveConfirm
   self.saveConfirm = nil
@@ -733,6 +778,15 @@ function Launcher:setOption(key, value)
   end
 end
 
+-- Open a prefilled issue form (src/core/IssueReport.lua) with this build,
+-- platform and the mods in use.
+function Launcher:reportProblem()
+  local ok, done, _, note = pcall(require("src.core.IssueReport").open, self:options())
+  if not ok then return self:say("Could not open the report: " .. tostring(done), "error") end
+  if not done then return self:say("Could not open the report form.", "error") end
+  self:say(note or "The report form opened in your browser.", "info")
+end
+
 -- Save the online relay address; an empty one goes back to the default.
 function Launcher:setRelay(text)
   local Net = require("src.link.Net")
@@ -799,6 +853,16 @@ function Launcher:update(dt)
     local ok, err = pcall(require("src.import.BoxPanel").update, self, dt)
     if not ok then self:say(tostring(err), "error") end
   end
+  -- device save sync keeps running while the launcher is up
+  local eng = require("src.launcher.SyncPage").pump(dt)
+  if eng then
+    local okN, notice = pcall(eng.takeNotice, eng)
+    if okN and notice then self:say(notice, "info") end
+    if eng.phase ~= self.lastSyncPhase then
+      if self.lastSyncPhase and eng.phase == "idle" then self.slots = {} end
+      self.lastSyncPhase = eng.phase
+    end
+  end
   if self.online then
     local ok, err = pcall(self.online.update, self.online, dt)
     if not ok then self:say(tostring(err), "error") end
@@ -811,6 +875,9 @@ function Launcher:update(dt)
       self:refresh()
       self.selected = version
       self:say(GameVersion.info(version).displayName .. " is ready to play.", "info")
+      -- scripted runs (main.lua: POKEPORT_IMPORT_ROM / IMPORT_ONLY) go on
+      -- from here on their own
+      if self.opts.onImported then return self.opts.onImported(version) end
     elseif state == "error" then
       self:say("Import failed: " .. tostring(self.job.error), "error")
       self.job = nil
@@ -1142,18 +1209,30 @@ function Launcher:drawSettings(x, y, w, h, s)
   Kit.text("micro", Kit.ellipsize("micro", "Connecting to " .. tostring(current) .. why, cw),
     cx, cy, PAL.faint)
   cy = cy + Kit.textHeight("micro") + math.floor(10 * s)
-  -- this launcher is opt-in for now (--ui=new); offer the way back
-  label("Launcher", cy)
-  local classic = opts.launcherUi == "classic"
-  local lw = math.floor(math.min(cw * 0.5, 300 * s))
-  if Kit.button(cx + cw - lw, cy, lw, rowH, classic and "Keep this one" or "Use classic",
-      { id = "launcher-ui", font = "small" }) then
+  if self.opts.onEditTouchControls then
+    label("Touch controls", cy)
+    local tw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - tw, cy, tw, rowH, "Arrange", { id = "touch-controls", font = "small" }) then
+      self:queue(function() self.opts.onEditTouchControls(self.selected) end)
+    end
+    cy = cy + rowH + math.floor(10 * s)
+  end
+  label("Save sync", cy)
+  local syncW = math.floor(math.min(cw * 0.5, 300 * s))
+  local SyncEngine = package.loaded["src.sync.SyncEngine"]
+  local linked = SyncEngine and type(SyncEngine._shared) == "table" and SyncEngine._shared:linked()
+  if Kit.button(cx + cw - syncW, cy, syncW, rowH, linked and "Linked - manage" or "Set up",
+      { id = "sync", font = "small" }) then
     self:queue(function()
-      self:setOption("launcherUi", classic and "new" or "classic")
-      self:say(classic and "This launcher stays." or
-        "The classic launcher opens the next time you come back from a game "
-          .. "or start PK:GB.", "info")
+      self.sync = self.sync or require("src.launcher.SyncPage").new(self)
+      self.page = "sync"
     end)
+  end
+  cy = cy + rowH + math.floor(10 * s)
+  label("Something wrong?", cy)
+  local rw = math.floor(math.min(cw * 0.5, 300 * s))
+  if Kit.button(cx + cw - rw, cy, rw, rowH, "Report a problem", { id = "report", font = "small" }) then
+    self:queue(function() self:reportProblem() end)
   end
   cy = cy + rowH + math.floor(10 * s)
   -- a narrow window drops Box / What's new from the header; reach them here
@@ -1394,13 +1473,25 @@ function Launcher:drawCarts(x, y, w, h, s)
   Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
 end
 
+-- How the save tools wrap in a panel `cw` wide: all in one row, else three
+-- or two to a row, so no label is cut short.  Returns columns, rows.
+function Launcher:toolGrid(cw, s)
+  local n = self.opts.onEditSave and 5 or 4
+  local tg = math.floor(8 * s)
+  local needW = Kit.textWidth("small", "Confirm delete") + math.floor(24 * s)
+  local cols = 2
+  for _, c in ipairs({ n, 3 }) do
+    if (cw - (c - 1) * tg) / c >= needW then cols = c break end
+  end
+  return cols, math.ceil(n / cols)
+end
+
 -- The height the game panel needs to show one save row with its tools.
 function Launcher:detailNeed(w, s)
   local cw = w - 2 * math.floor(18 * s)
   local tg = math.floor(8 * s)
   local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
-  local needW = Kit.textWidth("small", "Confirm delete") + math.floor(24 * s)
-  local toolRows = (cw - 3 * tg) / 4 >= needW and 1 or 2
+  local _, toolRows = self:toolGrid(cw, s)
   local h = 2 * math.floor(18 * s) + Kit.textHeight("title") + math.floor(6 * s)
     + Kit.textHeight("small") + math.floor(16 * s)
     + Kit.textHeight("caption") + math.floor(8 * s)
@@ -1443,6 +1534,9 @@ function Launcher:drawPage(x, y, w, h, s)
     return self:drawFitted("settings", x, y, w, h, s, self.drawSettings)
   end
   if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
+  if self.page == "sync" and self.sync then
+    return self:drawFitted("sync", x, y, w, h, s, function(l, ...) return l.sync:draw(...) end)
+  end
   if self.page == "mods" and self.selected and self.ready[self.selected] then
     return self:drawMods(x, y, w, h, s)
   end
@@ -1527,11 +1621,8 @@ function Launcher:drawGame(x, y, w, h, s)
   local rowH = math.max(Kit.tapMin(), math.floor(44 * s))
   local gap = math.floor(4 * s)
   local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
-  -- the four save tools sit in one row, or two when their labels would not fit
   local tg = math.floor(8 * s)
-  local needW = Kit.textWidth("small", "Confirm delete") + math.floor(24 * s)
-  local toolCols = (cw - 3 * tg) / 4 >= needW and 4 or 2
-  local toolRows = 4 / toolCols
+  local toolCols, toolRows = self:toolGrid(cw, s)
   local toolsH = toolRows * smallH + (toolRows - 1) * tg
   local footH = btnH + toolsH + math.floor(22 * s)
   local viewH = y + h - pad - footH - cy
@@ -1624,6 +1715,11 @@ function Launcher:drawGame(x, y, w, h, s)
           and "Confirm delete" or "Delete", enabled = has, danger = true,
         run = function() self:deleteSave() end },
     }
+    if self.opts.onEditSave then
+      -- the save editor (tools/save-editor) opens on the chosen save
+      table.insert(tools, 4, { id = "save-edit", label = "Edit", enabled = has and cartId == nil,
+        run = function() self:editSave() end })
+    end
     local tw = math.floor((cw - (toolCols - 1) * tg) / toolCols)
     for i, t in ipairs(tools) do
       local col, row = (i - 1) % toolCols, math.floor((i - 1) / toolCols)

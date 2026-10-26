@@ -7,7 +7,8 @@
 // Contract (mirrors love-android's GameActivity.showFilePicker):
 //   love.system.pickFile("rom"|"mod"|"sav"|"cart"|"required_import") -> copies the user's pick into
 //   the LÖVE save directory as picked_rom.gb / picked_mod.zip /
-//   picked_save.sav / picked_cart.g1rcart; RomImporter's pending-file scan consumes it.
+//   picked_save.sav / picked_cart.g1rcart; the launcher's pending-pick scan
+//   (Launcher:pollHostPick in src/launcher/Launcher.lua) consumes it.
 //   love.system.createFile(name) -> exports save dir's pending_export.sav
 //   through the system picker, then writes export_done.flag.
 
@@ -426,7 +427,8 @@ public final class GRPickerBridge: NSObject {
         let delegate = PickerDelegate { urls in
             guard !urls.isEmpty else { return }
             // Same completion signal love-android's GameActivity writes;
-            // RomImporter:focus consumes it and clears pending_export.sav.
+            // the old launcher consumed it and cleared pending_export.sav;
+            // src/launcher/Launcher.lua does not read it yet.
             let flag = dir.appendingPathComponent("export_done.flag")
             try? "ok".data(using: .utf8)?.write(to: flag)
         }

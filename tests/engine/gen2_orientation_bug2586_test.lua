@@ -4,7 +4,6 @@ local T = require("tests.harness")
 local SaveData = require("src.core.SaveData")
 local Save = require("src.core.gen2.Save")
 local Orientation = require("src.core.Orientation")
-local Settings = require("src.import.LauncherSettings")
 local OptionsMenu = require("src.ui.gen2.OptionsMenu")
 local Game2 = require("src.core.Game2")
 local StateStack = require("src.core.StateStack")
@@ -21,39 +20,8 @@ local function memfs()
     getInfo = function(path) return files[path] and { type = "file" } end,
   }
 end
-local function orientationRow(model)
-  for _, section in ipairs(model.sections) do
-    for _, row in ipairs(section.rows) do
-      if row.label == "ORIENTATION" then return row end
-    end
-  end
-end
 for _, osName in ipairs({ "Android", "iOS", "OS X" }) do
   love.system.getOS = function() return osName end
-  for _, version in ipairs({ "red", "yellow", "gold", "silver", "crystal", "firered", "emerald" }) do
-    local fs = memfs()
-    local seed = SaveData.defaultOptions()
-    seed.orientation = "landscape"
-    seed.gold = { orientation = "portrait", textSpeed = "FAST" }
-    realSave(seed, fs)
-    SaveData.loadOptions = function() return realLoad(fs) end
-    SaveData.saveOptions = function(opts) return realSave(opts, fs) end
-    local model = Settings.open({}, version)
-    local row = orientationRow(model)
-    T.eq(row ~= nil, osName ~= "OS X", osName .. " " .. version .. " row visibility")
-    if row then
-      T.eq(row.value(), Orientation.modeLabel("landscape"), version .. " launcher reads flat orientation")
-      applied = nil
-      T.eq(row.step(1), true, version .. " orientation row steps")
-      T.eq(applied, "reverseLandscape", version .. " launcher applies selection live")
-      T.eq(model.opts.orientation, "reverseLandscape", version .. " launcher writes shared root")
-      T.eq(model.opts.gold.orientation, "portrait", version .. " launcher ignores stale local copy")
-      model.save()
-      T.eq(realLoad(fs).orientation, "reverseLandscape", version .. " selection persists flat")
-      T.eq(Save.loadOptions(fs).orientation, "reverseLandscape", version .. " shared value loads into Gen2")
-    end
-    SaveData.loadOptions, SaveData.saveOptions = realLoad, realSave
-  end
   local options = Save.defaultOptions()
   options.orientation = "landscape"
   local stack = setmetatable({}, { __index = StateStack })

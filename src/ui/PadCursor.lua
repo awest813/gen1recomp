@@ -1,6 +1,6 @@
 -- Virtual pointer for overlay hosts (save editor, touch-controls editor) on
--- Switch / handhelds / any gamepad.  Mirrors the launcher's RomImporter pad
--- cursor (speeds, deadzone, dual-path raw gate) without sharing that module.
+-- Switch / handhelds / any gamepad.  A self-contained pad cursor (speeds,
+-- deadzone, dual-path raw gate) shared by those hosts.
 --
 -- Stick / D-pad move; real mouse motion yields so desktop stays normal.
 -- Callers map A → click, B → close, shoulders → host-specific actions, right

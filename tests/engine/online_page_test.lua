@@ -30,6 +30,7 @@ package.loaded["src.core.SaveData"] = {
 }
 package.loaded["src.import.CacheContract"] = setmetatable({
   isReady = function(version) return version == "gold" end,
+  isImported = function(version) return version == "gold" end,
 }, { __index = require("src.import.CacheContract") })
 
 -- the online modules, scripted

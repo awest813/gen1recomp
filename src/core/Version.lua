@@ -19,7 +19,7 @@ local Version = {
   modApi = 2,             -- mod API major (manifest `api`)
   linkProtocol = 2,       -- link handshake wire version (Handshake.PROTOCOL)
   saveFormat = 5,         -- save.meta.format
-  cache = "rom-cache-v5", -- ROM import cache generation (RomImporter marker)
+  cache = "rom-cache-v5", -- ROM import cache generation (CacheContract marker)
 }
 
 local DEV_PLACEHOLDER = "0.0.0-dev"

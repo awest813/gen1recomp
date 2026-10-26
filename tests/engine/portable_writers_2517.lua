@@ -44,13 +44,10 @@ end
 local OWNED = {
   "src/core/SaveData.lua",
   "src/import/CacheFs.lua",
-  "src/import/RomSources.lua",
-  "src/import/RomImporter.lua",
   "src/core/Printer.lua",
   "src/render/ShaderFX.lua",
   "src/core/TouchSkin.lua",
-  "src/import/LauncherSettings.lua",
-  "src/import/LauncherView.lua",
+  "src/launcher/Launcher.lua",
 }
 
 local WRITERS = { "write", "newFile", "createDirectory", "append" }
@@ -58,8 +55,6 @@ local REMOVERS = { "remove" }
 
 local SAVEDIR_BRANCH = "non-portable save-dir branch"
 local PICKER_TEMP = "picker/export temp file in the save dir"
-local STALE_CACHE = "stale save-dir cache cleanup"
-local REQUIRED_IMPORT = "required-import staging file in the save dir"
 
 local ALLOW = {
   ["src/import/CacheFs.lua"] = {
@@ -76,23 +71,9 @@ local ALLOW = {
   ["src/render/ShaderFX.lua"] = {
     { reason = "shader download zip stays in the save dir", pat = "remove%(DOWNLOAD_ZIP_REL%)", n = 1 },
   },
-  ["src/import/RomImporter.lua"] = {
-    { reason = STALE_CACHE, pat = "love%.filesystem%.remove%(prefix %.%. CacheContract%.MARKER_PATH%)", n = 2 },
-    { reason = STALE_CACHE, pat = "^%s*love%.filesystem%.remove%(path%)$", n = 4 },
-    { reason = REQUIRED_IMPORT, pat = "love%.filesystem%.remove%(RequiredImports%.receiptPath", n = 3 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.remove%(preferred%)", n = 1 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.remove%(name%)", n = 1 },
-    { reason = PICKER_TEMP, pat = 'love%.filesystem%.remove%("export_done%.flag"%)', n = 1 },
-    { reason = PICKER_TEMP, pat = 'love%.filesystem%.remove%("pending_export%.sav"%)', n = 1 },
-    { reason = PICKER_TEMP, pat = 'love%.filesystem%.write%("pending_export%.sav"', n = 2 },
-    { reason = PICKER_TEMP, pat = 'love%.filesystem%.remove%("pick_error%.flag"%)', n = 1 },
-    { reason = PICKER_TEMP, pat = 'love%.filesystem%.remove%("pick_error%.txt"%)', n = 1 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.remove%(PICK_COMPLETE_FILENAME%)", n = 1 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.remove%(importerName%)", n = 1 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.remove%(displayName%)", n = 1 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.remove%(st%.path%)", n = 1 },
-    { reason = PICKER_TEMP, pat = "pcall%(love%.filesystem%.remove, path%)", n = 2 },
-    { reason = PICKER_TEMP, pat = "love%.filesystem%.newFile%(path%)", n = 1 },
+  ["src/launcher/Launcher.lua"] = {
+    { reason = PICKER_TEMP, pat = "pcall%(love%.filesystem%.remove, PICKED%[kind%]%)", n = 1 },
+    { reason = PICKER_TEMP, pat = "^%s*local lfs = love%.filesystem$", n = 1 },
   },
 }
 
@@ -186,7 +167,6 @@ end
 
 local savedFs = love.filesystem
 local savedSystem = love.system
-local savedRomSources = package.loaded["src.import.RomSources"]
 local savedCacheFs = package.loaded["src.import.CacheFs"]
 
 local function stubLove(source, sbd)
@@ -242,17 +222,6 @@ local function run()
   check(#st.tried >= 1 and st.tried[1].marker == true and st.tried[1].writable == true,
     "portableStatus records marker and writable for the winning candidate")
 
-  package.loaded["src.import.RomSources"] = nil
-  local RomSources = require("src.import.RomSources")
-  local path = RomSources.keep("red", "ROMBYTES")
-  check(path ~= nil, "RomSources.keep succeeds in portable mode")
-  eq(slurp(GAME .. "/roms/red.gb"), "ROMBYTES", "kept ROM lands in the game folder")
-  check(RomSources.keptExists(path), "kept ROM is visible through the portable fs")
-  eq(RomSources.readKept(path), "ROMBYTES", "kept ROM reads back")
-  RomSources.removeKept(path)
-  check(not exists(GAME .. "/roms/red.gb"), "kept ROM removal reaches the game folder")
-  eq(saveDirEntries(), 0, "nothing was written to the OS save directory")
-
   local pfs = SaveData.portableFs()
   pfs.createDirectory("imports/saves/red")
   eq((pfs.getInfo("imports/saves/red") or {}).type, "directory",
@@ -291,24 +260,12 @@ local function run()
     end
     pfs.remove(uni)
     check(pfs.getInfo(uni) == nil, "portable remove deletes the non-ASCII file")
-    RomSources.keep("blue", "B")
-    RomSources.removeKept(RomSources.keptPath("blue"))
-    local RI = require("src.import.RomImporter")
-    local inst = setmetatable({}, { __index = RI })
-    RI.ensureSavesInboxDir(inst)
-    RI.ensureImportsDir(inst)
-    RI.scanInbox(inst)
-    RI.scanInbox(inst)
   end)
   os.execute, io.popen = realExecute, realPopen
   check(spawnOk, "shell-free portable operations ran" .. (spawnOk and "" or (": " .. tostring(spawnErr))))
-  eq(spawned, 0, "portable mkdir, list, read, write and inbox scans spawn no shell process")
+  eq(spawned, 0, "portable mkdir, list, read and write spawn no shell process")
 
-  local RomImporter = require("src.import.RomImporter")
-  check(RomImporter.ensureSavesInboxDir(setmetatable({}, { __index = RomImporter })) == true, "inbox dirs are created in portable mode")
-  check(exists(GAME .. "/imports") or FsIo.isDir(GAME .. "/imports"),
-    "imports/ lands in the game folder")
-  eq(saveDirEntries(), 0, "inbox creation left the OS save directory empty")
+  eq(saveDirEntries(), 0, "portable writes left the OS save directory empty")
 
   stubLove(OTHER .. "/x.exe", GAME)
   package.loaded["src.import.CacheFs"] = nil
@@ -356,7 +313,6 @@ local ok, err = pcall(run)
 
 love.filesystem = savedFs
 love.system = savedSystem
-package.loaded["src.import.RomSources"] = savedRomSources
 package.loaded["src.import.CacheFs"] = savedCacheFs
 SaveData._resetPortableCacheForTests()
 rmrf(SANDBOX)

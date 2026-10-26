@@ -224,4 +224,117 @@ function ModLibrary.missingDependencies(manifest, rows)
   return missing
 end
 
+-- ------------------------------------------------------------ save sync
+
+-- Installed mods with each one's on/off answer for every game, the shape
+-- src/sync/SyncMods.lua records: { id, version, manifest, enabledByVersion }.
+function ModLibrary.syncRows(fs)
+  local byId, order = {}, {}
+  for _, version in ipairs(GameVersion.ORDER) do
+    for _, row in ipairs(ModLibrary.list(version, fs)) do
+      if not row.broken then
+        local rec = byId[row.id]
+        if not rec then
+          rec = { id = row.id, version = row.version, manifest = row.manifest,
+                  enabledByVersion = {} }
+          byId[row.id] = rec
+          order[#order + 1] = rec
+        end
+        rec.enabledByVersion[version] = row.supported and row.enabled or false
+      end
+    end
+  end
+  return order
+end
+
+-- Download and install a mod listed in a mod index (src/mods/ModIndex.lua).
+-- Blocking: sync runs it from its own task list.
+function ModLibrary.installFromIndex(entry)
+  local url, why = require("src.mods.ModIndex").installUrl(entry)
+  if not url then return nil, why end
+  local okH, HostShell = pcall(require, "src.core.HostShell")
+  if not (okH and HostShell.httpGet) then return nil, "no network transport here" end
+  local body, err = HostShell.httpGet(url, nil, "application/zip", 300)
+  if not body then return nil, err end
+  local manifest, installErr = ModLibrary.installZip(body,
+    tostring(entry and entry.id or "mod") .. ".zip", { upgrade = true })
+  if not manifest then
+    if tostring(installErr):find("already installed", 1, true) then return true end
+    return nil, installErr
+  end
+  return true
+end
+
+-- Every mod's saved option answers (options.modOptions), and one mod's.
+function ModLibrary.modOptions()
+  local opts = loadOptions()
+  return type(opts.modOptions) == "table" and opts.modOptions or {}
+end
+
+function ModLibrary.setModOptions(id, values)
+  if type(id) ~= "string" or type(values) ~= "table" then return false, "bad options" end
+  local SaveData = require("src.core.SaveData")
+  local opts = SaveData.loadOptions()
+  opts.modOptions = type(opts.modOptions) == "table" and opts.modOptions or {}
+  local bucket = {}
+  for key, value in pairs(values) do
+    local kind = type(value)
+    if type(key) == "string" and (kind == "string" or kind == "number" or kind == "boolean") then
+      bucket[key] = value
+    end
+  end
+  opts.modOptions[id] = bucket
+  return SaveData.saveOptions(opts)
+end
+
+-- ---------------------------------------------------------- translations
+
+ModLibrary.STRINGS_FILE = "lang/strings.lua"
+
+-- A mod's lang/strings.lua run as data: no globals, so it can only build a
+-- table.  Returns source -> translation, or nil.
+local function readStrings(fs, folder)
+  local text = fs.read(folder .. "/" .. ModLibrary.STRINGS_FILE)
+  if type(text) ~= "string" then return nil end
+  local chunk
+  if setfenv and loadstring then
+    chunk = loadstring(text, "=" .. folder .. "/" .. ModLibrary.STRINGS_FILE)
+    if chunk then setfenv(chunk, {}) end
+  else
+    chunk = load(text, "=" .. folder .. "/" .. ModLibrary.STRINGS_FILE, "t", {})
+  end
+  if not chunk then return nil end
+  local ok, map = pcall(chunk)
+  if not ok or type(map) ~= "table" then return nil end
+  local out = {}
+  for source, target in pairs(map) do
+    if type(source) == "string" and type(target) == "string" then out[source] = target end
+  end
+  return out
+end
+
+-- The launcher's string catalog before any game boots: the enabled mods'
+-- lang/strings.lua merged, later mods (by id) winning a key.  The game's mod
+-- loader replaces it with the real catalog once a version boots.  nil when
+-- no enabled mod ships one.
+function ModLibrary.translationStrings(version, fs)
+  fs = fsys(fs)
+  local okL, rows = pcall(ModLibrary.list, version, fs)
+  if not okL then return nil end
+  table.sort(rows, function(a, b) return tostring(a.id) < tostring(b.id) end)
+  local merged, any = {}, false
+  for _, row in ipairs(rows) do
+    local on = row.enabled
+    if on == nil then on = not row.experimental end
+    if not row.broken and on then
+      local map = readStrings(fs, row.folder)
+      for source, target in pairs(map or {}) do
+        merged[source] = target
+        any = true
+      end
+    end
+  end
+  return any and merged or nil
+end
+
 return ModLibrary

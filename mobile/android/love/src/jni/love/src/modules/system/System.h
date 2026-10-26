@@ -109,7 +109,7 @@ public:
 	/**
 	 * Shows the platform's native "pick a file" UI, if one is available.
 	 * Android only for now; the result (if any) is not returned here -- see
-	 * love::android::showFilePicker and src/import/RomImporter.lua.
+	 * love::android::showFilePicker and Launcher:pollHostPick (src/launcher/Launcher.lua).
 	 *
 	 * @param kind Optional pick kind: nullptr/"rom" -> picked_rom.gb,
 	 *             "mod" -> picked_mod.zip, "sav"/"save" -> picked_save.sav,

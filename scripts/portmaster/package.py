@@ -48,7 +48,7 @@ def main():
     licenses = game / "licenses"
     licenses.mkdir()
     shutil.copy2(ROOT / "LICENSE.MD", licenses / "LICENSE.MD")
-    shutil.copy2(ROOT / "assets/launcher/lucide/LICENSE", licenses / "lucide.txt")
+    shutil.copy2(ROOT / "assets/ui/lucide/LICENSE", licenses / "lucide.txt")
     for notice in (ROOT / "scripts/portmaster/licenses").glob("*.txt"):
         shutil.copy2(notice, licenses / notice.name)
     for notice in ("fonts/plainpixel", "skins/gba_purple", "skins/gb_anim",

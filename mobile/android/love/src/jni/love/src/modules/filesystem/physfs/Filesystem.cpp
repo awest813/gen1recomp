@@ -192,8 +192,8 @@ bool Filesystem::setIdentity(const char *ident, bool appendToPath)
 	// save_path_full in one step fails with ENOENT and PHYSFS_mount below
 	// silently never mounts anything for the rest of this process -- not
 	// just the save dir, but everything routed through it (save.lua/
-	// options.lua, the ROM-derived asset cache, RomImporter's Android
-	// folder scan). Ensure each level exists in order instead.
+	// options.lua, the ROM-derived asset cache, the launcher's
+	// picked_* file handoff). Ensure each level exists in order instead.
 	if (!love::android::directoryExists(save_directory.c_str()) &&
 			!love::android::mkdir(save_directory.c_str()))
 		SDL_Log("Error: Could not create save directory %s!", save_directory.c_str());

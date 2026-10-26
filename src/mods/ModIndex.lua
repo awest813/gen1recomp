@@ -3,7 +3,7 @@
 -- An index is metadata only: a published index.json feed listing mods that
 -- live in their authors' own repos.  Nothing here clones or vendors the index
 -- repo -- the feed is the whole contract, and every install still goes through
--- the same LauncherMods.installZip path an "Import mod .zip" does, so a listing
+-- the same ModLibrary.installZip path an "Import mod .zip" does, so a listing
 -- buys a mod no trust it would not otherwise have.
 --
 -- Shape of the split mirrors src/mods/ModUpdate.lua, which this borrows its
@@ -133,8 +133,8 @@ local function strArray(v)
 end
 
 -- Decode one release blob from the feed's `latest` field into the same shape
--- ModUpdate.parseRelease produces, so LauncherMods.installFromRelease takes it
--- without a translation layer.
+-- ModUpdate.parseRelease produces, so a release consumer takes it without a
+-- translation layer.
 local function parseLatest(raw)
   if type(raw) ~= "table" then return nil end
   local zip = nil
@@ -408,7 +408,7 @@ function ModIndex.displayVersion(entry)
   return entry.version or "?"
 end
 
--- The release table LauncherMods.installFromRelease wants.  A downloadURL
+-- The release table (ModUpdate.parseRelease shape) for an index entry.  A downloadURL
 -- entry has no release behind it, so one is synthesised around the URL; the
 -- installer still validates the manifest inside and still refuses a zip whose
 -- id is not the one being installed.

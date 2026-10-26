@@ -4,7 +4,6 @@ local S = require("tests.harness").suite("safe mode and issue report")
 local check = S.check
 
 local SaveData = require("src.core.SaveData")
-local LauncherMods = require("src.mods.LauncherMods")
 local IssueReport = require("src.core.IssueReport")
 local Version = require("src.core.Version")
 
@@ -13,27 +12,12 @@ check(not SaveData.isSafeMode(options), "safe mode defaults off")
 SaveData.setSafeMode(options, true)
 check(SaveData.isSafeMode(options), "safe mode can be enabled")
 
-local manifests = {
-  { id = "alpha", name = "Alpha", version = "1.0.0", experimental = false,
-    raw = {}, dependencySpecs = {}, conflictSpecs = {} },
-  { id = "beta", name = "Beta", version = "1.0.0", experimental = false,
-    raw = {}, dependencySpecs = {}, conflictSpecs = {} },
-}
 options.mods.alpha = false
 options.mods.beta = true
-local rows = LauncherMods.deriveList(manifests, options, "red")
-check(#rows == 2, "safe mode keeps installed mods visible")
-check(not rows[1].enabled and not rows[2].enabled,
-  "safe mode disables every launcher mod row")
-check(rows[1].status == "safe_mode" and rows[2].status == "safe_mode",
-  "safe mode explains every disabled launcher row")
-
 SaveData.setSafeMode(options, false)
-rows = LauncherMods.deriveList(manifests, options, "red")
-local byId = {}
-for _, row in ipairs(rows) do byId[row.id] = row end
-check(not byId.alpha.enabled and byId.beta.enabled,
-  "turning safe mode off restores saved mod choices")
+check(not SaveData.isSafeMode(options), "safe mode can be turned off")
+check(options.mods.alpha == false and options.mods.beta == true,
+  "safe mode leaves the saved mod choices alone")
 
 local previousLove = _G.love
 local openedURL

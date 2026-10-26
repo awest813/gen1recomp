@@ -47,7 +47,7 @@ function SaveIO.defaultPath()
   return join(identity, "save.lua")
 end
 
--- Native file picker (same approach as RomImporter). Returns an absolute
+-- Native file picker (same approach as src/core/FilePicker.lua). Returns an absolute
 -- path, or nil if the user cancelled / no dialog is available.
 function SaveIO.choosePath()
   local platform = (love and love.system and love.system.getOS

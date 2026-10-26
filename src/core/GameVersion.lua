@@ -130,7 +130,6 @@ GameVersion.VERSIONS = {
     gameCode = 4,
     cartShape = "gba",
     cartShell = "#e64110",
-    cartLabel = "assets/labels/firered.png",
   },
   leafgreen = {
     id = "leafgreen", label = "LeafGreen", displayName = "Pokemon LeafGreen",
@@ -144,7 +143,6 @@ GameVersion.VERSIONS = {
     cachePrefix = "leafgreen/", saveSuffix = "_leafgreen",
     generation = 3, engine = "game3", layout = "frlg", gameCode = 5,
     cartShape = "gba", cartShell = "#26a24e",
-    cartLabel = "assets/labels/leafgreen.png",
   },
   -- pokeemerald/include/constants/global.h:10
   emerald = {
@@ -158,7 +156,6 @@ GameVersion.VERSIONS = {
     cachePrefix = "emerald/", saveSuffix = "_emerald",
     generation = 3, engine = "game3", layout = "rse", gameCode = 3,
     cartShape = "gba", cartShell = "#1f9e6e",
-    cartLabel = "assets/labels/emerald.png",
   },
   -- pokeruby/include/constants/global.h:9
   ruby = {
@@ -174,7 +171,6 @@ GameVersion.VERSIONS = {
     cachePrefix = "ruby/", saveSuffix = "_ruby",
     generation = 3, engine = "game3", layout = "rse", gameCode = 2,
     cartShape = "gba", cartShell = "#b92e32",
-    cartLabel = "assets/labels/ruby.png",
   },
   -- pokeruby/include/constants/global.h:8
   sapphire = {
@@ -190,7 +186,6 @@ GameVersion.VERSIONS = {
     cachePrefix = "sapphire/", saveSuffix = "_sapphire",
     generation = 3, engine = "game3", layout = "rse", gameCode = 1,
     cartShape = "gba", cartShell = "#355ec4",
-    cartLabel = "assets/labels/sapphire.png",
   },
 }
 

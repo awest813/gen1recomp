@@ -5,7 +5,7 @@ name: Release
 #
 # Archive layout: every mod file at the archive root, manifest.json included.
 # That is one of the two shapes the game accepts on MODS > Import mod .zip
-# (src/mods/LauncherMods.lua locateRoot: manifest at the root, or inside a
+# (src/mods/ModLibrary.lua findModRoot: manifest at the root, or inside a
 # single top-level folder). Nothing else is added, so the archive stays
 # installable by hand too.
 #

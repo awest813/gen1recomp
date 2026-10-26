@@ -54,35 +54,4 @@ end
 eq(Setting.patchesOn(3, { unionRoom = false }), true, "gen 3 Union Rooms ignore OFF")
 eq(Setting.appliesTo(3), false, "the setting never applies to gen 3")
 
-local okL, LauncherSettings = pcall(require, "src.import.LauncherSettings")
-if okL then
-  local lfs = memfs()
-  local realLoad, realSave = SaveData.loadOptions, SaveData.saveOptions
-  SaveData.loadOptions = function(f) return realLoad(f or lfs) end
-  SaveData.saveOptions = function(o, f) return realSave(o, f or lfs) end
-  local okO, model = pcall(LauncherSettings.open, {}, "red")
-  if okO and type(model) == "table" and type(model.sections) == "table" then
-    local row
-    for _, section in ipairs(model.sections) do
-      for _, r in ipairs(section.rows or {}) do
-        if tostring(r.label) == "Union Room" then row = r end
-      end
-    end
-    check(row ~= nil, "launcher options carry a Union Room row")
-    if row then
-      eq(tostring(row.value()), "ON", "row shows ON by default")
-      check(type(row.note) == "string" and row.note:find("Gen 3", 1, true) ~= nil,
-        "row explains Gen 3 stays available")
-      row.step(1)
-      eq(tostring(row.value()), "OFF", "row toggles OFF")
-      eq(model.opts[Setting.KEY], false, "toggle stores false")
-      row.step(1)
-      eq(model.opts[Setting.KEY], true, "toggle back stores true")
-    end
-  else
-    print("[skip] LauncherSettings.open unavailable headless: " .. tostring(model))
-  end
-  SaveData.loadOptions, SaveData.saveOptions = realLoad, realSave
-end
-
 T.finish("union_setting")

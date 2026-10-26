@@ -78,7 +78,7 @@ function GamepadMap.initGamepadMappings()
   end
 end
 
--- Raw index -> gamepad button *name* for RomImporter (then NX face swap applies).
+-- Raw index -> gamepad button *name* (mapRawToGamepadButton; NX face swap applies).
 GamepadMap.RAW_TO_GAMEPAD_BUTTON = {
   [1] = "a", [2] = "b", [3] = "x", [4] = "y",
   [5] = "leftshoulder", [6] = "rightshoulder",

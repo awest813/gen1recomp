@@ -3685,12 +3685,6 @@ end
 -- ---------------------------------------------- input hold regressions
 runSuites({ "tests/input_hold_test.lua" })
 
--- ---------------------------------------------- launcher cursor (#114)
-runSuites({ "tests/rom_importer_cursor_test.lua" })
-
--- ---------------------------------------------- launcher last played tab (#835)
-runSuites({ "tests/rom_importer_last_version_test.lua" })
-
 -- ---------------------------------------------- Gold / Crystal (Gen 2)
 -- All ROM-free: own fixtures, or a self-skip on a missing cache.  Globbed on
 -- the historical chain; tests/run_gen2.lua runs the same set, one per process.
@@ -3847,25 +3841,10 @@ runSuites(orderedGlob(
   "tests/gen2_whirlpool_test.lua",
 }, LEAKS_SAVE_SLOT_STATE))
 
--- ---------------------------------------------- Android second ROM pick (#167)
-runSuites({ "tests/rom_importer_android_pick_test.lua" })
-
--- ---------------------------------------------- Android mod / save SAF pick
-runSuites({ "tests/rom_importer_android_mod_pick_test.lua" })
-
--- ---------------------------------------------- import with no picker (#482)
-runSuites({ "tests/rom_importer_no_picker_test.lua" })
-runSuites({ "tests/rom_importer_double_pick_test.lua" })
 -- ---------------------------------------------- ROM from a .zip / .7z archive
 runSuites({ "tests/rom_archive_import_test.lua" })
 -- ---------------------------------------------- RZIP-compressed .srm saves
 runSuites({ "tests/save_rzip_test.lua" })
--- the same pickerless scan, asked for one version in particular (#1274)
-runSuites({ "tests/rom_importer_choose_version_test.lua" })
--- ---------------------------------------------- Switch platform capabilities
--- platform_nx_* / rom_importer_nx_* live in tests/engine/ (ROM-free T2) so
--- CI's headless lane runs them without data/generated/.
-runSuites({ "tests/launcher_mods_install_zip_test.lua" })
 -- ---------------------------------------------- pet Pokemon cries (#1687, #1649)
 runSuites({ "tests/pet_cries_test.lua" })
 -- ---------------------------------------------- parity workstream tests

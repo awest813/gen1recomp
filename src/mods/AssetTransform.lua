@@ -8,7 +8,7 @@
 -- exactly two filesystem roots -- read assets/generated/**, write
 -- save/mod-derived/<id>/** -- with no require, no love, no io, no os.
 -- assets/generated is never written because re-import wipes it whole
--- (RomImporter), so anything a transform put there would vanish.
+-- (ImportJob), so anything a transform put there would vanish.
 --
 -- A stamp of (cache marker + transform source hash) gates the run, so the
 -- cost is paid once per install and re-paid only when the cache is

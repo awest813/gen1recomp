@@ -9,7 +9,8 @@ local SaveConvert = require("src.save_convert.SaveConvert")
 local GameVersion = require("src.core.GameVersion")
 local CacheFs = require("src.import.CacheFs")
 local Contract = require("src.import.CacheContract")
-local Importer = require("src.import.RomImporter")
+local ImportJob = require("src.import.ImportJob")
+local SaveFileIO = require("src.import.SaveFileIO")
 local Gen2Save = require("src.save_convert.Gen2Save")
 local MapContext = require("src.save_convert.Gen2MapContext")
 local Compat = require("src.save_convert.Compat")
@@ -97,10 +98,20 @@ for _, build in ipairs(builds) do
     playerState = "normal", party = {}, events = {},
   }))
   assert(SaveData.setActiveSlot(version, slot))
-  local imp = setmetatable({ workState = "idle", launcher = true, saveNotice = {},
-    ready = {}, returning = {}, romName = {}, _rememberRomSource = function() end },
-    { __index = Importer })
-  T.eq(Importer.isReady(version), false, version .. " old metadata cache is not ready")
+  -- the launcher's export (Launcher:exportSave) and import completion
+  -- (ImportJob:_finish) as the test drives them, recording each notice
+  local imp = { saveNotice = {} }
+  function imp:exportSave(v)
+    local ok, result = SaveFileIO.exportActiveSlot(v)
+    self.saveNotice[v] = { ok = ok and true or false, text = tostring(result) }
+  end
+  function imp:_completeImport(v, cachePrefix)
+    local job = setmetatable({ version = v, prefix = cachePrefix,
+      sha1 = GameVersion.info(v).sha1, state = "working" }, ImportJob)
+    job:_finish()
+    T.eq(job.state, "done", v .. " import completion publishes: " .. tostring(job.error))
+  end
+  T.eq(Contract.isImported(version), false, version .. " old metadata cache is not ready")
   imp:exportSave(version)
   T.eq(imp.saveNotice[version].ok, false, version .. " missing metadata refuses launcher export")
   T.check(imp.saveNotice[version].text:find(
@@ -112,7 +123,7 @@ for _, build in ipairs(builds) do
   files[constantsPath] = currentConstants
   imp:_completeImport(version, prefix, "scratch-" .. version .. ".gbc")
   T.eq(files[prefix .. Contract.MARKER_PATH], Contract.markerFor(version), version .. " reimport publishes current marker")
-  T.eq(Importer.isReady(version), true, version .. " regenerated metadata cache is ready")
+  T.eq(Contract.isImported(version), true, version .. " regenerated metadata cache is ready")
   T.eq(CacheFs.prefix, "caller/", version .. " completion restores the caller prefix")
   T.eq(GameVersion.get(), "red", version .. " completion does not switch the active game")
   imp:exportSave(version)

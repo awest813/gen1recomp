@@ -170,9 +170,12 @@ end
 
 local function modRows(context)
   if context and type(context.mods) == "table" then return context.mods end
-  local ok, LauncherMods = pcall(require, "src.mods.LauncherMods")
-  if ok and LauncherMods and LauncherMods.list then
-    local listed = call(LauncherMods.list)
+  local ok, ModLibrary = pcall(require, "src.mods.ModLibrary")
+  if ok and ModLibrary and ModLibrary.list then
+    local version
+    local okO, opts = pcall(function() return require("src.core.SaveData").loadOptions() end)
+    if okO and type(opts) == "table" then version = opts.lastVersion end
+    local listed = call(ModLibrary.list, version)
     if type(listed) == "table" then return listed end
   end
   return {}
@@ -250,11 +253,6 @@ local function metadata(options, context)
       if line:find("ERROR", 1, true) then return line end
     end
     return s:match("[^\r\n]+")
-  end
-  local launcher = package.loaded["src.import.LauncherView"]
-  if type(launcher) == "table" and type(launcher.cartShaderError) == "function" then
-    local okCart, cartErr = pcall(launcher.cartShaderError)
-    if okCart and cartErr then add("Cart shader", firstLine(cartErr)) end
   end
   local shaderFx = package.loaded["src.render.ShaderFX"]
   if type(shaderFx) == "table" and type(shaderFx.lastError) == "function" then

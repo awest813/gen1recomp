@@ -132,8 +132,7 @@ end
 -- for the press (on X11 an XGrabPointer with owner_events).  The grab outlives
 -- the click, every pointer event over the child dialog is still routed to our
 -- window, and the dialog draws and keyboard-navigates but ignores the mouse.
--- src/import/RomImporter.lua owns the launcher's copy; hoisting it here means
--- every host spawn inherits it, including one a mod reaches through HostShell.
+-- Living here rather than in the launcher means every host spawn inherits it, including one a mod reaches through HostShell.
 -- Pump until nothing is held so SDL sees the release first; bounded, so a
 -- stuck button costs a moment and never the game.  pump() drains OS events
 -- into LOVE's queue and dispatches nothing, so there is no reentry.  Worker

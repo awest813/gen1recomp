@@ -3,8 +3,9 @@
  * love.js build (see ports/web/BUILD.md and ports/web/patch_love.py).
  *
  * src/core/WebHost.lua copies the picker functions onto love.system under the
- * names the UWP picker bridge already uses, so RomImporter's native-picker
- * path works unchanged:
+ * names the UWP picker bridge already uses, so the launcher's host-pick path
+ * (Launcher:requestHostPick / pollHostPick in src/launcher/Launcher.lua) works
+ * unchanged:
  *
  *   pickFile(kind)   -> boolean   open the page's <input type=file>
  *   getPickedFile()  -> path|nil  next picked file, written under /tmp

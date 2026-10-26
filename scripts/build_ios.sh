@@ -273,7 +273,7 @@ EOF
 
 # --------------------------------------------------------------- game.love
 # Every version's import manifest has to ship or that game's ROM import fails in
-# the built app: decodeManifest (src/import/RomImporter.lua) errors outright when
+# the built app: RomManifest.decode (src/import/RomManifest.lua) errors outright when
 # one is absent, and dev reads them off the source tree, so the miss only ever
 # shows up in a build.  iOS shipped without the Yellow one in 0.1.45 to 0.1.47
 # for exactly that reason.
@@ -362,7 +362,7 @@ pack_game_love() {
   fi
   # Same required-file gate as scripts/build.sh and scripts/build_android.sh.
   # iOS only checked App.lua, which is why the Yellow manifest shipped missing
-  # in 0.1.45 through 0.1.47: decodeManifest (src/import/RomImporter.lua) errors
+  # in 0.1.45 through 0.1.47: RomManifest.decode (src/import/RomManifest.lua) errors
   # outright when a version's manifest is absent, so Import ROM on Yellow died
   # in the built app while dev, which reads the source tree, stayed green.
   # src/ui/kit/Kit.lua is on the list for the same reason: the launcher's UI

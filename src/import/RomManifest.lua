@@ -1,5 +1,5 @@
 -- The per-version import metadata (symbol table + ROM hash) that drives
--- RomExtractor.  Split out of RomImporter so the extraction worker thread can
+-- RomExtractor.  Its own module so the extraction worker thread can
 -- decode it itself: shipping the decoded table across a love.thread channel
 -- would deep-copy every symbol for nothing.
 

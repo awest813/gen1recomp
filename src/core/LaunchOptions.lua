@@ -302,21 +302,6 @@ function LaunchOptions.relayAddress(argv, rawArgv)
   return (require("src.link.Net").normalizeRelayAddress(value))
 end
 
--- Which launcher to open: "new" (src/launcher/) or "classic".  --ui=new on
--- the command line (?ui=new on the web build) is a choice the player made and
--- is remembered; POKEPORT_LAUNCHER=new is for scripted runs and is not.
--- Returns choice, remember -- or nil when nothing asked.
-local UI_ALIASES = { new = "new", pkgb = "new", classic = "classic", old = "classic" }
-function LaunchOptions.launcherUi(argv, rawArgv)
-  local flag = argValue(argv, "ui") or argValue(rawArgv, "ui")
-  local choice = flag and UI_ALIASES[tostring(flag):lower()]
-  if choice then return choice, true end
-  local env = os.getenv("POKEPORT_LAUNCHER")
-  choice = env and UI_ALIASES[env:lower()]
-  if choice then return choice, false end
-  return nil
-end
-
 function LaunchOptions.resolveRequest(argv, rawArgv)
   local uri = launchURIRequest()
   local resolved = request(argv, rawArgv, uri)

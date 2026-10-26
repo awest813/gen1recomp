@@ -606,12 +606,9 @@
         if (/^(1|true|yes|on)$/i.test(params.get("fps") || "")) {
           Module.arguments.push("--renderstats");
         }
-        // ?ui=new opens the PK:GB launcher (remembered), ?ui=classic goes back
         // ?relay=host:port: the online relay for this visit
         var relay = params.get("relay") || "";
         if (/^[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$/.test(relay)) Module.arguments.push("--relay=" + relay);
-        var ui = (params.get("ui") || "").toLowerCase();
-        if (ui === "new" || ui === "classic") Module.arguments.push("--ui=" + ui);
       })();
       Module.INITIAL_MEMORY = __G1R_MEMORY__;
       Module.canvas = canvas;

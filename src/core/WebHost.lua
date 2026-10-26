@@ -7,7 +7,7 @@
 --     (ports/web/native/lovejs_bridge.cpp).  install() copies its picker
 --     functions onto love.system under the names the UWP picker bridge
 --     already uses (pickFile / getPickedFile / getPickError / pickFileKinds),
---     so RomImporter's native-picker path drives the browser's file input
+--     so the launcher's host-pick path (Launcher:requestHostPick) drives the browser's file input
 --     without knowing it is on the web.  It must run before anything calls
 --     Platform.detect(), which caches whether love.system.pickFile exists.
 --
@@ -215,7 +215,8 @@ function WebHost.syncCount()
 end
 
 -- A minimal DroppedFile stand-in over an absolute MEMFS path: the subset
--- RomImporter's drop handlers use (readDroppedFile, the extension routing).
+-- the launcher's drop handler uses (Launcher:handleDrop: getFilename, open,
+-- read, close).
 local function droppedFile(path)
   local handle = nil
   local f = {}

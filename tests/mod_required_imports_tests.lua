@@ -184,14 +184,10 @@ love.filesystem.write("mods/launcher_needs/manifest.json", ([[{
   "file":"source.bin","md5":"%s"}]
 }]]):format(DIGEST))
 love.filesystem.write("mods/launcher_needs/main.lua", "return function(mod) end")
-local launcherRows = require("src.mods.LauncherMods").list()
-eq(#launcherRows, 1, "launcher keeps a mod with a missing required import visible")
-eq(launcherRows[1].missingRequiredImports, 1,
-  "launcher row carries the missing import count")
-eq(launcherRows[1].status, "needs_import",
-  "missing import changes Ready to Import required")
-check(launcherRows[1].statusDetail:find("Source ROM", 1, true) ~= nil,
-  "launcher warning names the missing file")
+local libraryRows = require("src.mods.ModLibrary").list()
+eq(#libraryRows, 1, "mod library keeps a mod with a missing required import visible")
+eq(libraryRows[1].id, "launcher_needs", "listed row is the mod that needs an import")
+check(not libraryRows[1].broken, "a missing required import does not mark the mod broken")
 
 local function memfs(files)
   return {

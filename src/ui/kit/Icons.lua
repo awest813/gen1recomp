@@ -59,8 +59,8 @@ local editorNames = {
   "folder-open",
 }
 local atlases = {
-  { path = "assets/launcher/lucide/icons.png", names = names },
-  { path = "assets/launcher/lucide/editor.png", names = editorNames },
+  { path = "assets/ui/lucide/icons.png", names = names },
+  { path = "assets/ui/lucide/editor.png", names = editorNames },
 }
 local cells = {}
 Icons.NAMES = {}

@@ -236,11 +236,6 @@ local function applySavedAudioMode()
 end
 
 local Game, EditorApp, Importer, TouchEditor, Studio, Prelaunch
-local launcherSplash
-
-local function splashBlocksInput()
-  return launcherSplash ~= nil and launcherSplash:blocksInput()
-end
 
 -- #887: quit-to-launcher state, shared by love.load and love.quit (both need
 -- it, so it is declared here rather than next to love.quit).
@@ -372,16 +367,14 @@ end
 -- against Red's species/item tables.
 local function openEditor(version, slotId)
   local function refuse(text)
-    if not Importer then return end
-    Importer.saveNotice = Importer.saveNotice or {}
-    Importer.saveNotice[version] = { ok = false, text = text }
+    if Importer and Importer.say then Importer:say(text, "error") end
   end
   local SaveData = require("src.core.SaveData")
   local recovered, recoveryError, recoveryNotice = require("src.box.Transaction").recover(SaveData.persistenceFs())
   if not recovered then refuse(recoveryError); return end
   if recoveryNotice then
     require("src.core.Logger").warn("%s", recoveryNotice)
-    if Importer and Importer._boxState then Importer._boxState.notice = recoveryNotice end
+    if Importer and Importer.say then Importer:say(recoveryNotice, "info") end
   end
   local path = SaveData.slotDiskPath(version, slotId)
   if not path then
@@ -527,33 +520,12 @@ function closeSkinStudio()
   end
 end
 
--- The PK:GB launcher (src/launcher/), opt in while it reaches parity with
--- the original one: --ui=new (?ui=new on the web build) once, remembered in
--- options.launcherUi; or POKEPORT_LAUNCHER=new for one run.  love.load
--- resolves the command line into launcherUiChoice.
-local launcherUiChoice
-local function useNewLauncher()
-  if launcherUiChoice then return launcherUiChoice == "new" end
-  local ok, opts = pcall(require("src.core.SaveData").loadOptions)
-  return ok and type(opts) == "table" and opts.launcherUi == "new"
-end
-
+-- The launcher (src/launcher/Launcher.lua).  Every way back to it -- a
+-- returning game, a closed overlay, a recovered save -- builds a fresh one
+-- here; launch requests from it come back through bootGame.
 local function makeLauncher(launcherOpts)
   require("src.import.LauncherWindow").activate()
-  if useNewLauncher() then
-    return require("src.launcher.Launcher").new(function(version, cartId, opts)
-      Importer = nil
-      local onBoot = launcherOpts and launcherOpts.onBoot
-      if onBoot and onBoot(version, cartId, opts) then return end
-      bootGame(version, cartId, opts)
-    end, { initialGame = launcherOpts and launcherOpts.initialTab or nil,
-           importPath = os.getenv("POKEPORT_LAUNCHER_IMPORT"),
-           onOpenSkinStudio = require("src.ui.SkinStudio").available_desktop()
-             and openSkinStudio or nil })
-  end
-  local RomImporter = require("src.import.RomImporter")
-  local forceImport = os.getenv("POKEPORT_FORCE_IMPORT") == "1"
-  return RomImporter.new(function(version, cartId, opts)
+  return require("src.launcher.Launcher").new(function(version, cartId, opts)
     require("src.import.LauncherWindow").observe(0)
     require("src.import.LauncherWindow").flush()
     Importer = nil
@@ -561,14 +533,12 @@ local function makeLauncher(launcherOpts)
     if onBoot and onBoot(version, cartId, opts) then return end
     bootGame(version, cartId, opts)
   end, {
-    launcher = true,
-    forceImport = forceImport,
-    initialTab = launcherOpts and launcherOpts.initialTab or nil,
-    invite = launcherOpts and launcherOpts.invite or nil,
+    initialGame = launcherOpts and launcherOpts.initialTab or nil,
+    importPath = os.getenv("POKEPORT_LAUNCHER_IMPORT"),
+    onImported = launcherOpts and launcherOpts.onImported or nil,
+    noUpdateCheck = launcherOpts and launcherOpts.noUpdateCheck or nil,
     onEditSave = openEditor,
     onEditTouchControls = openTouchControlsEditor,
-    -- Skin Studio owns a touch-first layout as well as the desktop workspace.
-    -- Keep the compatibility predicate so external hosts using it still work.
     onOpenSkinStudio = require("src.ui.SkinStudio").available_desktop()
       and openSkinStudio or nil,
   })
@@ -602,7 +572,7 @@ local function rebuildLauncherInProcess(opts)
 
   applySavedOrientation()
 
-  local preload = require("src.mods.LauncherMods").translationStrings()
+  local preload = require("src.mods.ModLibrary").translationStrings(currentVersion)
   if preload then require("src.core.Strings").load({ strings = preload }) end
 
   if love.window and love.window.setTitle then
@@ -652,12 +622,7 @@ function bootGame(version, cartId, opts)
   if recoveryNotice then require("src.core.Logger").warn("%s", recoveryNotice) end
   if not recovered then
     Importer = makeLauncher({ initialTab = "box" })
-    if useNewLauncher() then
-      Importer:say(recoveryError, "error")
-      return
-    end
-    Importer._boxState = nil
-    require("src.import.BoxPanel").refresh(Importer).notice = recoveryError
+    Importer:say(recoveryError, "error")
     return
   end
   pcall(function()
@@ -774,9 +739,7 @@ local function autoUpdateMods(request, tab)
 end
 
 local function launcherBusy()
-  return launcherSplash ~= nil or Importer ~= nil and (Importer._updateAll ~= nil
-    or Importer._modInstall ~= nil or Importer._cartInstall ~= nil
-    or Importer._autoUpdateAll ~= nil)
+  return Importer ~= nil and Importer.importing ~= nil and Importer:importing()
 end
 
 local function startLaunchRequest(request)
@@ -798,7 +761,7 @@ local function startLaunchRequest(request)
     return true
   end
 
-  local RomImporter = require("src.import.RomImporter")
+  local CacheContract = require("src.import.CacheContract")
   Importer = nil
   if Prelaunch then return true end
 
@@ -815,7 +778,7 @@ local function startLaunchRequest(request)
     cartId = request.cart
   end
 
-  if not RomImporter.isReady(version) then
+  if not CacheContract.isImported(version) then
     showLauncher(version)
     autoUpdateMods(request)
     return true
@@ -935,24 +898,11 @@ function love.load(args)
     return
   end
 
-  local RomImporter = require("src.import.RomImporter")
   local resolvedLaunch = LaunchOptions.resolveRequest(arg, args)
   do
     -- --relay=host:port: the online relay for this run (src/link/Net.lua)
     local relay = LaunchOptions.relayAddress(arg, args)
     if relay then require("src.link.Net").relayOverride = relay end
-  end
-  do
-    local choice, remember = LaunchOptions.launcherUi(arg, args)
-    launcherUiChoice = choice
-    if choice and remember then
-      local SaveData = require("src.core.SaveData")
-      local opts = SaveData.loadOptions()
-      if opts.launcherUi ~= choice then
-        opts.launcherUi = choice
-        SaveData.saveOptions(opts)
-      end
-    end
   end
   local forceImport = os.getenv("POKEPORT_FORCE_IMPORT") == "1"
   local importPath = os.getenv("POKEPORT_IMPORT_ROM")
@@ -962,7 +912,7 @@ function love.load(args)
   local scriptedVersion = os.getenv("POKEPORT_VERSION")
     or resolvedLaunch.game
     or "red"
-  local ready = RomImporter.isReady(scriptedVersion)
+  local ready = require("src.import.CacheContract").isImported(scriptedVersion)
   -- Scripted / headless runs have to reach the game with no human pressing
   -- Play: an autopilot, a frame driver, an import-only build step, or an
   -- explicit ROM path all bypass the interactive launcher and keep today's
@@ -990,14 +940,14 @@ function love.load(args)
     if forceImport or not ready then
       -- The importer detects the dropped/loaded ROM's version by SHA-1 and
       -- passes it to onComplete; boot that version.
-      Importer = RomImporter.new(function(version)
+      Importer = makeLauncher({ noUpdateCheck = true, onImported = function(version)
         if os.getenv("POKEPORT_IMPORT_ONLY") == "1" then
           love.event.quit()
           return
         end
         Importer = nil
         bootGame(version or scriptedVersion, nil, scriptedOpts)
-      end)
+      end })
       if importPath then Importer:startPath(importPath) end
       return
     end
@@ -1014,7 +964,9 @@ function love.load(args)
   -- translation reaches the launcher too.  The active game's loader replaces
   -- this with the real merged catalog once a version boots.
   do
-    local preload = require("src.mods.LauncherMods").translationStrings()
+    local okO, saved = pcall(require("src.core.SaveData").loadOptions)
+    local preload = require("src.mods.ModLibrary").translationStrings(
+      okO and type(saved) == "table" and saved.lastVersion or nil)
     if preload then require("src.core.Strings").load({ strings = preload }) end
   end
 
@@ -1048,7 +1000,6 @@ function love.load(args)
   -- Edit on a save row opens the bundled editor on that slot (openEditor).
   if not relaunched then
     Importer = makeLauncher()
-    launcherSplash = require("src.import.LauncherSplash").new()
     autoUpdateMods(resolvedLaunch,
       not resolvedLaunch.game and "mods" or nil)
     return
@@ -1072,16 +1023,6 @@ function love.update(dt)
   SwitchDiagnostics.maybeFlush(false)
   -- NX only (no-op elsewhere): follow dock/undock without waiting for SDL.
   NxDisplay.sync()
-  if launcherSplash then
-    if not launcherSplash.inputResumed and not launcherSplash:blocksInput() then
-      launcherSplash.inputResumed = true
-      if Importer and Importer.resumeAfterOverlay then Importer:resumeAfterOverlay() end
-    end
-    if launcherSplash:update(dt) then
-      launcherSplash:release()
-      launcherSplash = nil
-    end
-  end
   if editorMode then return EditorApp.update(dt) end
   if TouchEditor then return TouchEditor.update(dt) end
   if Studio then return Studio.update(dt) end
@@ -1105,7 +1046,6 @@ function love.update(dt)
   end
   if Importer then
     require("src.import.LauncherWindow").observe(dt)
-    Importer._inputBlocked = splashBlocksInput()
     if driverCo and not Game then
       local ok, err = coroutine.resume(driverCo, Importer)
       if not ok then
@@ -1193,7 +1133,6 @@ function love.draw()
     GameViewport.reset()
     HostDisplay.beginFrame("launcher", Importer)
     local result = Importer:draw()
-    if launcherSplash then launcherSplash:draw() end
     HostDisplay.endFrame("launcher", Importer)
     return result
   end
@@ -1221,7 +1160,6 @@ function love.draw()
 end
 
 function love.keypressed(key, scancode, isrepeat)
-  if splashBlocksInput() then return end
   if editorMode then return EditorApp.keypressed(key) end
   if TouchEditor then return TouchEditor.keypressed(key) end
   if Studio then return Studio.keypressed(key) end
@@ -1232,7 +1170,6 @@ function love.keypressed(key, scancode, isrepeat)
 end
 
 function love.keyreleased(key)
-  if splashBlocksInput() then return end
   if editorMode or TouchEditor or Studio then return end
   if Importer then return end
   if not Game then return end
@@ -1240,7 +1177,6 @@ function love.keyreleased(key)
 end
 
 function love.gamepadpressed(joystick, button)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("gamepadpressed", joystick, button)
   if PadHints.windowMinimized() then return end
   if editorMode then
@@ -1263,7 +1199,6 @@ function love.gamepadpressed(joystick, button)
 end
 
 function love.gamepadreleased(joystick, button)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("gamepadreleased", joystick, button)
   if editorMode then
     if EditorApp and EditorApp.gamepadreleased then
@@ -1284,7 +1219,6 @@ function love.gamepadreleased(joystick, button)
 end
 
 function love.gamepadaxis(joystick, axis, value)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("gamepadaxis", joystick, axis, { value = value })
   if PadHints.windowMinimized() then value = 0 end
   if editorMode then
@@ -1306,7 +1240,6 @@ function love.gamepadaxis(joystick, axis, value)
 end
 
 function love.joystickpressed(joystick, button)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("joystickpressed", joystick, button)
   if PadHints.windowMinimized() then return end
   if editorMode then
@@ -1328,7 +1261,6 @@ function love.joystickpressed(joystick, button)
 end
 
 function love.joystickreleased(joystick, button)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("joystickreleased", joystick, button)
   if editorMode then
     if EditorApp and EditorApp.joystickreleased then
@@ -1349,7 +1281,6 @@ function love.joystickreleased(joystick, button)
 end
 
 function love.joystickaxis(joystick, axis, value)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("joystickaxis", joystick, axis, { value = value })
   if PadHints.windowMinimized() then value = 0 end
   if editorMode then
@@ -1371,7 +1302,6 @@ function love.joystickaxis(joystick, axis, value)
 end
 
 function love.joystickhat(joystick, hat, direction)
-  if splashBlocksInput() then return end
   SwitchDiagnostics.onJoystickEvent("joystickhat", joystick, hat, { direction = direction })
   if PadHints.windowMinimized() then direction = "c" end
   if editorMode then
@@ -1507,7 +1437,6 @@ function love.handlers.intent_uri(uri)
 end
 
 function love.touchpressed(id, x, y, dx, dy, pressure)
-  if splashBlocksInput() then return end
   if editorMode then
     if EditorApp and EditorApp.touchpressed then return EditorApp.touchpressed(id,x,y) end
     return
@@ -1531,7 +1460,6 @@ function love.touchpressed(id, x, y, dx, dy, pressure)
 end
 
 function love.touchmoved(id, x, y, dx, dy, pressure)
-  if splashBlocksInput() then return end
   if editorMode then return EditorApp.touchmoved(id,x,y) end
   if TouchEditor then
     if love.system.getOS() == "iOS" then return end
@@ -1546,7 +1474,6 @@ function love.touchmoved(id, x, y, dx, dy, pressure)
 end
 
 function love.touchreleased(id, x, y, dx, dy, pressure)
-  if splashBlocksInput() then return end
   if editorMode then return EditorApp.touchreleased(id,x,y) end
   if TouchEditor then
     if love.system.getOS() == "iOS" then return end
@@ -1561,7 +1488,6 @@ function love.touchreleased(id, x, y, dx, dy, pressure)
 end
 
 function love.wheelmoved(x, y)
-  if splashBlocksInput() then return end
   if editorMode then
     if EditorApp.wheelmoved then return EditorApp.wheelmoved(x, y) end
     return
@@ -1599,7 +1525,6 @@ if love.system and love.system.getOS() == "Linux"
 end
 
 function love.mousepressed(x, y, button, istouch)
-  if splashBlocksInput() then return end
   if not istouch then eventMouseX, eventMouseY = x, y end
   if TouchEditor then
     -- Android primary touch already arrived via love.touchpressed; a second
@@ -1645,7 +1570,6 @@ function love.mousepressed(x, y, button, istouch)
 end
 
 function love.mousereleased(x, y, button, istouch)
-  if splashBlocksInput() then return end
   if TouchEditor then
     if love.system.getOS() == "Android" then return end
     return TouchEditor.mousereleased(x, y, button)
@@ -1666,7 +1590,6 @@ function love.mousereleased(x, y, button, istouch)
 end
 
 function love.mousemoved(x, y, dx, dy, istouch)
-  if splashBlocksInput() then return end
   if not istouch then eventMouseX, eventMouseY = x, y end
   if TouchEditor then
     if love.system.getOS() == "Android" then return end
@@ -1686,7 +1609,6 @@ function love.mousemoved(x, y, dx, dy, istouch)
 end
 
 function love.textinput(text)
-  if splashBlocksInput() then return end
   if TouchEditor then return end
   if Studio then return Studio.textinput(text) end
   if Importer then return Importer:textinput(text) end
@@ -1696,11 +1618,6 @@ function love.textinput(text)
 end
 
 function love.quit()
-  if launcherSplash then launcherSplash:release(); launcherSplash = nil end
-  if Importer and Importer._themeVideo then
-    pcall(Importer._themeVideo.release, Importer._themeVideo)
-    Importer._themeVideo = nil
-  end
   if Importer then
     require("src.import.LauncherWindow").observe(0)
     require("src.import.LauncherWindow").flush()
@@ -1764,7 +1681,6 @@ function love.quit()
 end
 
 function love.filedropped(file)
-  if splashBlocksInput() then return end
   local filename = file and file.getFilename and file:getFilename()
   if LaunchOptions.isLaunchURI(filename) then
     local request = LaunchOptions.parseURI(filename)

@@ -507,8 +507,7 @@ end
 
 -- Remove the game-folder copy of a cache subtree before a fresh import, so a
 -- cache-format bump does not leave orphaned files behind.  No-op when the
--- portable cache is inactive (the save-directory copy is cleared by
--- RomImporter's own removeTree).  The tree is enumerated through
+-- portable cache is inactive.  The tree is enumerated through
 -- love.filesystem (the game folder is mounted) and the real files deleted
 -- with os.remove; empty directories are harmless and left in place.
 function CacheFs.removeTree(rel)
@@ -541,7 +540,7 @@ end
 -- stub take the same path, and the portable game folder goes through
 -- os.rename on real paths -- skipped for a source run, where the game
 -- folder IS the checkout and its data/generated is Red's source data, not
--- a cache.  Called from RomImporter.new (before the readiness loop) and
+-- a cache.  Called from Launcher.new (before the readiness checks) and
 -- from mountVersion, so no boot path can probe red/ before the move ran.
 function CacheFs.migrateLegacyRedCache()
   if not (love and love.filesystem and love.filesystem.getInfo) then return end
@@ -745,8 +744,8 @@ end
 --
 -- Every other mount here is permanent and lands at the physfs root: this one
 -- exists to *look* at a folder the game has deliberately not mounted, which
--- is a different job.  The mods panel uses it to read a mods/ folder sitting
--- beside the executable of a non-portable install (LauncherMods.strays).
+-- is a different job: reading a folder such as a mods/ folder sitting
+-- beside the executable of a non-portable install.
 -- Because it unmounts again, and because a non-empty mountPoint keeps the
 -- tree in its own corner of the namespace while it is up, a folder inspected
 -- this way can never shadow a game file or change what the running game

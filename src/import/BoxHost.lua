@@ -1,10 +1,8 @@
 -- The two services the Box UI (BoxPanel, BoxUI, BoxTools, ...) needs from
--- whichever launcher hosts it: a button whose action runs after the frame,
--- and a centered modal panel.  A launcher that hosts the Box installs its own
--- with BoxHost.use(); until one does, the original launcher's are used.
---
--- BoxHost.kit is a host written for the PK:GB launcher (src/launcher/) on the
--- shared UI kit alone: its buttons queue their action through imp:queue().
+-- the launcher that hosts it: a button whose action runs after the frame,
+-- and a centered modal panel.  BoxHost.kit, on the shared UI kit, is the
+-- default; its buttons queue their action through imp:queue()
+-- (src/launcher/Launcher.lua).  BoxHost.use() swaps in another host.
 
 local Kit = require("src.ui.kit.Kit")
 local Theme = require("src.ui.kit.Theme")
@@ -17,7 +15,7 @@ function BoxHost.use(host) current = host end
 function BoxHost.installed() return current end
 
 local function host()
-  return current or require("src.import.LauncherView")
+  return current or BoxHost.kit
 end
 
 function BoxHost.btn(imp, x, y, w, h, key, label, opts)

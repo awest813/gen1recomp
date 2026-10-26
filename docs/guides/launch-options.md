@@ -11,7 +11,6 @@ entry: a desktop shortcut per game, a Steam entry, or a handheld frontend.
 | `--slot=2` | load that save slot; takes a slot number or a slot id |
 | `--launcher` | open the launcher anyway, so you can edit a shortcut you already made |
 | `--relay=host:port` | use that online relay for this run (`?relay=` on the web build; `POKEPORT_RELAY_ADDR` overrides it). To keep one, set it in the launcher's Settings |
-| `--ui=new` | use the new PK:GB launcher from now on; `--ui=classic` switches back (`?ui=new` on the web build; `POKEPORT_LAUNCHER=new` for one run only) |
 | `--no-sync` | skip the save sync a linked device otherwise runs before the game boots (`POKEPORT_LAUNCH_SYNC=0`) |
 | `--update` | check for a release first, and restart once into it if one is ready (`POKEPORT_LAUNCH_UPDATE=1`; `-update` works too) |
 | `--update-mods` | run the MODS tab's Update all (mods and custom carts) without the confirm, then boot; stays on the launcher if an update fails (`POKEPORT_LAUNCH_UPDATE_MODS=1`; `--updatemods` works too) |

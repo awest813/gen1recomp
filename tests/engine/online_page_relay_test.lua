@@ -30,6 +30,7 @@ package.loaded["src.core.SaveData"] = setmetatable({
 }, { __index = require("src.core.SaveData") })
 package.loaded["src.import.CacheContract"] = setmetatable({
   isReady = function(version) return version == "gold" end,
+  isImported = function(version) return version == "gold" end,
 }, { __index = require("src.import.CacheContract") })
 local PROFILE = { engine = 2, version = "gold", engineVersion = Version.engine,
   apiVersion = Version.modApi, fingerprint = "f00d", kind = "vanilla", rule = { partySize = 3 } }

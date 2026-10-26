@@ -59,6 +59,7 @@ package.loaded["src.core.SaveData"] = {
 -- Only Gold is imported.
 package.loaded["src.import.CacheContract"] = setmetatable({
   isReady = function(version) return version == "gold" end,
+  isImported = function(version) return version == "gold" end,
 }, { __index = require("src.import.CacheContract") })
 
 local Launcher = require("src.launcher.Launcher")
@@ -409,20 +410,26 @@ window(390, 844)
 l.page = "mods"
 drawText(l)
 
--- ---------------------------------------------------- launcher choice
-local LaunchOptions = require("src.core.LaunchOptions")
-local choice, remember = LaunchOptions.launcherUi({ "--ui=new" })
-check(choice == "new" and remember, "--ui=new picks this launcher and is remembered")
-choice, remember = LaunchOptions.launcherUi({}, { "--ui", "classic" })
-check(choice == "classic" and remember, "--ui classic goes back")
-check(LaunchOptions.launcherUi({ "--ui=bogus" }) == nil, "an unknown value asks for nothing")
+-- ------------------------------------------- save editor, touch controls
 window(1280, 720)
-l = fresh()
+local edited, arranged
+l = Launcher.new(function() end, { noUpdateCheck = true,
+  onEditSave = function(version, slotId) edited = version .. ":" .. slotId end,
+  onEditTouchControls = function(version) arranged = version end })
+l.selected = "gold"
+check(drawText(l):find("Edit", 1, true) ~= nil, "a host with the save editor offers Edit")
+l.selectedSlot.gold = "slot2"
+l:editSave()
+eq(edited, "gold:slot2", "Edit opens the save editor on the chosen save")
 l.page = "settings"
-check(drawText(l):find("Use classic", 1, true) ~= nil, "Settings offers the classic launcher")
-l:setOption("launcherUi", "classic")
-eq(savedOptions.launcherUi, "classic", "and remembers the switch")
-check(drawText(l):find("Keep this one", 1, true) ~= nil, "which can be undone")
+check(drawText(l):find("Touch controls", 1, true) ~= nil, "Settings offers the touch controls")
+check(not drawText(l):find("classic", 1, true), "and no longer a classic launcher")
+for _, size in ipairs({ { 360, 640 }, { 800, 600 } }) do
+  window(size[1], size[2])
+  l.page = nil
+  drawText(l)
+end
+window(1280, 720)
 
 -- ------------------------------------------------------------------ carts
 local cartSlots = { cartcreated = {}, active = {}, deleted = {} }
@@ -731,5 +738,56 @@ l:update(0)
 eq(l.message, nil, "closing the web picker shows no error")
 eq(l.pendingPick, nil, "and stops waiting for it")
 love.system.pickFile, love.system.getPickedFile, love.system.getPickError = nil, nil, nil
+
+-- ------------------------------------------- phone picker (save-dir drop)
+do
+  local lfs = love.filesystem
+  local saved = { getInfo = lfs.getInfo, read = lfs.read, remove = lfs.remove,
+    getSaveDirectory = lfs.getSaveDirectory }
+  local disk = { ["picked_rom.gb"] = "stale" }
+  lfs.getInfo = function(p) if disk[p] then return { type = "file" } end return saved.getInfo(p) end
+  lfs.read = function(p) if disk[p] then return disk[p] end return saved.read(p) end
+  lfs.remove = function(p) disk[p] = nil return true end
+  lfs.getSaveDirectory = function() return "/data/save" end
+  local asked
+  local realGetOS = love.system.getOS
+  love.system.getOS = function() return "Android" end
+  love.system.pickFile = function(kind) asked = kind return true end
+  love.system.getPickedFile, love.system.getPickError = nil, nil
+  l = fresh()
+  local got
+  l.importData = function(_, data, name) got = { data = data, name = name } end
+  l:pickRom()
+  eq(asked, "rom", "on a phone Import ROM opens the system picker")
+  eq(disk["picked_rom.gb"], nil, "a file left from an earlier pick is cleared first")
+  l:update(0)
+  eq(got, nil, "nothing happens until the picked file arrives")
+  disk["picked_rom.gb"] = "ROMBYTES"
+  l:update(0)
+  check(got and got.data == "ROMBYTES", "the picked ROM in the save directory is imported")
+  eq(disk["picked_rom.gb"], nil, "and removed")
+  local savePath
+  l.importSave = function(_, path) savePath = path end
+  l.ready.gold, l.selected = true, "gold"
+  l:pickSave()
+  disk["picked_save.sav"] = "SAVE"
+  l:update(0)
+  eq(savePath, "/data/save/picked_save.sav", "a picked save is imported by its path")
+  for k, v in pairs(saved) do lfs[k] = v end
+  love.system.getOS, love.system.pickFile = realGetOS, nil
+end
+
+-- --------------------------------------------------- Android shortcuts
+do
+  local sent = {}
+  love.system.updateShortcuts = function(list) sent[#sent + 1] = table.concat(list, ",") return true end
+  Launcher.shortcutsSent = nil
+  local a = fresh()
+  eq(sent[#sent], "gold", "Android gets a shortcut for each imported game")
+  local n = #sent
+  a:refresh()
+  eq(#sent, n, "and is not told again when nothing changed")
+  love.system.updateShortcuts = nil
+end
 
 T.finish("pkgb launcher")

@@ -135,9 +135,9 @@ function love.conf(t)
     t.window.highdpi = true
     -- Android only (irrelevant on iOS): puts the save directory under the
     -- app's external-files folder, which is readable/writable via USB or a
-    -- file manager with no runtime permission, so RomImporter can ask the
-    -- player to copy their ROM there instead of needing a native file
-    -- picker (LOVE 11.5 on Android has none -- see src/import/RomImporter.lua).
+    -- file manager with no runtime permission.  The native picker
+    -- (love.system.pickFile) copies picked files there too, where
+    -- Launcher:pollHostPick (src/launcher/Launcher.lua) collects them.
     t.externalstorage = osName == "Android"
     -- LOVE 11.x exposes the phone's accelerometer as a 3-axis joystick by
     -- default.  Gravity keeps one axis pinned near +/-1.0 whenever the phone

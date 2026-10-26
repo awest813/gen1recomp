@@ -1,5 +1,5 @@
 -- SaveFileIO -- the launcher's glue between a raw Gen1 .sav battery image and
--- this project's save slots.  Keeps RomImporter lean: the SAVE FILES card just
+-- this project's save slots.  Keeps src/launcher/Launcher.lua lean: it just
 -- calls importToSlot / exportActiveSlot and renders the {ok, result} outcome.
 --
 -- Import reads bytes (an absolute picker path, a dropped LOVE file, or raw
@@ -99,7 +99,7 @@ local SAVE_SIZE = SaveConvert.SAVE_SIZE
 
 -- Resolve raw save bytes from whatever the launcher hands us:
 --   * a LOVE DroppedFile (a table/userdata with :open/:read/:getSize), read the
---     way RomImporter reads a dropped ROM;
+--     way Launcher:handleDrop reads a dropped ROM;
 --   * a raw 32768-byte string (the tests and the in-memory path) used as-is;
 --   * any other string treated as an absolute picker path opened with io.open.
 -- A picker path is never 32768 bytes long, so the length test disambiguates it
@@ -315,7 +315,7 @@ function SaveFileIO.exportActiveSlot(version)
   -- directory for the game folder, and an export is no exception.  Writing
   -- through love.filesystem here dropped the .sav in AppData while the slots
   -- it came from lived on the stick, and the desktop "Open folder" affordance
-  -- (RomImporter:exportSave) followed the returned path straight there (#752).
+  -- (Launcher:exportSave) followed the returned path straight there (#752).
   local portableFs = SaveData.portableFs()
   local fs = portableFs or (love and love.filesystem)
   if not (fs and fs.write) then return false, "no filesystem available to export to" end

@@ -398,9 +398,8 @@ end
 -- Every folder a player might reasonably call "the game folder", best first:
 -- the packaged-app container, the folder holding the executable, then the
 -- source itself.  Portable mode is the case where one of these holds the
--- marker; the list itself is just locations, marker or not, which is also
--- what the mods panel needs to notice a mod dropped beside the game by hand
--- (LauncherMods.strays).  Empty on Android/iOS and outside LOVE.
+-- marker; the list itself is just locations, marker or not.  Empty on
+-- Android/iOS and outside LOVE.
 function SaveData.gameFolders()
   if type(love) ~= "table" or type(love.filesystem) ~= "table" then return {} end
   -- Desktop only: portable mode carries the save (and, since issue #74, the

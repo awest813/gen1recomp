@@ -233,10 +233,6 @@ do
   T.check(body ~= nil, "main.lua still has returnToLauncher")
   T.check(body and body:find('require("src.core.HostShell").restart()', 1, true) ~= nil,
     "and returning to the launcher restarts, so no played key survives on the shared engine")
-  local importer = assert(io.open("src/import/RomImporter.lua")):read("*a")
-  local pump = importer:match("function RomImporter:_pumpSync%(dt%)(.-)\nend\n")
-  T.check(pump and pump:find("booted.syncNow", 1, true) ~= nil,
-    "and the restarted launcher syncs on its first frame")
 end
 
 do

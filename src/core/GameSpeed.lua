@@ -87,8 +87,8 @@ end
 GameSpeed.CATEGORIES = { "overworld", "battle", "menu" }
 
 -- the save.options field name a category's multiplier lives under, e.g.
--- "overworld" -> "speedOverworld". Centralized so Game.lua, OptionsMenu.lua,
--- LauncherSettings.lua and the SaveData migration never hand-spell the key.
+-- "overworld" -> "speedOverworld". Centralized so Game.lua, Game3.lua,
+-- OptionsMenu.lua and the SaveData migration never hand-spell the key.
 function GameSpeed.optionKey(category)
   return "speed" .. category:sub(1, 1):upper() .. category:sub(2)
 end

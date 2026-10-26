@@ -79,7 +79,6 @@ do
   local Json = require("src.link.Json")
   local SyncState = require("src.sync.SyncState")
   local SyncEngine = require("src.sync.SyncEngine")
-  local RomImporter = require("src.import.RomImporter")
 
   local red = SaveData.createSlot("red")
   SaveData.writeSlot("red", red, { version = "red", meta = { savedAt = 500 },
@@ -125,19 +124,14 @@ do
   pump()
   T.eq(#puts, 0, "an unchanged device uploads nothing")
 
-  local imp = {
-    _idSync = TrainerIdSync.newJob({ scope = "gold", slot = gold }),
-    _busy = { progress = 0 },
-    _clearBusy = function(self) self._busy = nil end,
-    _syncEngine = function() return eng end,
-  }
+  -- the ID sync rewrites the saves on disk; a linked engine then syncs
+  local job = TrainerIdSync.newJob({ scope = "gold", slot = gold })
   for _ = 1, 50 do
-    if not imp._idSync then break end
-    RomImporter._pumpIdSync(imp)
+    if job:step() then break end
   end
-  T.eq(imp._idSync, nil, "the launcher pump finishes the job")
-  T.check(imp._idSyncResult and imp._idSyncResult.body:find("Save sync is uploading", 1, true),
-    "the result says save sync picked it up")
+  T.eq(job.error, nil, "the ID sync job finishes")
+  T.eq(job.written, 1, "only the red save needed rewriting")
+  eng:syncNow()
   pump()
   T.eq(#puts, 1, "save sync uploads the rewritten save straight away")
   local up = puts[1] or {}

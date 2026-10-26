@@ -202,4 +202,42 @@ dirs["mods/shadow"] = true
 check(ModLibrary.uninstall("mods/shadow"), "uninstalling over a built-in copy of the same mod succeeds")
 fs.remove, fs.getRealDirectory, fs.getSaveDirectory = realRemove, nil, nil
 
+-- --------------------------------------------------- sync and translations
+local rowsBy = {}
+for _, r in ipairs(ModLibrary.syncRows()) do rowsBy[r.id] = r end
+check(rowsBy.zeta and type(rowsBy.zeta.enabledByVersion) == "table", "sync rows carry per-game answers")
+eq(rowsBy.zeta.enabledByVersion.gold, false, "including a mod switched off for one game")
+eq(rowsBy.broken, nil, "a broken mod is not synced")
+
+eq(next(ModLibrary.modOptions()), nil, "no mod options saved yet")
+check(ModLibrary.setModOptions("zeta", { speed = 2, mode = "fast", bad = {} }), "mod options save")
+eq(ModLibrary.modOptions().zeta.speed, 2, "and read back")
+eq(ModLibrary.modOptions().zeta.bad, nil, "keeping only plain values")
+
+fs.write("mods/alpha/lang/strings.lua", 'return { ["Hello"] = "Bonjour", [3] = "x", Bye = 4 }')
+fs.write("mods/zeta/lang/strings.lua", 'return { ["Hello"] = "Hallo" }')
+local catalog = ModLibrary.translationStrings("gold")
+eq(catalog and catalog.Hello, "Bonjour", "an enabled mod's lang/strings.lua reaches the catalog")
+eq(catalog.Bye, nil, "only string pairs are kept")
+local zetaOn = ModLibrary.translationStrings("red")
+eq(zetaOn and zetaOn.Hello, "Hallo", "a later mod (by id) wins a key where it is enabled")
+fs.write("mods/alpha/lang/strings.lua", 'os.exit(1) return {}')
+fs.write("mods/zeta/lang/strings.lua", 'return {}')
+eq(ModLibrary.translationStrings("gold"), nil, "a catalog cannot reach the os library")
+
+-- install from an index entry
+local bytes = "PK\3\4indexed"
+archives[bytes] = { ["manifest.json"] = manifest("indexed"), ["main.lua"] = "return {}" }
+package.loaded["src.core.HostShell"] = { httpGet = function(url)
+  if url == "https://example.com/indexed.zip" then return bytes end
+  return nil, "404"
+end }
+package.loaded["src.mods.ModIndex"] = { installUrl = function(entry)
+  return entry.downloadURL, "download" end }
+check(ModLibrary.installFromIndex({ id = "indexed", downloadURL = "https://example.com/indexed.zip" }),
+  "a mod index entry downloads and installs")
+check(files["mods/indexed/main.lua"] ~= nil, "into mods/<id>/")
+local okI, errI = ModLibrary.installFromIndex({ id = "gone", downloadURL = "https://example.com/gone.zip" })
+check(not okI and errI == "404", "a failed download says why")
+
 T.finish("mod library")

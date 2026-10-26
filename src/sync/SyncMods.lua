@@ -13,7 +13,7 @@ end
 local function defaultDeps()
   return {
     installed = function()
-      return require("src.mods.LauncherMods").list()
+      return require("src.mods.ModLibrary").syncRows()
     end,
     indexes = function()
       return require("src.mods.ModIndex").sources()
@@ -32,16 +32,16 @@ local function defaultDeps()
       return nil
     end,
     install = function(entry)
-      return require("src.mods.LauncherMods").installFromIndex(entry)
+      return require("src.mods.ModLibrary").installFromIndex(entry)
     end,
     setEnabled = function(id, enabled, version)
-      return require("src.mods.LauncherMods").setEnabled(id, enabled, version)
+      return require("src.mods.ModLibrary").setEnabled(id, enabled, version)
     end,
     modOptions = function()
-      return require("src.mods.LauncherMods").modOptions()
+      return require("src.mods.ModLibrary").modOptions()
     end,
     setOptions = function(id, values)
-      return require("src.mods.LauncherMods").setModOptions(id, values)
+      return require("src.mods.ModLibrary").setModOptions(id, values)
     end,
   }
 end

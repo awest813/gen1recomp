@@ -93,8 +93,8 @@ local fromData = love.graphics.newImage(id)
 check(fromData ~= nil, "newImage(ImageData) is not rewritten")
 
 -- Non-generated paths pass through untouched
-local launcher = love.graphics.newImage("assets/launcher/gear.png")
-eq(launcher.path, "assets/launcher/gear.png",
+local icons = love.graphics.newImage("assets/ui/lucide/icons.png")
+eq(icons.path, "assets/ui/lucide/icons.png",
   "overlay leaves non-generated paths alone")
 
 -- Leftover un-prefixed Red cache must not shadow the versioned copy

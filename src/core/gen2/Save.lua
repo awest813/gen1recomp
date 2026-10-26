@@ -123,7 +123,7 @@ local function saveNames(version)
   -- id rather than by version: SaveData resolves every path through
   -- `activeScopeKey`, which answers `cart_<id>` while one is active, and the
   -- launcher lists, creates and selects a cart's slots from the `cartSlots`
-  -- registry (RomImporter._refreshSlots / _selectSlot / _newSlot).  This
+  -- registry (Launcher:slotsFor / newGame, src/launcher/Launcher.lua).  This
   -- module asked in the version's name alone, so a Gen 2 cart read and wrote
   -- the BASE GAME's playthrough.  Gen 1 was unaffected because it saves
   -- through SaveData, which is already cart-scoped.
@@ -371,7 +371,7 @@ end
 -- "SHIFT" here, textSpeed a frame delay there and a label here -- so sharing
 -- the flat namespace would have each game quietly corrupting the other's
 -- settings.  The file itself is shared, which is what lets the launcher's
--- gear edit these before the game starts (src/import/LauncherSettings.lua).
+-- Settings page edit options before the game starts (src/launcher/Launcher.lua).
 Save.OPTIONS_KEY = "gold"
 
 local SHARED_KEYS = {

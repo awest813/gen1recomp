@@ -3,7 +3,7 @@
 -- The launcher draws with LÖVE's default face, which covers Latin and little
 -- else.  That was invisible while the launcher was English-only, but its text
 -- now goes through Strings (#767/#791) and a translation mod's catalog is
--- loaded before the first launcher frame (LauncherMods.translationStrings), so
+-- loaded before the first launcher frame (ModLibrary.translationStrings), so
 -- the moment one is Japanese every kana lands as a tofu box.
 --
 -- Font:setFallbacks fills ONLY the codepoints the primary face is missing, so

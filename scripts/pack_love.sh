@@ -100,7 +100,7 @@ for required in tools/save-editor/App.lua tools/save-editor/Kit.lua \
                 tools/rom_manifest_crystal.json \
                 tools/rom_manifest_firered.json tools/rom_manifest_leafgreen.json tools/rom_manifest_emerald.json tools/rom_manifest_ruby.json tools/rom_manifest_sapphire.json \
                 src/ui/kit/Kit.lua \
-                src/import/LauncherView.lua; do
+                src/launcher/Launcher.lua; do
   grep -qxF "$required" "$LISTING" \
     || fail "game.love is missing $required"
 done

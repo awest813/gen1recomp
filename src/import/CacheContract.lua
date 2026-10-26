@@ -956,6 +956,46 @@ function CacheContract.isReady(version, fs)
   return CacheContract.allRequiredFilesExist(version, fs, sha1)
 end
 
+-- Whether a game is imported, as the launcher and shortcut boots ask it.
+-- A portable install keeps its cache in the game folder (CacheFs.root());
+-- a cache left in the save directory from before would shadow that one at
+-- runtime, so it is dropped first.
+local function saveDirHolds(path)
+  local lfs = love and love.filesystem
+  if not (lfs and lfs.getInfo and lfs.getInfo(path)) then return false end
+  if not (lfs.getRealDirectory and lfs.getSaveDirectory) then return false end
+  return lfs.getRealDirectory(path) == lfs.getSaveDirectory()
+end
+
+local function dropSaveDirTree(path)
+  local lfs = love.filesystem
+  if not saveDirHolds(path) then return end
+  local info = lfs.getInfo(path)
+  if info and info.type == "directory" then
+    for _, name in ipairs(lfs.getDirectoryItems(path) or {}) do
+      dropSaveDirTree(path .. "/" .. name)
+    end
+  end
+  lfs.remove(path)
+end
+
+function CacheContract.isImported(version)
+  version = version or "red"
+  local CacheFs = require("src.import.CacheFs")
+  if CacheFs.root() then
+    local GameVersion = require("src.core.GameVersion")
+    for _, v in ipairs(GameVersion.ORDER) do
+      local prefix = (GameVersion.info(v) or {}).cachePrefix or ""
+      if saveDirHolds(prefix .. CacheContract.MARKER_PATH) then
+        dropSaveDirTree(prefix .. "data/generated")
+        dropSaveDirTree(prefix .. "assets/generated")
+        dropSaveDirTree(prefix .. CacheContract.MARKER_PATH)
+      end
+    end
+  end
+  return CacheContract.isReady(version, CacheFs)
+end
+
 function CacheContract.publish(version, fs, sha1)
   fs = fs or require("src.import.CacheFs")
   if nativeRs(version) then

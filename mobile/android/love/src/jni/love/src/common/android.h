@@ -64,7 +64,7 @@ void vibrate(double seconds);
  * Returns true if the picker was launched; the picked file (if any) is
  * copied asynchronously by GameActivity.onActivityResult into the app's
  * external save directory under destFilename (default picked_rom.gb), not
- * returned here -- see src/import/RomImporter.lua.
+ * returned here -- see Launcher:pollHostPick (src/launcher/Launcher.lua).
  **/
 bool showFilePicker(const char *destFilename = nullptr);
 

@@ -242,11 +242,7 @@ STANDALONE_SUITES=(
   tests/crypto_sha512_test.lua
   tests/gold_flag_names_test.lua
   tests/gold_route_validate_test.lua
-  tests/launcher_mods_shadow_copy_bug801_834_test.lua
   tests/lz77_test.lua
-  tests/online_panel.lua
-  tests/online_panel_c1.lua
-  tests/online_panel_c2.lua
   tests/online_arena_data_gen3_test.lua
   tests/online_fingerprint3_test.lua
   tests/online_mon3_test.lua
@@ -254,8 +250,6 @@ STANDALONE_SUITES=(
   tests/online_trade_interop3_test.lua
   tests/online_trade_relay3_test.lua
   tests/online_trade_remote3_test.lua
-  tests/rom_importer_cursor_bug781_test.lua
-  tests/rom_importer_ios_save_export_test.lua
   tests/test_surfing_minigame.lua
   tests/yellow_title_palette_test.lua
 )
@@ -565,8 +559,8 @@ if [ "$SHOTS" = "1" ]; then
   # src/core/Data.lua has no POKEPORT_DATA_DIR branch -- 21-testing-and-ci
   # §"Engine changes" specifies one, but it is not implemented, so a LOVE
   # process has no way to boot tests/fixture_data.  On a ROM-less checkout
-  # main.lua does not even reach the game: RomImporter.isReady() is false
-  # and it opens the importer instead.
+  # main.lua does not even reach the game: CacheContract.isImported() is false
+  # and it opens the launcher instead.
   #
   # WITH_SHOTS is opt-in, so asking for a tier that cannot run is an error,
   # not a skip.  Reporting "pass" here is what made the whole pipeline look

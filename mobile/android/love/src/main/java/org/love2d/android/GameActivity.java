@@ -103,8 +103,8 @@ public class GameActivity extends SDLActivity {
     /** @deprecated Prefer FILE_PICKER_REQUEST_CODE; kept for older call sites. */
     public static final int ROM_PICKER_REQUEST_CODE = FILE_PICKER_REQUEST_CODE;
     // Mirrors conf.lua's t.identity ("pokemon-love2d"): where the picked file
-    // is dropped so RomImporter's existing folder scan finds it -- see
-    // src/import/RomImporter.lua and Filesystem::setIdentity (sets Android's
+    // is dropped so the launcher's pending-pick scan finds it -- see
+    // Launcher:pollHostPick (src/launcher/Launcher.lua) and Filesystem::setIdentity (sets Android's
     // save directory to getExternalFilesDir()/save/<identity>).
     private static final String ROM_SAVE_IDENTITY = "pokemon-love2d";
     private static final String PICKED_ROM_FILENAME = "picked_rom.gb";
@@ -116,8 +116,9 @@ public class GameActivity extends SDLActivity {
     private static final String PENDING_EXPORT_FILENAME = "pending_export.sav";
     private static final String EXPORT_DONE_FILENAME = "export_done.flag";
     // Written when a SAF pick cannot be read at all, with the destination
-    // basename as its body, so RomImporter:focus can say so in the launcher
-    // instead of leaving the player on "No ROM imported" (issue #442).
+    // basename as its body, so the launcher can say so instead of leaving the
+    // player on "No ROM imported" (issue #442).  The old launcher read it;
+    // src/launcher/Launcher.lua does not yet.
     private static final String PICK_ERROR_FILENAME = "pick_error.flag";
     private static final String PICK_CANCELLED_PREFIX = "cancelled:";
     // Written after a direct required-import copy has been fully published.
@@ -1391,8 +1392,9 @@ public class GameActivity extends SDLActivity {
      *
      * CREATE_DOCUMENT does not exist below API 19 and has no pre-SAF
      * equivalent, so unlike showFilePicker this stays 19+ (#584); the false
-     * return degrades on the Lua side (RomImporter export) to "Exported
+     * return degraded on the Lua side (the old launcher's export) to "Exported
      * inside the app folder", which is the correct pre-KitKat behavior.
+     * src/launcher/Launcher.lua exports through SaveFileIO and does not call this.
      */
     /** Legacy single-argument entry; resolves the save dir itself. */
     @Keep

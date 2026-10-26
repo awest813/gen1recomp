@@ -54,7 +54,7 @@ local function compute()
     -- console ports answer it with the native love.system.httpDownload bridge
     -- (#597).  The UWP LOVE backend does not export that bridge yet, so this
     -- still resolves false on Xbox and the launcher still says so, but the
-    -- day the backend grows one, nothing here or in RomImporter has to change.
+    -- day the backend grows one, nothing here or in the launcher has to change.
     canFetchRemote = (not nx and not uwp and not web and not ps4) or nativeHttp,
     -- Picked files are scratch copies the host made for this one import, so
     -- the importer deletes them once read.  UWP copies into LocalState; the

@@ -1,6 +1,6 @@
 -- Which games a mod is for.  One derivation for the manifest's `games` key,
 -- the legacy `gen2compat` flag, and the labels both mod surfaces draw:
--- src/mods/LauncherMods.lua and src/mods/ManagerState.lua read this rather
+-- src/mods/ManagerState.lua and src/mods/ModIndex.lua read this rather
 -- than each keeping its own copy of the rule.
 local GameVersion = require("src.core.GameVersion")
 
@@ -171,8 +171,7 @@ function ModTargets.gameLabel(version)
   return (info and info.label) or tostring(version)
 end
 
--- One launcher-voice line for a mod that does not target `version`
--- (src/mods/LauncherMods.lua statusFor).
+-- One launcher-voice line for a mod that does not target `version`.
 function ModTargets.detail(manifest, version)
   return ("For %s, not %s"):format(ModTargets.label(manifest),
     ModTargets.gameLabel(version))

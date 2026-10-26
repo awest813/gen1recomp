@@ -213,19 +213,20 @@ check(CacheContract.sourceTreeHasData("gold"),
   "Gold source tree uses its override set")
 love = oldLove
 
--- Both importer completion paths must call the shared publication boundary.
-local importerFile = assert(io.open("src/import/RomImporter.lua", "r"))
+-- Both import completion paths must call the shared publication boundary.
+local importerFile = assert(io.open("src/import/ImportJob.lua", "r"))
 local importerSource = importerFile:read("*a")
 importerFile:close()
 local completionCalls = 0
-for _ in importerSource:gmatch("CacheContract%.publish%(%s*version") do
+for _ in importerSource:gmatch("CacheContract%.publish%(") do
   completionCalls = completionCalls + 1
 end
 eq(completionCalls, 1,
   "both thread and coroutine paths converge on one publishing helper")
-check(importerSource:find("self:_completeImport%(version, prefix, displayName%)")
-    ~= nil, "coroutine completion uses the shared helper")
-check(importerSource:find("pcall%(self%._completeImport") ~= nil,
-  "thread completion uses the shared helper")
+local finishCalls = 0
+for _ in importerSource:gmatch("return self:_finish%(%)%.state") do
+  finishCalls = finishCalls + 1
+end
+eq(finishCalls, 2, "thread and coroutine completion both use the shared helper")
 
 T.finish("rom cache contract")

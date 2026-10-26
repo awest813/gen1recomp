@@ -140,7 +140,7 @@ check(not pcall(Manifest.validate, {
   github = "ftp://example.com/x",
 }), "an unsupported github URL fails validation")
 
--- ------- dependency github repo spec hints & dependency resolver
+-- ------- dependency github repo spec hints
 local depGh = Manifest.validate({
   id = "depgh", name = "DepGH", version = "1.0.0", entry = "main.lua",
   dependencies = { "colorlib@^1.2.0#Acme/ColorLib", "soundpack#Acme/SoundPack" },
@@ -150,13 +150,6 @@ check(depGh.dependencySpecs[1].id == "colorlib" and depGh.dependencySpecs[1].git
   "dependency spec hash hint parses github owner/repo")
 check(depGh.dependencySpecs[2].id == "soundpack" and depGh.dependencySpecs[2].github == "Acme/SoundPack",
   "dependency spec hash hint without range parses github owner/repo")
-
-local LauncherMods = require("src.mods.LauncherMods")
-local depCheck = LauncherMods.checkDependencies(depGh)
-check(depCheck.hasIssues == true, "missing dependencies trigger issues verdict")
-check(#depCheck.deps == 2, "dependency check lists all specs")
-check(depCheck.deps[1].status == "missing", "absent dependency reports missing")
-check(depCheck.deps[1].safeUrl == "https://github.com/Acme/ColorLib", "safeUrl built from validated github repo")
 
 local v1 = Manifest.validate({
   id = "v1", name = "V1", version = "1.0.0", entry = "main.lua",
@@ -535,75 +528,6 @@ local emptyLoader = Loader.new({ fs = memfs({}) })
 check(emptyLoader:load(pristine) == true, "an empty mods dir still loads clean")
 check(#emptyLoader:status().errors == 0, "no mods means no diagnostics")
 check(#emptyLoader.order == 0, "no mods means an empty load order")
--- ------- dependency resolver conflict detection test
-local LauncherMods = require("src.mods.LauncherMods")
-local testTargetManifest = Manifest.validate({
-  id = "new_mod",
-  name = "New Mod",
-  version = "1.0.0",
-  entry = "main.lua",
-  incompatible = { "colorlib" },
-}, "mods/new_mod")
-local installedColorlib = Manifest.validate({
-  id = "colorlib",
-  name = "Color Lib",
-  version = "1.0.0",
-  entry = "main.lua",
-}, "mods/colorlib")
-local unconditionalConflict = LauncherMods.checkDependencies(testTargetManifest,
-  nil, nil, { testTargetManifest, installedColorlib })
-check(unconditionalConflict.hasIssues == true,
-  "dependency resolver reports an unversioned conflict")
-local installedIdConflict = LauncherMods.checkDependencies({ id = "new_mod" },
-  nil, nil, { testTargetManifest, installedColorlib })
-check(installedIdConflict.hasIssues == true and #installedIdConflict.deps == 1,
-  "id-only install callbacks resolve the installed forward conflicts")
-local disabledIdConflict = LauncherMods.checkDependencies({ id = "new_mod" },
-  { mods = { colorlib = true }, modsByVersion = { blue = { colorlib = false } } }, "blue",
-  { testTargetManifest, installedColorlib })
-check(disabledIdConflict.hasIssues == false,
-  "id-only checks respect disabled conflicting renderers")
-
-local function rangeTarget(version, conflicts)
-  return Manifest.validate({
-    id = "range_target",
-    name = "Range Target",
-    version = version,
-    entry = "main.lua",
-    conflicts = conflicts or {},
-  }, "mods/range_target")
-end
-local function rangeSource(conflicts)
-  return Manifest.validate({
-    id = "range_source",
-    name = "Range Source",
-    version = "1.0.0",
-    entry = "main.lua",
-    conflicts = conflicts or {},
-  }, "mods/range_source")
-end
-
-local forwardSource = rangeSource({ "range_target@<2.0.0" })
-local matchingTarget = rangeTarget("1.4.0")
-local nonmatchingTarget = rangeTarget("2.0.0")
-local forwardMatching = LauncherMods.checkDependencies(forwardSource,
-  nil, nil, { forwardSource, matchingTarget })
-check(forwardMatching.hasIssues == true and #forwardMatching.deps == 1,
-  "dependency resolver applies a matching forward conflict range")
-local forwardNonmatching = LauncherMods.checkDependencies(forwardSource,
-  nil, nil, { forwardSource, nonmatchingTarget })
-check(forwardNonmatching.hasIssues == false and #forwardNonmatching.deps == 0,
-  "dependency resolver ignores a nonmatching forward conflict range")
-
-local reverseSource = rangeSource({ "range_target@<2.0.0" })
-local reverseMatching = LauncherMods.checkDependencies(matchingTarget,
-  nil, nil, { reverseSource, matchingTarget })
-check(reverseMatching.hasIssues == true and #reverseMatching.deps == 1,
-  "dependency resolver applies a matching reverse conflict range")
-local reverseNonmatching = LauncherMods.checkDependencies(nonmatchingTarget,
-  nil, nil, { reverseSource, nonmatchingTarget })
-check(reverseNonmatching.hasIssues == false and #reverseNonmatching.deps == 0,
-  "dependency resolver ignores a nonmatching reverse conflict range")
 -- ------- scoped dependency tests
 local Json = require("src.link.Json")
 local scopedDepManifest = Manifest.validate({
