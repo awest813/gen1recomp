@@ -343,9 +343,27 @@ function Kit.beginFrame(mx, my, clicked, wheel)
   -- Resolve any queued focus-ring movement against LAST frame's geometry.
   -- Immediate mode has no geometry until the frame is built, and the ring
   -- must move before widgets test themselves against it.
+  local before = Kit.focusId
   Kit._resolveNav()
+  if Kit.focusId ~= before then Kit._revealFocus() end
   -- Start collecting this frame's focusables.
   Kit._navN = 0
+end
+
+-- The ring moved onto a control a scroll region has clipped out of view:
+-- remember where it sat, and that region's next Kit.scrollInput scrolls it
+-- back into view.
+function Kit._revealFocus()
+  Kit._reveal = nil
+  for i = 1, Kit._navPrevN or 0 do
+    local c = Kit._nav[i]
+    if c.id == Kit.focusId then
+      if c.clipH and (c.y < c.clipY or c.y + c.h > c.clipY + c.clipH) then
+        Kit._reveal = { y = c.y, h = c.h, clipX = c.clipX, clipY = c.clipY, clipH = c.clipH }
+      end
+      return
+    end
+  end
 end
 
 local function getNavLayer(slot)
@@ -433,6 +451,8 @@ function Kit.focusable(id, x, y, w, h)
   local slot = Kit._nav[n]
   if not slot then slot = {}; Kit._nav[n] = slot end
   slot.id, slot.x, slot.y, slot.w, slot.h = id, x, y, w, h
+  local clip = Kit._clipRect
+  slot.clipX, slot.clipY, slot.clipH = clip and clip.x, clip and clip.y, clip and clip.h
   Kit._navSeen[id] = true
   if Kit.focusId == nil and tostring(id):match("^rom%-") then
     Kit.focusId = id
@@ -509,8 +529,10 @@ function Kit._resolveColumns(cur, dir, n)
       if (col == curCol) == sameColumn then
         local dy = (c.y + c.h / 2) - cy
         local forward = dir == "down" and dy or -dy
-        if forward > 1 then
-          local gap = math.max(0, c.x - (cur.x + cur.w), cur.x - (c.x + c.w))
+        local gap = math.max(0, c.x - (cur.x + cur.w), cur.x - (c.x + c.w))
+        -- into another column only straight down/up (a stacked phone layout,
+        -- the tab bar), never sideways into the next column over
+        if forward > 1 and (sameColumn or gap == 0) then
           offer(c, forward + gap * 2)
         end
       end
@@ -1239,6 +1261,16 @@ function Kit.scrollInput(offset, maxScroll, x, y, w, h)
       and dragOriginIn(x, y, w, h) then
     at = Kit.scrollClamp(at + Kit.dragAccum, maxScroll)
     Kit.dragAccum = 0
+  end
+  local r = Kit._reveal
+  if r and r.clipX >= x - 1 and r.clipX <= x + w and r.clipY >= y - 1 and r.clipY <= y + h then
+    local margin = math.floor(8 * Kit.scale)
+    if r.y < r.clipY then
+      at = Kit.scrollClamp(at - (r.clipY - r.y) - margin, maxScroll)
+    elseif r.y + r.h > r.clipY + r.clipH then
+      at = Kit.scrollClamp(at + (r.y + r.h - r.clipY - r.clipH) + margin, maxScroll)
+    end
+    Kit._reveal = nil
   end
   return at
 end

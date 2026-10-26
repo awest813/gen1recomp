@@ -239,8 +239,22 @@ function Launcher:cartProblem(version)
   return plan or nil
 end
 
+-- Leave the per-save state behind when the game or cart changes: slot ids
+-- repeat across games, so an open menu or rename would act on the new
+-- game's save.  A pending import question is answered "no" (its file is
+-- cleaned up).
+function Launcher:clearSaveState()
+  self.renaming, self.saveMenu, self.saveMenuRect = nil, nil, nil
+  if self.saveConfirm then self:confirmSave(false) end
+end
+
+function Launcher:selectGame(v)
+  if self.selected ~= v then self:clearSaveState() end
+  self.selected = v
+end
+
 function Launcher:selectCart(version, id)
-  self.renaming, self.saveConfirm = nil, nil
+  self:clearSaveState()
   self.cart[version] = id
   self.cartPlans = nil
   self:rememberCarts()
@@ -267,7 +281,7 @@ function Launcher:installCart(data, name)
       .. tostring(err), "error")
   end
   if cart.base and self.ready[cart.base] ~= nil then
-    self.selected = cart.base
+    self:selectGame(cart.base)
     self:selectCart(cart.base, cart.id)
   end
   local info = cart.base and GameVersion.info(cart.base)
@@ -322,10 +336,16 @@ function Launcher:slotsFor(version)
     end
   end
   self.slots[key] = list
-  if not self.selectedSlot[key] and list[1] then
+  -- the choice must be a save that exists: the active slot can be a New
+  -- game nobody saved yet, or the one a delete left behind
+  local function listed(id)
+    for _, sl in ipairs(list) do if sl.id == id then return true end end
+    return false
+  end
+  if not listed(self.selectedSlot[key]) then
     local okA, active = false, nil
     if okS then okA, active = pcall(store.active) end
-    self.selectedSlot[key] = okA and active or list[1].id
+    self.selectedSlot[key] = (okA and listed(active) and active) or (list[1] and list[1].id) or nil
   end
   return list
 end
@@ -386,7 +406,7 @@ function Launcher:importData(data, name)
   end
   local rom, err = ImportJob.verify(data, name, visibleGame)
   if not rom then return self:say(err, "error") end
-  self.selected = rom.version
+  self:selectGame(rom.version)
   self:say(nil)
   self.job = ImportJob.start(rom)
   if self.job.state == "error" then
@@ -900,7 +920,9 @@ end
 local SAVE_KIND = { label = "Save file", exts = { "sav", "srm", "sa1", "dsv", "sgm" } }
 
 function Launcher:selectedSaveId(version)
-  return self.selectedSlot[self:scopeKey(version or self.selected)]
+  version = version or self.selected
+  if version then self:slotsFor(version) end -- settles the choice on a save that exists
+  return self.selectedSlot[self:scopeKey(version)]
 end
 
 -- `source` is a dropped LÖVE file, an absolute path, or raw bytes.
@@ -919,6 +941,8 @@ function Launcher:importSave(source, name, force, cleanup)
   local ok, result, info = SaveFileIO.importToSlot(source, v, force)
   self.slots[v] = nil
   if not ok and type(info) == "table" and info.needsConfirm then
+    -- one question at a time: an earlier unanswered one is dropped cleanly
+    if self.saveConfirm then self:confirmSave(false) end
     self.saveConfirm = { source = source, name = name, cleanup = cleanup, version = v,
       extra = (tonumber(info.size) or 32768) - 32768 }
     self:say(("%s has %d extra bytes after the save (an emulator's clock data). "
@@ -1161,7 +1185,7 @@ function Launcher:update(dt)
       local version = self.job.version
       self.job = nil
       self:refresh()
-      self.selected = version
+      self:selectGame(version)
       self:say(GameVersion.info(version).displayName .. " is ready to play.", "info")
       -- scripted runs (main.lua: POKEPORT_IMPORT_ROM / IMPORT_ONLY) go on
       -- from here on their own
@@ -1191,9 +1215,13 @@ local function showcase(self, method, ...)
 end
 
 -- Escape / B: leave the current page (Mods and Carts lead back to the game).
+-- Escape / B: the same page the on-screen Back button goes to.
+local PARENT = { importers = "mods", sync = "settings" }
+
 function Launcher:back()
   if self.page == "box" then return self:closeBox() end
-  self.page = nil
+  if self.page == "notes" then self.page = self.notesFrom return end
+  self.page = PARENT[self.page]
 end
 
 -- --------------------------------------------------------------- online
@@ -1237,6 +1265,7 @@ function Launcher:mousemoved(x, y) showcase(self, "pointerMoved", "mouse", x, y)
 local DRAG_SLOP = 12
 
 function Launcher:touchpressed(id, x, y)
+  Kit.pointerUsed()
   if showcase(self, "pointerPressed", id, x, y) then return end
   self.pressAt = { x = x, y = y }
   self.touchY = y
@@ -1496,7 +1525,8 @@ function Launcher:drawGameList(x, y, w, h, s)
             { id = "game-import-" .. v, face = "chip", active = chosen,
               color = Theme.readable(color, PAL.bg) }) then
           self:queue(function()
-            self.selected, self.page = v, nil
+            self:selectGame(v)
+            self.page = nil
             self:pickRom()
           end)
         end
@@ -1519,7 +1549,8 @@ function Launcher:drawGameList(x, y, w, h, s)
       end
       if clicked and not (not ready and Kit.hit(x + rw - rightW, py, rightW, rowH)) then
         self:queue(function()
-          self.selected, self.page, self.renaming, self.saveConfirm = v, nil, nil, nil
+          self:selectGame(v)
+          self.page = nil
           self:say(nil)
         end)
       end
@@ -2080,6 +2111,10 @@ function Launcher:drawGame(x, y, w, h, s)
   Kit.card(x, y, w, h)
   local ready = self.ready[v]
   local importing = self.job and self.job.version == v
+  -- an open save menu covers what is drawn under it (last frame's rect: the
+  -- menu itself draws last), so one press never lands on both
+  local r = self.saveMenu and self.saveMenuRect
+  if r then Kit.occlude(r[1], r[2], r[3], r[4]) else self.saveMenuRect = nil end
 
   -- banner
   local bannerH = self:gameBannerHeight(s)
@@ -2284,7 +2319,8 @@ function Launcher:drawGame(x, y, w, h, s)
     self:queue(function() self:newGame(v) end)
   end
 
-  if menuAt then self:drawSaveMenu(menuAt, x, y, w, h, s, cartId, scope) end
+  if menuAt then self:drawSaveMenu(menuAt, x, y, w, h, s, cartId, scope)
+  else self.saveMenuRect = nil end
   return self:detailNeed(w, s)
 end
 
@@ -2318,6 +2354,9 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
   Theme.shadow(mx, my, mw, mh, Theme.radius())
   Theme.fillRounded(mx, my, mw, mh, PAL.raised, 1, Theme.radius())
   Theme.strokeRounded(mx, my, mw, mh, PAL.line, Theme.A.hairline, 1, Theme.radius())
+  self.saveMenuRect = { mx, my, mw, mh }
+  local wasOverlay = Kit._overlay
+  Kit._overlay = true
   for i, it in ipairs(items) do
     local iy = my + Theme.space("xs", s) + (i - 1) * itemH
     if Kit.button(mx + Theme.space("xs", s), iy, mw - 2 * Theme.space("xs", s), itemH, it.label,
@@ -2330,10 +2369,17 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
       end, it.danger)
     end
   end
+  -- the ring leaving it closes it too (pad and keyboard)
+  local inMenu = Kit.focusId == "save-menu-" .. tostring(slot.id)
+  for _, it in ipairs(items) do inMenu = inMenu or Kit.focusId == it.id end
+  if Kit._ringShown and not inMenu then
+    self:queue(function() self.saveMenu = nil end, true)
+  end
   -- a press anywhere else closes it
   if Kit.mouseClicked and not Kit.hit(mx, my, mw, mh) then
     self:queue(function() self.saveMenu = nil end, true)
   end
+  Kit._overlay = wasOverlay
 end
 
 function Launcher:boxMetrics(s)

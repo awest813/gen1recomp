@@ -1066,6 +1066,106 @@ do
   eq(step("left"), "nav-games", "Left from the list lands on the current section in the rail")
   eq(step("down"), "nav-box", "and Down walks the rail")
   check(Kit.navColumn == nil, "the column rules are cleared when the launcher's frame ends")
+  Kit.focusId = "continue"
+  eq(step("down"), "continue", "Down at the foot of the game panel stays put instead of jumping to the list")
+
+  -- a phone: the list scrolls to follow the ring
+  window(390, 844)
+  local p = fresh()
+  drawText(p)
+  Kit.focusId = "game-gold"
+  local function walk(dir) Kit.navigate(dir) p:update(0) drawText(p) p:update(0) drawText(p) return Kit.focusId end
+  local last
+  for _ = 1, 7 do last = walk("down") end
+  eq(last, "game-emerald", "Down walks to the end of the list")
+  check((p.listScroll or 0) > 0, "and the list scrolls to keep it in view")
+  local at = walk("down")
+  check(at ~= "game-emerald" and not tostring(at):match("^tab%-"),
+    "then Down moves on into the game panel: " .. tostring(at))
+  window(1280, 720)
+end
+
+-- ------------------------------------------------- the save "..." menu
+do
+  window(1280, 720)
+  -- press a control by id, at the rect it drew last frame
+  local function pressId(m, id)
+    local rects = {}
+    local realB, realR = Kit.button, Kit.row
+    Kit.button = function(x, y, w, h, label, o)
+      if o and o.id then rects[o.id] = { x = x, y = y, w = w, h = h } end
+      return realB(x, y, w, h, label, o)
+    end
+    Kit.row = function(x, y, w, h, sel, id)
+      if id then rects[id] = { x = x, y = y, w = w, h = h } end
+      return realR(x, y, w, h, sel, id)
+    end
+    drawText(m)
+    Kit.button, Kit.row = realB, realR
+    local r = rects[id]
+    check(r ~= nil, "the control " .. id .. " is drawn")
+    if not r then return end
+    local realPos = love.mouse.getPosition
+    local cx, cy = r.x + 10, r.y + r.h / 2
+    love.mouse.getPosition = function() return cx, cy end
+    m.click = { x = cx, y = cy }
+    drawText(m)
+    love.mouse.getPosition = realPos
+    m:update(0)
+  end
+
+  local m = fresh()
+  m.selected, m.selectedSlot.gold, m.saveMenu = "gold", "slot1", "slot1"
+  drawText(m)
+  local before = #exported
+  pressId(m, "save-export")
+  eq(m.selectedSlot.gold, "slot1", "a press on the menu does not also select the save under it")
+  eq(exported[before + 1] and exported[before + 1].slot ~= nil, true, "Export runs")
+  check(not (exported[before + 1] and exported[before + 1].slot == "slot2"), "on the menu's own save")
+
+  window(390, 844)
+  m = fresh()
+  m.selected, m.selectedSlot.gold, m.saveMenu = "gold", "slot1", "slot1"
+  drawText(m)
+  local made = #created
+  pressId(m, "save-delete")
+  eq(#created, made, "Delete over New game does not also start a new game")
+  eq(#launched, 0, "or launch anything")
+  window(1280, 720)
+
+  -- switching game closes the menu, so Delete cannot reach another game's save
+  m = fresh()
+  m.selected, m.selectedSlot.gold, m.saveMenu = "gold", "slot1", "slot1"
+  m:selectGame("red")
+  eq(m.saveMenu, nil, "choosing another game closes the save menu")
+  m:selectGame("gold")
+  m.saveMenu = "slot1"
+  Kit.setFocus("game-gold")
+  drawText(m)
+  m:update(0)
+  eq(m.saveMenu, nil, "and so does the pad ring moving off it")
+
+  -- a pending save-import question is dropped cleanly
+  local cleaned = 0
+  m.saveConfirm = { version = "gold", cleanup = function() cleaned = cleaned + 1 end }
+  m:selectGame("red")
+  eq(m.saveConfirm, nil, "switching game answers a pending import question")
+  eq(cleaned, 1, "and cleans up its file")
+
+  -- Escape goes where Back goes
+  m.page = "importers"
+  m:back()
+  eq(m.page, "mods", "Escape on Asset importers returns to Mods")
+  m.page = "sync"
+  m:back()
+  eq(m.page, "settings", "and on Save sync to Settings")
+end
+
+-- ------------------------------------- a selected save that does not exist
+do
+  local m = fresh()
+  m.selectedSlot.gold = "slot5" -- a New game nobody saved
+  eq(m:selectedSaveId("gold"), "slot1", "the choice falls back to a save that exists")
 end
 
 T.finish("pkgb launcher")

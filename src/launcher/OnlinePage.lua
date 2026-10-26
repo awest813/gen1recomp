@@ -341,7 +341,10 @@ function OnlinePage:update(dt)
   local room = Client().room()
   if room and room.intent == "trade" and not self.trade then
     local session = Client().roomSession()
-    if session and session.paired then
+    -- one attempt per paired session: a save that can't be read would
+    -- otherwise retry (and toast) every frame
+    if session and session.paired and self.tradeTried ~= session then
+      self.tradeTried = session
       local game = self:game()
       if game then self:beginTrade(game) end
     end
