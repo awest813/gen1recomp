@@ -99,6 +99,9 @@ do
   local renders = 0
   local realRender = ChipSynth.renderEffectData
   ChipSynth.renderEffectData = function(...) renders = renders + 1; return realRender(...) end
+  -- a Web play renders through an effect job, not renderEffectData: the
+  -- sync-render counter is what proves the prewarm was taken
+  local syncBefore = ChipAudio.stats().syncRenders
 
   check(ChipAudio.prewarmSfx(data, "TEST", nil, nil, sfx), "prewarm queues on the main thread")
   check(ChipAudio.prewarmSfx(data, "TEST", nil, nil, sfx), "a second prewarm of the same effect dedups")
@@ -125,6 +128,7 @@ do
   local src2 = ChipAudio.newSfx(data, "TEST", 3, nil, sfx)
   check(src2 ~= nil and src2.sd ~= nil, "a play mid-prewarm still gets a source")
   eq(renders, 0, "and finishes the in-flight job rather than re-rendering")
+  eq(ChipAudio.stats().syncRenders, syncBefore, "neither play rendered on the spot")
 
   ChipSynth.renderEffectData = realRender
 end

@@ -3,6 +3,8 @@
 -- PUC Lua heap, and must queue exactly the PCM they did before.
 --   * a main-thread prewarm job reuses the previous job's sample table
 --     instead of growing a fresh one (~500 KB of dead arrays per 1 s effect)
+--   * a play with nothing prewarmed renders through the same job, on the
+--     same table, with renderEffectData's exact PCM
 --   luajit tests/engine/chip_audio_web_feed_test.lua
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
@@ -156,6 +158,29 @@ do
   local refB = ChipSynth.renderEffectData(data, sfx, sfxOptions(5))
   check(a and a.sd and a.sd.hash == refA.hash, "interleaved job a is exact")
   check(b and b.sd and b.sd.hash == refB.hash, "interleaved job b is exact")
+end
+
+-- ---------------------------------------------------------------- sync plays
+do
+  local renders = 0
+  local realRender = ChipSynth.renderEffectData
+  ChipSynth.renderEffectData = function(...)
+    renders = renders + 1
+    return realRender(...)
+  end
+  local syncBefore = ChipAudio.stats().syncRenders
+  local src
+  local kb = allocated(function()
+    src = ChipAudio.newSfx(data, "FEED", 6, nil, sfx)
+  end)
+  ChipSynth.renderEffectData = realRender
+  eq(ChipAudio.stats().syncRenders, syncBefore + 1, "an unprewarmed play renders on the spot")
+  eq(renders, 0, "through an effect job, not renderEffectData")
+  check(kb < 64, ("on the spare sample table (%.1f KB)"):format(kb))
+  local reference = ChipSynth.renderEffectData(data, sfx, sfxOptions(6))
+  check(src and src.sd and reference and src.sd.hash == reference.hash,
+    "sample-identical to renderEffectData")
+  eq(src and src.sd and src.sd:getSampleCount(), reference:getSampleCount(), "same length")
 end
 
 love.audio, love.timer = savedAudio, savedTimer

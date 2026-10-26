@@ -1088,11 +1088,28 @@ local function nowMs()
   return os.clock() * 1000
 end
 
+-- A play with nothing prewarmed renders on the spot.  In the browser that
+-- goes through the same effect job as a prewarm, in one go, so it borrows
+-- the spare sample table too: renderEffectData's setSample path (the only
+-- one without ffi) grows a fresh array per render.  The job's PCM is
+-- renderEffectData's exactly (tests/engine/chip_audio_web_test.lua).
+local SYNC_JOB_SLICE = 65536
+
+local function renderNow(data, header, options)
+  if not isWebAudio() then
+    return ChipSynth.renderEffectData(data, header, options)
+  end
+  local job = ChipSynth.newEffectJob(data, header, options)
+  if not job then return nil end
+  while not stepJob(job, SYNC_JOB_SLICE) do end
+  return job.result
+end
+
 local function renderEffect(data, header, options, label)
   local sd = takeEffect(data, header, options)
   if sd == nil then
     local began = nowMs()
-    sd = ChipSynth.renderEffectData(data, header, options)
+    sd = renderNow(data, header, options)
     local ms = nowMs() - began
     statSyncRenders = statSyncRenders + 1
     statSyncMs = statSyncMs + ms
