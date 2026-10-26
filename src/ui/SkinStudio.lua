@@ -2195,7 +2195,7 @@ local function drawScreenModal(W, H)
   local modal = Studio.modal
   local mx, my, mw, mh, pad = modalFrame(W, H, "Screen & canvas", 0.62, 0.82)
   local top = my + pad + Kit.textHeight("title") + pad * 0.5
-  local by, bh = modalFooter(mx, my, mw, mh, pad)
+  local by = modalFooter(mx, my, mw, mh, pad)
   local gap = 6 * Kit.scale
   local rowH = math.max(Kit.tapMin(), 34 * Kit.scale)
   local innerW = mw - pad * 2
@@ -2450,13 +2450,6 @@ end
 -- Kept as an opt-in diagnostic renderer while downstream tools migrate; the
 -- active Studio path below is the library/editor flow.
 Studio.drawLegacy = drawLegacyStudio
-
-local function studioCard(x, y, w, h, id, active)
-  local focused = Kit.focusable(id, x, y, w, h)
-  Kit.card(x, y, w, h, active and "selected"
-    or (focused or Kit.hover(x, y, w, h)))
-  return Kit.press(x, y, w, h) or Kit._activateId == id
-end
 
 local function drawSkinArtwork(image, x, y, w, h)
   Theme.fillRounded(x, y, w, h, PAL.bg, 1, Theme.cardRadius() * 0.65)

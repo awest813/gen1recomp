@@ -41,7 +41,7 @@ local FILTERS = {
 -- declare their finite labels explicitly for tools/modkit.py's catalog
 -- harvester.  Player palette names and shader filenames are deliberately not
 -- in this list: those are user content and stay verbatim.
-local FINITE_VALUE_SOURCES = {
+local FINITE_VALUE_SOURCES = { -- luacheck: ignore 211 (catalog markers only)
   Strings.source("AUTO"), Strings.source("HIGH"),
   Strings.source("BALANCED"), Strings.source("LOW"),
   Strings.source("NORMAL"), Strings.source("FIT"),

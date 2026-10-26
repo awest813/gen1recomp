@@ -14,7 +14,6 @@ local Stack = require("src.ui.game3.stack")
 local FrlgFont = require("src.ui.game3.frlg_font")
 local PokedexData = require("src.core.game3.pokedex_data")
 local PokedexChrome = require("src.ui.game3.pokedex_chrome")
-local Strings = require("src.core.Strings")
 local RomText = require("src.core.game3.rom_text")
 
 local Pokedex = { isMenu = true }
@@ -426,7 +425,6 @@ local function handle_category_grid_input(input)
         se("SE_PAGE")
       elseif maxPages > 1 and input:wasPressed("l") then
         Pokedex.categoryPage = maxPages
-        local newMons = (pages[Pokedex.categoryPage] and pages[Pokedex.categoryPage].mons) or {}
         Pokedex.categorySlot = 1
         se("SE_PAGE")
       end

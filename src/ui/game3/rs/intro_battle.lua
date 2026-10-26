@@ -19,7 +19,7 @@ local function matrix(sp, index, scale, flip) sp:setMatrix(index, flip and -scal
 
 -- pokeruby/src/intro.c:1171
 function B:scene3Load(id, d)
-  local m, p = self.m, self.m.ppu
+  local p = self.m.ppu
   self:resetGpu(); p:setBg(2, 3, self:layer("pokeball"))
   p.palette:load(self:pal("intro.o:gIntro3PokeballPal"), 0, 256)
   p:setAffine(2, Affine.panFadeAndZoom(120, 80, 0, 0))

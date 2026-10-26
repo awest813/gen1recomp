@@ -1,8 +1,7 @@
 local bit = require("bit")
-local band, bor, rshift = bit.band, bit.bor, bit.rshift
+local band, rshift = bit.band, bit.rshift
 
 local Vram = require("src.ui.game3.rse.contest_vram")
-local Machine = require("src.ui.game3.rse.gba_machine")
 local Ppu = require("src.core.game3.gba_ppu")
 local Sprites = require("src.core.game3.gba_sprites")
 local GcKit = require("src.ui.game3.rse.gc_kit")
@@ -15,7 +14,6 @@ UI.ID = "rse_contest"
 UI.SUB = "rse/contest_gfx"
 
 local N = Contest.CONTESTANT_COUNT
-local STR_NONE = Contest.STRING.NONE
 local JUDGE = Contest.JUDGE
 local DISPLAY_WIDTH, DISPLAY_HEIGHT = 240, 160
 
@@ -29,7 +27,7 @@ local TILE_EMPTY_APPEAL_HEART, TILE_EMPTY_JAM_HEART = 0x5035, 0x5036
 -- pokeemerald/include/constants/contest.h:7
 local MAX_CONTEST_MOVE_HEARTS = 8
 -- pokeemerald/src/contest.c:267
-local SLIDER_HEART_ANIM_NORMAL, SLIDER_HEART_ANIM_DISAPPEAR, SLIDER_HEART_ANIM_APPEAR = 0, 1, 2
+local _, SLIDER_HEART_ANIM_DISAPPEAR, SLIDER_HEART_ANIM_APPEAR = 0, 1, 2
 -- pokeemerald/src/contest.c:243
 local TAG_CONTEST_SYMBOLS_PAL, TAG_APPLAUSE_METER, TAG_NEXT_TURN_PAL = 0xABE0, 0xABE2, 0x4E22
 local TAG_BLINK_EFFECT_CONTESTANT0 = 0x80E8
@@ -464,7 +462,6 @@ end
 function UI:createJudgeSprite()
   local pal = self:pal()
   pal:load(self.man.palettes.judge, 256 + 16, 16)
-  local sp = self:sprites()
   local id, s = self:newSprite({ w = 64, h = 64, sheet = self.sheets.judge, priority = 3 }, 112, 36, 30)
   s.oam.paletteNum = 1
   return id
@@ -856,7 +853,6 @@ local CROWD_TEXT = {
 
 -- pokeemerald/src/contest.c:1727
 function UI:playTurn(t)
-  local c = self.c
   for _ = 1, 64 do
     if t.step then
       local r = t.step(t)
@@ -933,7 +929,6 @@ function UI:chain(...)
 end
 
 function UI:startEvent(t, ev)
-  local c = self.c
   local k = ev.kind
   if k == "turn" then
     t.contestant = ev.contestant
@@ -1088,7 +1083,6 @@ end
 
 -- pokeemerald/src/contest.c:1779
 function UI:slideMonInStep(t)
-  local c = self.c
   local contestant = t.contestant
   local id, s = self:createContestantSprite(contestant)
   s.x2 = 120
@@ -1219,7 +1213,6 @@ end
 
 -- pokeemerald/src/contest.c:2198
 function UI:crowdStep(t, ev)
-  local c = self.c
   local contestant = t.contestant
   local phase, n11 = 0, 0
   local nextHearts

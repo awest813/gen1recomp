@@ -283,21 +283,16 @@ end
 local LIGHT_X = 9                        -- twelve hand lights, rows 0-11
 local MON_COL = { [2] = 12, [3] = 14, [4] = 16, [5] = 18 }
 local LEVEL_PAIR_COL, LEVEL_COL = 10, 11
-local CARD_COL = { [2] = 13, [3] = 15, [4] = 17, [5] = 19 }
--- .Level1 .. .Level6's rows.  The pairs overlap by a row on the cart, which is
--- the stacked-card look; the anchors are what matter here.
-local LEVEL_ROW = { [2] = 3, [3] = 4, [4] = 6, [5] = 7, [6] = 9, [7] = 10 }
 local MON_PAIR_ROW, MON_ROW = 0, 1
 
 -- GetCoordsOfChosenCard.
 local CARD_BOX = { { x = 2, y = 0 }, { x = 2, y = 6 } }
-local CARD_BOX_W, CARD_BOX_H = 5, 6
 
-local COIN_BOX_X, COIN_BOX_Y, COIN_BOX_W, COIN_BOX_H = 9, 15, 11, 3
+local COIN_BOX_X, COIN_BOX_Y = 9, 15
 local COIN_LABEL_X, COIN_LABEL_Y = 10, 16
 local COIN_VALUE_X, COIN_VALUE_Y = 15, 16
 
-local TEXT_BOX_X, TEXT_BOX_Y, TEXT_BOX_W, TEXT_BOX_H = 0, 12, 20, 6
+local TEXT_BOX_X, TEXT_BOX_Y = 0, 12
 local TEXT_X, TEXT_Y, TEXT_LINE = 1, 14, 2
 
 -- ------------------------------------------------------------------- text
@@ -619,7 +614,6 @@ end
 --
 -- Authentic Color Game Boy palettes and tile graphics matching pret/pokegold
 local TileSheet = require("src.ui.gen2.TileSheet")
-local GbcPalette = require("src.render.GbcPalette")
 
 local CARDFLIP_PALS = {
   bg = {

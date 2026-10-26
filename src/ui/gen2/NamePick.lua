@@ -186,7 +186,7 @@ end
 function NamePick:drawPic()
   if not self.pic then return end
   local G = love.graphics
-  local w, h = self.pic:getDimensions()
+  local _, h = self.pic:getDimensions()
   -- PlaceGraphic lays a 7x7 block from the coordinate; a pic smaller than
   -- that sits in the block's bottom-left, as PadFrontpic leaves it.
   local x = self.picX * 8

@@ -4,9 +4,7 @@
 local Display = require("src.core.game3.display")
 local FrlgFont = require("src.ui.game3.frlg_font")
 local Stack = require("src.ui.game3.stack")
-local Audio = require("src.core.game3.audio")
 local EasyChatText = require("src.core.game3.easy_chat_text")
-local Chrome = require("src.ui.game3.chrome")
 local Strings = require("src.core.Strings")
 local RomText = require("src.core.game3.rom_text")
 

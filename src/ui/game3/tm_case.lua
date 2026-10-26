@@ -53,11 +53,6 @@ function TmCase.list()
   return rows or {}
 end
 
-local function get_total_count()
-  local rows = TmCase.list()
-  return #rows + 1 -- +1 for Cancel
-end
-
 local function clamp_cursor()
   local rows = TmCase.list()
   local total = #rows + 1

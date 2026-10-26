@@ -1365,7 +1365,6 @@ end
 function Pokegear:radioContext()
   local save = self.save or {}
   local flags = self:flags()
-  local world = self.game and self.game.world
   return {
     crystal = save.version == "crystal",
     inJohto = self:region() == "johto",

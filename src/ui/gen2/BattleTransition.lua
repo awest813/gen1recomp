@@ -771,7 +771,7 @@ end
 -- being drawn at the ZOOM scale but the wipe is screen furniture, so it takes
 -- the plain integer fit the rest of the UI does.
 function BattleTransition:grid(w, h)
-  local scale = 1
+  local scale
   if self.world and self.world.fitScale then
     scale = self.world:fitScale()
   else

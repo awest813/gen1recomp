@@ -602,9 +602,8 @@ function MainMenu:draw()
       local selected = (i == self.iconCursor) and self.glowOn
       for j = 0, 3 do
         local x = ic.x + 32 * j - 16
-        local scale = 1
         if ic.zoomSet then
-          scale = (ic.zoomScale or 0x100) / 0x100
+          local scale = (ic.zoomScale or 0x100) / 0x100
           local spread = ic.spread or 0
           local off = ({ [0] = -3, -1, 1, 3 })[j] * spread
           local cx = ic.x + 32 * j + off

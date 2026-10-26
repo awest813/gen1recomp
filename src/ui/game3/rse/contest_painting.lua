@@ -1,6 +1,3 @@
-local bit = require("bit")
-local band, rshift = bit.band, bit.rshift
-
 local Fx = require("src.ui.game3.rse.contest_image_fx")
 local PixelCanvas = require("src.render.PixelCanvas")
 

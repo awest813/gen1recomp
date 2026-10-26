@@ -655,7 +655,7 @@ function Intro:createGameFreakLogoSprites(x, y)
   local letters = self.man.tables.gameFreakLetters
   local delays = self.man.tables.gameFreakLetterStartDelay
   local affine = self.extra.gfAffineAnims
-  local i = 0
+  local i
   for n, row in ipairs(letters) do
     i = n - 1
     local id = sp:create(template(self, "gf_letter", PALTAG_LOGO, function(s, spr) self:logoLetterCb(s, spr) end,

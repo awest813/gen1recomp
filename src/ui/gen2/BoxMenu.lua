@@ -144,7 +144,7 @@ local STORE_MESSAGE_FRAMES = 50
 -- Boxes.lua owns the storage mutation, so its finite refusals arrive here as
 -- return values.  Mark their complete text for the catalog and look them up
 -- when they cross this UI boundary.
-local BOX_FAILURE_SOURCES = {
+local BOX_FAILURE_SOURCES = { -- luacheck: ignore 211 (catalog markers only)
   Strings.source("No save."),
   Strings.source("There is no POKéMON there."),
   Strings.source("The BOX is full."),

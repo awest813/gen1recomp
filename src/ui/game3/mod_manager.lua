@@ -21,7 +21,7 @@ ModManager.open = false
 -- borders draw OUTSIDE the content rect, so a third stacked frame cannot fit
 -- without overlapping — the tab line rides in the title instead.
 local VISIBLE = 7
-local WIN_X, WIN_Y, WIN_W, WIN_H = 16, 56, 208, 96
+local WIN_X, WIN_Y, _, WIN_H = 16, 56, 208, 96
 local ROW_Y0 = WIN_Y + 2
 local ROW_STEP = 13
 local LABEL_X = WIN_X + 16

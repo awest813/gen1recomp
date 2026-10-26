@@ -4,7 +4,6 @@
 
 local Stack = require("src.ui.game3.stack")
 local Display = require("src.core.game3.display")
-local FrlgFont = require("src.ui.game3.frlg_font")
 local Message = require("src.ui.game3.message")
 local BattleChrome = require("src.ui.game3.battle_chrome")
 local Pokemon = require("src.core.game3.pokemon")

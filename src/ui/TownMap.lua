@@ -419,7 +419,7 @@ function TownMap:draw()
     end
     if self.nestSpecies then
       -- AREA mode: blinking nests, the species name up top
-      local showNest = true
+      local showNest
       if GameVersion.generation() == 1 then
         showNest = self.blink < 25
       else
@@ -475,7 +475,7 @@ function TownMap:draw()
     -- WriteTownMapSpriteOAM carry quirk: -4 X, -3 Y for cursor and player alike -- engine/items/town_map.asm:454
     -- LoadTownMap_Fly's .inputLoop has no blinking animation
     -- engine/items/town_map.asm:190-198
-    local showCursor = true
+    local showCursor
     if self.fly and self.birdSheet then
       if selected then
         local x, y = markerXY(selected)
@@ -538,7 +538,7 @@ function TownMap:draw()
                                 self.playerLoc.y * 8 + 2, 4, 4)
       end
     end
-    local showCursor = true
+    local showCursor
     if GameVersion.generation() == 1 then
       showCursor = self.blink < 25
     else

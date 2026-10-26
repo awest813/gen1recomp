@@ -278,7 +278,7 @@ function P:observe(a, b)
     return
   end
   if changedParty(a, b) then
-    local removed, slot = removedPartyMon(a, b)
+    local removed = removedPartyMon(a, b)
     if removed then
       self:compaction(a, b)
     else

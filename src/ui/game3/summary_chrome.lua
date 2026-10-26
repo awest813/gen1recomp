@@ -1,9 +1,7 @@
 -- Pokémon Summary Screen Chrome (ROM-baked textures, bars, icons, and layout).
 -- Handles Love2D texture creation and quad rendering with fallbacks.
 
-local Display = require("src.core.game3.display")
 local Extract = require("src.import.gba.extract_island1")
-local SummaryChromeExtract = require("src.import.gba.summary_chrome_extract")
 local CacheBlob = require("src.import.CacheBlob")
 
 local SummaryChrome = {}
@@ -32,12 +30,6 @@ end
 
 local function summary_root()
   return cache_root() .. "/pokemon/summary"
-end
-
-local function log(msg)
-  if SummaryChrome._logged then return end
-  SummaryChrome._logged = true
-  print("[game3/summary_chrome] " .. tostring(msg))
 end
 
 local function read_bytes(rel)

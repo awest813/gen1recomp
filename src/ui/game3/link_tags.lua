@@ -189,8 +189,7 @@ function LinkTags.sources()
       end
     end
   end
-  local blender
-  n, blender = blenderPartners(src, n)
+  local _, blender = blenderPartners(src, n)
   active = active or blender
   if not active then return nil end
   local L = link()

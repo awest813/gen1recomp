@@ -32,11 +32,6 @@ local function idiv(a, b)
   return q >= 0 and math.floor(q) or math.ceil(q)
 end
 
--- pokeemerald/src/trig.c:5
-local function sin(index, amp)
-  return math.floor(Trig.SINE[(math.floor(index) % 256) + 1] * amp / 256)
-end
-
 local function sprite(img, frames, x, y)
   return {
     img = img, frames = frames or 1, frame = 0,

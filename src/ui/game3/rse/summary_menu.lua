@@ -163,19 +163,6 @@ function RseSummary.detail(Sm)
   return Sm._page == Sm.PAGE_MOVES_INFO or Sm._mode == "select_move"
 end
 
-local function filtered(input, blocked)
-  return setmetatable({}, { __index = function(_, k)
-    if k == "wasPressed" then
-      return function(_, key) if blocked[key] then return false end return input:wasPressed(key) end
-    elseif k == "isDown" then
-      return function(_, key) if blocked[key] or not input.isDown then return false end return input:isDown(key) end
-    end
-    local v = input[k]
-    if type(v) == "function" then return function(_, ...) return v(input, ...) end end
-    return v
-  end })
-end
-
 -- pokeemerald/src/pokemon_summary_screen.c:1532
 function RseSummary.handleInput(input, Sm)
   Sm = Sm or S()

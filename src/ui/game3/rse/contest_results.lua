@@ -3,7 +3,6 @@ local band, rshift = bit.band, bit.rshift
 
 local Vram = require("src.ui.game3.rse.contest_vram")
 local Ppu = require("src.core.game3.gba_ppu")
-local Sprites = require("src.core.game3.gba_sprites")
 local GcKit = require("src.ui.game3.rse.gc_kit")
 local Contest = require("src.core.game3.rse.contest")
 
@@ -983,7 +982,7 @@ function UI:taskCreateConfetti(tid, d)
     d[0] = 0
     if self.d.confettiCount < 40 then
       local x = (self:rand() % DISPLAY_WIDTH) - 20
-      local id, s = self:newSprite({ w = 8, h = 8 }, x, 44, 5)
+      local _, s = self:newSprite({ w = 8, h = 8 }, x, 44, 5)
       s.oam.paletteNum = self.confettiPal
       s.data[0] = self:rand() % 512
       s.data[1] = (self:rand() % 24) + 16

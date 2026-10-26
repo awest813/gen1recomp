@@ -44,7 +44,6 @@ local SpriteAnims = require("src.ui.gen2.SpriteAnims")
 -- Only for playerPic: the player.sprite raiser both generations share.
 local Sprites = require("src.pokemon.Sprites")
 local Strings = require("src.core.Strings")
-local SummaryMenu = require("src.ui.gen2.SummaryMenu")
 local TypeChart = require("src.battle.TypeChart")
 -- Only for TextBox.substitute: the {PLAYER} / {RIVAL} markers a map text
 -- carries into the battle box (PrintWinLossText, home/trainers.asm:230).

@@ -37,9 +37,6 @@ local LIST_TPL = { left = 4, top = 1, width = 22, height = 12 }
 -- pokefirered/src/teachy_tv.c:145 sWindowTemplates[0]
 local BODY_TPL = { left = 2, top = 15, width = 26, height = 4 }
 
-local LIST_WIN = Window.template(LIST_TPL.left, LIST_TPL.top, LIST_TPL.width, LIST_TPL.height)
-local BODY_WIN = Window.template(BODY_TPL.left, BODY_TPL.top, BODY_TPL.width, BODY_TPL.height)
-
 -- pokefirered/src/teachy_tv.c:679 AddTextPrinterParameterized2(0, FONT_MALE, text, speed, 0, 1, 0xC, 3)
 local BODY_COLOR = { fg = FrlgFont.STDPAL[1], shadow = FrlgFont.STDPAL[3], bg = FrlgFont.STDPAL[0] }
 -- pokefirered/src/teachy_tv.c:237 cursorPal

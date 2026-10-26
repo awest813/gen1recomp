@@ -1,7 +1,6 @@
 local bit = require("bit")
 local Machine = require("src.ui.game3.rse.gba_machine")
 local Ppu = require("src.core.game3.gba_ppu")
-local Palette = require("src.core.game3.gba_palette")
 local Sprites = require("src.core.game3.gba_sprites")
 local Affine = require("src.core.game3.bg_affine")
 
@@ -1259,7 +1258,6 @@ end
 
 -- pokeemerald/src/rayquaza_scene.c:3148
 function RayScene:taskChasesAwayAnimateRing(taskId, data)
-  local ppu = self.m.ppu
   if data[0] == 0 then
     self:setBgAffine(2, 0x4000, 0x4000, 120, 64, 256, 256, 0)
     self:setReg("DISPCNT", bor(self:getReg("DISPCNT"), Ppu.DISPCNT_BG2_ON))

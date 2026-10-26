@@ -207,7 +207,7 @@ local function ring()
   local main
   for y = 0, 15 do
     for x = 0, 15 do
-      local r, g, b, a = base:getPixel(x, y)
+      local r, g, _, a = base:getPixel(x, y)
       if a > 0 and (main == nil or r > main) and g < 0.1 then main = r end
     end
   end

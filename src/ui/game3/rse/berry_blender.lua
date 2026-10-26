@@ -28,7 +28,7 @@ local RPM_DIGIT = 0x8072
 local RPM_CELLS = { 0x458 / 2, 0x45A / 2, 0x45C / 2, 0x460 / 2, 0x462 / 2 }
 
 -- pokeemerald/src/berry_blender.c:112
-local WIN_MSG, WIN_RESULTS = 4, 5
+local WIN_RESULTS = 5
 
 -- pokeemerald/src/berry_blender.c:3849
 local TEXT_CASES = {
@@ -440,7 +440,7 @@ function UI:createBerrySprite(itemId, slot)
   if idx ~= 0xFF then sp.paletteTags[idx] = Sprites.TAG_NONE end
   sp:loadPalette(tag, self.man.palettes.berries[berryId + 1])
   self.berryPicId = berryId
-  local id, s = self:createSprite(self.man.berry, 0, 80, 0)
+  local _, s = self:createSprite(self.man.berry, 0, 80, 0)
   if not s then return end
   s.berryPic = true
   if band(slot, 1) == 1 then sp:startAffineAnim(s, 1) end

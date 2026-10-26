@@ -342,7 +342,6 @@ function FileBrowser.draw(m)
   if total == 0 then
     Theme.fillRounded(px + pad, cy, modalW - 2 * pad, rowH * 4, PAL.bg, 1)
     Kit.textCenter("small", "No files found in this folder.", px + pad, cy + rowH * 1.5, modalW - 2 * pad, PAL.muted)
-    cy = cy + rowH * 4 + math.floor(8 * s)
   else
     for i = startIdx, endIdx do
       local entry = FileBrowser.entries[i]

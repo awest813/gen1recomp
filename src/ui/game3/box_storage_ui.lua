@@ -329,7 +329,7 @@ end
 
 local function open_summary_for_cursor()
   local returnMode = (BoxStorageUI._actionSource == "party" or BoxStorageUI.drawerOpen) and "party_drawer" or "browse"
-  local mon, loc, bId, sId = mon_at_cursor()
+  local mon, loc, _, sId = mon_at_cursor()
   if not mon then return end
 
   if is_rs() then
@@ -540,7 +540,7 @@ local function handle_input(input)
       elseif choice == "WITHDRAW" then
         local mon, loc, bId, sId = mon_at_cursor()
         if loc == "box" and mon then
-          local ok, err = Storage.withdraw(BoxStorageUI._session, bId, sId)
+          local ok = Storage.withdraw(BoxStorageUI._session, bId, sId)
           if ok then
             BoxStorageUI.mode = returnMode
             se(se_id("SE_BAG_POCKET"))
@@ -551,7 +551,7 @@ local function handle_input(input)
           end
         end
       elseif choice == "STORE" or choice == "DEPOSIT" then
-        local mon, loc, bId, sId = mon_at_cursor()
+        local mon, loc, _, sId = mon_at_cursor()
         if loc == "party" and mon then
           local party = (BoxStorageUI._session and BoxStorageUI._session.party) or {}
           if is_rs() and reject_native(RsStorage.depositError(BoxStorageUI._session, sId)) then return end
@@ -567,7 +567,7 @@ local function handle_input(input)
             BoxStorageUI.mode = "message"
             se(se_id("SE_FAILURE")) -- pokefirered/src/pokemon_storage_system_tasks.c:1052
           else
-            local ok, b, s = Storage.deposit(BoxStorageUI._session, sId)
+            local ok = Storage.deposit(BoxStorageUI._session, sId)
             if ok then
               local newParty = (BoxStorageUI._session and BoxStorageUI._session.party) or {}
               if #newParty == 0 then
@@ -882,7 +882,7 @@ local function handle_input(input)
         local storage = Storage.ensure(BoxStorageUI._session)
         place_held("box", storage.currentBox, slot)
       else
-        local mon, loc, bId, sId = mon_at_cursor()
+        local mon, _, bId = mon_at_cursor()
         if mon then
           BoxStorageUI._actionSource = "box"
           BoxStorageUI._actionTarget = { mon = mon, loc = "box", boxId = bId, slot = slot }
@@ -936,7 +936,8 @@ end
 local function screen_mask(fx)
   if not fx then return end
   if fx.rs then PcChrome.drawScreenBars(fx); return end
-  local f, left, right, top, bottom, white = fx.frame, 0, 240, 0, 160, false
+  local f, left, right, white = fx.frame, 0, 240, false
+  local top, bottom
   if fx.opening then
     if f < 2 then left, right, top, bottom = 120, 120, 80, 81
     elseif f < 7 then left, right, top, bottom, white = math.max(0, 120 - (f - 1) * 20), math.min(240, 120 + (f - 1) * 20), 80, 81, true

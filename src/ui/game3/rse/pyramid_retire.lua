@@ -9,7 +9,6 @@ end
 
 -- pokeemerald/src/start_menu.c:840
 function Retire.show(opts)
-  opts = opts or {}
   local StartMenu = package.loaded["src.ui.game3.start_menu"]
   if StartMenu and StartMenu.close then StartMenu.close(true) end
   local Message = require("src.ui.game3.message")

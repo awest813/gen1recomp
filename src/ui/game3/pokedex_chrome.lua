@@ -2,7 +2,6 @@
 -- Implements the authentic diamond paper background, header/footer bars,
 -- orange section headings, type badges, 2-page cards, and pulsing habitat spotlights.
 
-local Display = require("src.core.game3.display")
 local Extract = require("src.import.gba.extract_island1")
 local PokedexData = require("src.core.game3.pokedex_data")
 local CacheBlob = require("src.import.CacheBlob")

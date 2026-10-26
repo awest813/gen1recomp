@@ -4,7 +4,6 @@
 -- Features: Animated page slide (with anchored foreground), full move swapping (anti-PP swap trap),
 -- dynamic trainer memo diffing, and ROM-baked chrome graphics.
 
-local Display = require("src.core.game3.display")
 local Stack = require("src.ui.game3.stack")
 local FrlgFont = require("src.ui.game3.frlg_font")
 local Pokemon = require("src.core.game3.pokemon")

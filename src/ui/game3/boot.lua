@@ -344,9 +344,6 @@ function Boot.update(state, input, dt)
   state.timer = (state.timer or 0) + dt
   state.blink = (state.blink or 0) + dt
 
-  local function a()
-    return input and input.wasPressed and (input:wasPressed("a") or input:wasPressed("start"))
-  end
   local function up()
     return input and input.wasPressed and input:wasPressed("up")
   end

@@ -22,7 +22,7 @@ function M.draw(menu)
   local Window = require("src.core.game3.scripting.natives_listmenu").windowMod
   Window = Window and Window() or require("src.ui.game3.window")
   if not Window then return end
-  local name, id, description
+  local id, description
   if M.exchangeOpen then
     local files = { [3] = "decor1", [4] = "decor2", [5] = "vitamins", [6] = "holdItems" }
     local file = files[tonumber(menu.kind)]

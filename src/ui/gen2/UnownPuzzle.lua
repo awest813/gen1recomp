@@ -370,7 +370,6 @@ function UnownPuzzle:update(_dt)
   local held = nil
   for _, direction in ipairs(DIRECTIONS) do
     if input:wasPressed(direction) then
-      held = direction
       self.lastDirection = direction
       self.repeatLeft = REPEAT_DELAY
       self:step(direction)

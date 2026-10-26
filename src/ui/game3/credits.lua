@@ -672,7 +672,6 @@ function Credits.state()
 end
 
 function Credits.start(opts)
-  opts = opts or {}
   local pack = load_table("pack.lua")
   local manifest = load_table("manifest.lua")
   if not (pack and manifest) then return false end

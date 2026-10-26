@@ -592,13 +592,6 @@ local REEL_X = { 5, 9, 13 }
 -- sits 16px above the screen) to tile rows: bottom, middle, top, and the
 -- fourth symbol that only half shows.
 local REEL_ROW = { 8, 6, 4, 2 }
--- Slots_Lights3OnOff / 2 / 1: the row each bet's pair of lights is drawn on,
--- and the two columns Slots_TurnLightsOnOrOff writes.
-local LIGHT_ROWS = { [3] = { 2, 10 }, [2] = { 4, 8 }, [1] = { 6 } }
-local LIGHT_COLS = { 3, 16 }
--- Slots_AskBet's MenuHeader through GetMenuTextStartCoord.
-local BET_BOX_X, BET_BOX_Y, BET_BOX_W, BET_BOX_H = 14, 10, 6, 8
-local BET_LABEL_X, BET_LABEL_Y, BET_SPACING = 16, 12, 2
 -- .Text_PrintPayout's four ldcoord_a writes.
 local PAYOUT_SYMBOL_X, PAYOUT_SYMBOL_Y = 2, 13
 -- Textbox(0, TEXTBOX_Y) -- the standard speech box every PrintText here uses.

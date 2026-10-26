@@ -16,7 +16,7 @@ local WIN = {
 }
 Mailbox.WIN = WIN
 -- pokeemerald/src/menu_specialized.c:278
-local MAX_SHOWED, UP_TEXT_Y, ITEM_X = 8, 9, 8
+local UP_TEXT_Y, ITEM_X = 9, 8
 
 local function se(name)
   local SE = require("src.core.game3.se_ids")

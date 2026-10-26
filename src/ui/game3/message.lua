@@ -483,7 +483,7 @@ function Message.drawText()
     end
   end
 
-  local drawn, endX, endY = FrlgFont.draw(page, baseX, baseY, {
+  local _, endX, endY = FrlgFont.draw(page, baseX, baseY, {
     maxWidth = maxW,
     limitChars = Message._revealed,
     colors = (Message._frame == "battle") and FrlgFont.COLOR.WHITE or (Message._colors or FrlgFont.COLOR.NORMAL),

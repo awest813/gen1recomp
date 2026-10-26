@@ -432,11 +432,6 @@ function PBag.update()
   step(inp)
 end
 
-local function female()
-  local s = session()
-  return s and (s.gender == 1 or s.gender == "female" or s.playerGender == 1) or false
-end
-
 local function background()
   if st.bg then return st.bg end
   local g = gfx()

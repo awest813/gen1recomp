@@ -6,7 +6,7 @@ local Sprites = require("src.core.game3.gba_sprites")
 local Affine = require("src.core.game3.bg_affine")
 local Trig = require("src.core.game3.trig")
 
-local band, bor, rshift = bit.band, bit.bor, bit.rshift
+local band, bor = bit.band, bit.bor
 
 local Title = {}
 Title.__index = Title

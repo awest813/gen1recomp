@@ -2,7 +2,6 @@
 -- "Release this POKéMON?" -> [YES/NO] -> float/shrink animation -> "<MON> was released." -> "Bye-bye, <MON>!".
 
 local Window = require("src.ui.game3.window")
-local FrlgFont = require("src.ui.game3.frlg_font")
 local Pokemon = require("src.core.game3.pokemon")
 local Storage = require("src.core.game3.storage")
 local RomText = require("src.core.game3.rom_text")

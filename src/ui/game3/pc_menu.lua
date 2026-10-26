@@ -9,7 +9,6 @@
 
 local Stack = require("src.ui.game3.stack")
 local Window = require("src.ui.game3.window")
-local FrlgFont = require("src.ui.game3.frlg_font")
 local Storage = require("src.core.game3.storage")
 local Strings = require("src.core.Strings")
 local RomText = require("src.core.game3.rom_text")

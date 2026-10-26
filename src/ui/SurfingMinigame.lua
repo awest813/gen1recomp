@@ -76,7 +76,6 @@ local CRASH_FRAMES         = 96   -- UpdateCrashedPikachu initial timer $60
 local COAST_FRAMES         = 192  -- WaitToShowResults routine delay
 local GAME_OVER_DELAY      = 128  -- Game over before accepting A ($80)
 local LANDING_SPLASH_FRAMES = 8   -- FIELD_C += 4 until cp $20
-local RESULTS_FRAMESET_INIT = 0x0f -- InitResultsPikachu: frameset ID written to ANIM_OBJ_FRAME_SET
 local RESULTS_BOB_CYCLE     = 64  -- UpdateResultsPikachu FIELD_C & $3f
 local RESULTS_BOB_START     = 32  -- sine bob only when FIELD_C >= $20
 local RESULTS_BOB_AMP       = 2   -- SurfingPikachu_Sine scale ($10 table; ~2px on screen)
@@ -87,7 +86,6 @@ local FLAT_WATER_Y = 116       -- OAM Y 0x74 = screen Y 100 (PIKA_Y = FLAT_WATER
 local PIKA_X = 68              -- Fixed screen X while riding (center 80, 24px pose)
 local TOTAL_SECTIONS = 24      -- wSurfingMinigameDistance byte 0 reaches $18 (24)
 local SECTION_ACC_MAX = 65536  -- 16-bit distance acc overflow (256px per section in 8.8 fixed)
-local SECTION_PX = 256         -- pixels advanced per section (65536 >> 8)
 local BG_HEIGHT = 128          -- Rows the BG shows; HP window covers the rest (y=128..144)
 local COAST_SPEED_FIXED = 9 * 256       -- SurfingMinigame_CoastAfterGoal: 9.0 px/frame
 local BG_SCROLL_STEP = 384                -- ScrollAndGenerateBGMap: 1.5 px/frame (8.8 fixed)
@@ -96,14 +94,9 @@ local COAST_X_OFFSET = 160              -- $a0 ahead of viewport (CoastAfterGoal
 local OUTRO_SCROLL_X_OFFSET = 224       -- TILEMAP_WIDTH_PX - 32 (ScrollToResultsScreen)
 local OUTRO_SCROLL_START  = 144         -- hSCX $90 at results transition
 local OUTRO_SCROLL_STEP   = 4           -- hSCX -= 4 per frame (36 frames total)
-local FINISH_DISTANCE_FIXED = TOTAL_SECTIONS * SECTION_PX * 256
 local MAP_COLS = 16              -- vBGMap0 metatile columns (256px / 16)
 -- SurfingPikachuMinigame_InitStaticSpriteLayout cloud OAM X coords (9 sprites)
 local CLOUD_SPRITE_X_INIT = { 32, 40, 48, 56, 64, 128, 136, 144, 152 }
-
-local function scrollPx(self)
-  return math.floor((self.scrollFixed or 0) / 256)
-end
 
 -- Routine numbers (wSurfingMinigameRoutineNumber)
 local ROUTINE_TITLE            = -1
@@ -820,8 +813,8 @@ end
 
 function SurfingMinigame:calculateStuntPoints()
   if self.radnessMeter <= 0 then return end
-  local pts = 0
-  local popup = "+50"
+  local pts
+  local popup
   if self.trickFlags == 3 then
     -- Mixed front and back flips
     if self.radnessMeter >= 3 then

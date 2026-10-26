@@ -25,9 +25,9 @@ local function text(key, vars)
 end
 
 local function width(s)
-  local best, w = 0, 0
+  local best = 0
   for line in (tostring(s) .. "\n"):gmatch("([^\n]*)\n") do
-    w = FrlgFont.measure(line)
+    local w = FrlgFont.measure(line)
     if w > best then best = w end
   end
   return best

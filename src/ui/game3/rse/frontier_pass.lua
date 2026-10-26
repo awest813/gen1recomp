@@ -88,15 +88,6 @@ local function hasBattleRecord(s)
   return impl and type(impl.canCopy) == "function" and impl.canCopy(s) or false
 end
 
-local function mapsecOf(s)
-  local okM, Mapsec = pcall(require, "src.ui.game3.rse.mapsec")
-  if okM and Mapsec and Mapsec.current then
-    local okC, v = pcall(Mapsec.current, s)
-    if okC then return v end
-  end
-  return nil
-end
-
 local function inFrontier(s)
   local m = tostring(s and s.map or "")
   return m:find("^EM_BATTLE_FRONTIER_") ~= nil or m:find("^EM_ARTISAN_CAVE") ~= nil

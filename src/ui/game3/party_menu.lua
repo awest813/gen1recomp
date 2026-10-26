@@ -56,7 +56,6 @@ local DESC_FRLG = { NO_USE = 0, ABLE_3 = 1, FIRST = 2, SECOND = 3, THIRD = 4, AB
 local DESC_EMERALD = { NO_USE = 0, ABLE_3 = 1, FIRST = 2, SECOND = 3, THIRD = 4, FOURTH = 5,
   ABLE = 6, NOT_ABLE = 7, ABLE_2 = 8, NOT_ABLE_2 = 9, LEARNED = 10 }
 
-local DESC = DESC_FRLG
 
 local function currentSession()
   return PartyMenu._session or (package.loaded["src.core.game3.runtime"] and package.loaded["src.core.game3.runtime"].getSession and package.loaded["src.core.game3.runtime"].getSession())
@@ -1737,7 +1736,7 @@ function PartyMenu.handleInput(input)
       local act = actions[PartyMenu.itemActionCursor]
       if act == "TAKE" then
         local take = p and p.takeItem or ItemUse.takeFromMon
-        local ok, reason, msgText = take(PartyMenu._session, PartyMenu._bag, PartyMenu.cursor)
+        local _, _, msgText = take(PartyMenu._session, PartyMenu._bag, PartyMenu.cursor)
         se("SE_SELECT") -- pokefirered/src/party_menu.c:3594
         PartyMenu.showMessage(msgText, function()
           PartyMenu.mode = "list"
@@ -2000,7 +1999,7 @@ function PartyMenu.handleInput(input)
       else
         local userMon = PartyMenu._party and PartyMenu._party[PartyMenu._softboiledDonorSlot]
         local targetMon = PartyMenu._party and PartyMenu._party[PartyMenu.cursor]
-        local ok, userHp, targetHp = FieldMoves.softboiledTransfer(userMon, targetMon)
+        local ok = FieldMoves.softboiledTransfer(userMon, targetMon)
         if not ok then
           se("SE_SELECT") -- pokefirered/src/party_menu.c:4490
           show_rom_message("gText_WontHaveEffect", nil, function()
@@ -2341,7 +2340,7 @@ function PartyMenu.handleInput(input)
         local startHp = tonumber(mon and mon.hp) or 0
         local maxHp = tonumber(mon and (mon.maxHp or mon.maxhp)) or 1
         local realSlot = (PartyMenu._order and PartyMenu._order[PartyMenu.cursor]) or PartyMenu.cursor
-        local ok, reason, msgText = ItemUse.useField(PartyMenu._session, PartyMenu._bag, PartyMenu._item, realSlot, moveSlot)
+        local ok, _, msgText = ItemUse.useField(PartyMenu._session, PartyMenu._bag, PartyMenu._item, realSlot, moveSlot)
         local endHp = tonumber(mon and mon.hp) or startHp
         if ok then
           -- pokefirered/src/party_menu.c:4498

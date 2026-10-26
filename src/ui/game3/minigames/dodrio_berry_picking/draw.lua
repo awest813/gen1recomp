@@ -234,7 +234,7 @@ end
 
 -- pokefirered/src/dodrio_berry_picking.c:4660
 function Draw.ask(sim)
-  local FrlgFont, Chrome = mods()
+  local _, Chrome = mods()
   local msg, yn = Draw.PLAY_AGAIN_WIN, Draw.YES_NO_WIN
   frame(msg)
   normal("gText_WantToPlayAgain", msg, 0, 6)
