@@ -527,8 +527,23 @@ function closeSkinStudio()
   end
 end
 
+-- The PK:GB launcher (src/launcher/), opt in with POKEPORT_LAUNCHER=new
+-- while it reaches parity with the original one.
+local function useNewLauncher()
+  return os.getenv("POKEPORT_LAUNCHER") == "new"
+end
+
 local function makeLauncher(launcherOpts)
   require("src.import.LauncherWindow").activate()
+  if useNewLauncher() then
+    return require("src.launcher.Launcher").new(function(version, cartId, opts)
+      Importer = nil
+      local onBoot = launcherOpts and launcherOpts.onBoot
+      if onBoot and onBoot(version, cartId, opts) then return end
+      bootGame(version, cartId, opts)
+    end, { initialGame = launcherOpts and launcherOpts.initialTab or nil,
+           importPath = os.getenv("POKEPORT_LAUNCHER_IMPORT") })
+  end
   local RomImporter = require("src.import.RomImporter")
   local forceImport = os.getenv("POKEPORT_FORCE_IMPORT") == "1"
   return RomImporter.new(function(version, cartId, opts)
@@ -630,6 +645,10 @@ function bootGame(version, cartId, opts)
   if recoveryNotice then require("src.core.Logger").warn("%s", recoveryNotice) end
   if not recovered then
     Importer = makeLauncher({ initialTab = "box" })
+    if useNewLauncher() then
+      Importer:say(recoveryError, "error")
+      return
+    end
     Importer._boxState = nil
     require("src.import.BoxPanel").refresh(Importer).notice = recoveryError
     return

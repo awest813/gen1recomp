@@ -898,3 +898,4 @@ tests/engine/love_run_shell_matrix.lua
 tests/engine/void_fill_bake_retry_test.lua
 tests/engine/legacy_compat_asset_path_test.lua
 tests/engine/test_wiring_test.lua
+tests/engine/pkgb_launcher_test.lua
