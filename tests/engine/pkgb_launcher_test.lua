@@ -19,7 +19,19 @@ local GameVersion = require("src.core.GameVersion")
 local ImportJob = require("src.import.ImportJob")
 
 -- SaveData seam: two Gold saves, slot creation recorded.
-local created, active = {}, {}
+local created, active, deleted, renamed = {}, {}, {}, {}
+local imported, exported = {}, {}
+package.loaded["src.import.SaveFileIO"] = {
+  importToSlot = function(source, version)
+    imported[#imported + 1] = { source = source, version = version }
+    active[version] = "slot7"
+    return true
+  end,
+  exportActiveSlot = function(version)
+    exported[#exported + 1] = { version = version, slot = active[version] }
+    return true, "/exports/" .. version .. "/" .. tostring(active[version]) .. ".sav"
+  end,
+}
 package.loaded["src.core.SaveData"] = {
   listSlots = function(version)
     if version ~= "gold" then return {} end
@@ -31,8 +43,10 @@ package.loaded["src.core.SaveData"] = {
       { id = "slot3", exists = false },
     }
   end,
-  activeSlot = function() return "slot1" end,
+  activeSlot = function(version) return active[version] or "slot1" end,
   setActiveSlot = function(version, id) active[version] = id return true end,
+  deleteSlot = function(version, id) deleted[#deleted + 1] = version .. ":" .. id return true end,
+  renameSlot = function(version, id, name) renamed[#renamed + 1] = { id = id, name = name } return true end,
   createSlot = function(version)
     local id = "slot" .. (10 + #created)
     created[#created + 1] = { version = version, id = id }
@@ -155,5 +169,48 @@ l:update(0)
 eq(#created, before + 1, "update() runs the queued New game")
 eq(launched[#launched], "gold", "which launches the game")
 Kit.button = realButton
+
+-- ------------------------------------------------------- save files
+l = fresh()
+l.selectedSlot.gold = "slot2"
+l:deleteSave()
+eq(#deleted, 0, "the first Delete only arms")
+check(l.message and l.message.kind == "error", "and warns")
+l:deleteSave()
+eq(deleted[1], "gold:slot2", "the second Delete removes that save")
+
+l = fresh()
+l.selectedSlot.gold = "slot1"
+l:deleteSave()
+l:queue(function() end)
+l:update(0)
+l:deleteSave()
+eq(#deleted, 1, "any other action in between disarms Delete")
+
+l = fresh()
+l.selectedSlot.gold = "slot2"
+l:renameSave("  Nuzlocke run  ")
+eq(renamed[1].id, "slot2", "Rename targets the selected save")
+eq(renamed[1].name, "Nuzlocke run", "with the name trimmed")
+l:renameSave("   ")
+eq(renamed[2].name, nil, "a blank name clears the label")
+
+l = fresh()
+l.selectedSlot.gold = "slot2"
+l:exportSave()
+eq(exported[1].slot, "slot2", "Export writes the selected save, not just the active one")
+check(l.message.text:find("slot2.sav", 1, true) ~= nil, "and says where it went")
+
+l = fresh()
+local dropped = { getFilename = function() return "/home/me/Gold.sav" end }
+l:filedropped(dropped)
+eq(imported[1] and imported[1].source, dropped, "a dropped .sav is imported as a save")
+eq(imported[1].version, "gold", "into the selected game")
+eq(l.selectedSlot.gold, "slot7", "and the new save is selected")
+check(Launcher.isSaveName("x.SRM") and not Launcher.isSaveName("x.gbc"),
+  "save files are told from ROMs by extension")
+l.selected = "red"
+l:importSave("bytes", "Red.sav")
+eq(#imported, 1, "a save for a game without its ROM is refused")
 
 T.finish("pkgb launcher")

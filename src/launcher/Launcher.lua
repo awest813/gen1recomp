@@ -108,7 +108,8 @@ function Launcher:slotsFor(version)
   return list
 end
 
-function Launcher:queue(fn)
+function Launcher:queue(fn, keepArmed)
+  if not keepArmed then self.armedDelete = nil end
   self.actions[#self.actions + 1] = fn
 end
 
@@ -161,6 +162,77 @@ function Launcher:newGame(version)
   local id = SaveData.createSlot(version)
   if not id then return self:say("Could not create a save slot.", "error") end
   self:play(version, id)
+end
+
+-- ------------------------------------------------------------ save files
+
+local SAVE_KIND = { label = "Save file", exts = { "sav", "srm", "sa1", "dsv", "sgm" } }
+
+function Launcher:selectedSaveId(version)
+  return self.selectedSlot[version or self.selected]
+end
+
+-- `source` is a dropped LÖVE file, an absolute path, or raw bytes.
+function Launcher:importSave(source, name)
+  local v = self.selected
+  if not (v and self.ready[v]) then
+    return self:say("Import the game's ROM before importing a save for it.", "error")
+  end
+  local SaveFileIO = require("src.import.SaveFileIO")
+  local ok, result = SaveFileIO.importToSlot(source, v)
+  self.slots[v] = nil
+  if not ok then return self:say("Save import failed: " .. tostring(result), "error") end
+  local SaveData = require("src.core.SaveData")
+  local okA, active = pcall(SaveData.activeSlot, v)
+  if okA and active then self.selectedSlot[v] = active end
+  self:say((name and (name .. " ") or "The save ") .. "was imported as a new save.", "info")
+end
+
+function Launcher:pickSave()
+  local ok, FilePicker = pcall(require, "src.core.FilePicker")
+  if not (ok and FilePicker.available()) then
+    return self:say("Drop a .sav file onto this window to import it.", "info")
+  end
+  local path = FilePicker.open("Choose a save file", SAVE_KIND)
+  if path then self:importSave(path, FilePicker.basename(path)) end
+end
+
+function Launcher:exportSave()
+  local v, id = self.selected, self:selectedSaveId()
+  if not (v and id) then return end
+  local SaveData = require("src.core.SaveData")
+  SaveData.setActiveSlot(v, id)
+  local SaveFileIO = require("src.import.SaveFileIO")
+  local ok, result = SaveFileIO.exportActiveSlot(v)
+  if not ok then return self:say("Export failed: " .. tostring(result), "error") end
+  self:say("Exported to " .. tostring(result), "info")
+end
+
+-- Delete takes two presses: the first arms it, any other action disarms.
+function Launcher:deleteSave()
+  local v, id = self.selected, self:selectedSaveId()
+  if not (v and id) then return end
+  if self.armedDelete ~= v .. ":" .. id then
+    self.armedDelete = v .. ":" .. id
+    return self:say("Press Delete again to remove this save for good.", "error")
+  end
+  self.armedDelete = nil
+  local SaveData = require("src.core.SaveData")
+  local ok, err = SaveData.deleteSlot(v, id)
+  self.slots[v], self.selectedSlot[v] = nil, nil
+  if ok == false then return self:say("Could not delete: " .. tostring(err), "error") end
+  self:say("Save deleted.", "info")
+end
+
+function Launcher:renameSave(name)
+  local v, id = self.selected, self:selectedSaveId()
+  self.renaming = nil
+  if not (v and id) then return end
+  name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local SaveData = require("src.core.SaveData")
+  local ok, err = SaveData.renameSlot(v, id, name ~= "" and name or nil)
+  self.slots[v] = nil
+  if ok == false then return self:say("Could not rename: " .. tostring(err), "error") end
 end
 
 function Launcher:quit()
@@ -218,22 +290,18 @@ end
 
 function Launcher:wheelmoved(_, dy) self.wheel = (self.wheel or 0) + dy end
 
-local NAV = { up = "up", down = "down", left = "left", right = "right",
-  dpup = "up", dpdown = "down", dpleft = "left", dpright = "right" }
-
 function Launcher:keypressed(key)
-  if NAV[key] then Kit.navigate(NAV[key]) return true end
-  if key == "return" or key == "kpenter" or key == "space" then
-    Kit.activateFocused()
+  if Kit.keypressed(key) then return true end
+  if key == "escape" and self.renaming then
+    self:queue(function() self.renaming = nil end)
     return true
   end
-  if key == "escape" then self:queue(function() self:quit() end) return true end
   return false
 end
 
 function Launcher:gamepadpressed(_, button)
-  if NAV[button] then Kit.navigate(NAV[button]) return true end
-  if button == "a" or button == "start" then Kit.activateFocused() return true end
+  if Kit.gamepadpressed(button) then return true end
+  if button == "start" then Kit.activateFocused() return true end
   return false
 end
 
@@ -246,9 +314,21 @@ function Launcher:joystickhat(_, _, direction)
   local map = { u = "up", d = "down", l = "left", r = "right" }
   if map[direction] then Kit.navigate(map[direction]) end
 end
-function Launcher:textinput() end
+function Launcher:textinput(text) return Kit.textinput(text) end
+
+local SAVE_EXTS = { sav = true, srm = true, sa1 = true, dsv = true, sgm = true }
+
+local function isSaveName(name)
+  local ext = tostring(name or ""):lower():match("%.([%w]+)$")
+  return ext ~= nil and SAVE_EXTS[ext] == true
+end
+Launcher.isSaveName = isSaveName
 
 function Launcher:filedropped(file)
+  local fname = file.getFilename and file:getFilename() or ""
+  if isSaveName(fname) then
+    return self:importSave(file, fname:match("[^/\\]+$") or fname)
+  end
   local ok, data = pcall(function()
     file:open("r")
     local bytes = file:read()
@@ -359,7 +439,14 @@ function Launcher:drawDetail(x, y, w, h, s)
   cy = cy + Kit.textHeight("caption") + math.floor(8 * s)
   local rowH = math.max(Kit.tapMin(), math.floor(44 * s))
   local gap = math.floor(4 * s)
-  local footH = btnH + math.floor(12 * s)
+  local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
+  -- the four save tools sit in one row, or two when their labels would not fit
+  local tg = math.floor(8 * s)
+  local needW = Kit.textWidth("small", "Confirm delete") + math.floor(24 * s)
+  local toolCols = (cw - 3 * tg) / 4 >= needW and 4 or 2
+  local toolRows = 4 / toolCols
+  local toolsH = toolRows * smallH + (toolRows - 1) * tg
+  local footH = btnH + toolsH + math.floor(22 * s)
   local viewH = math.max(rowH, y + h - pad - footH - cy)
   if #slots == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No saves yet")
@@ -391,9 +478,55 @@ function Launcher:drawDetail(x, y, w, h, s)
     Kit.scrollEnd(cx, cy, cw, viewH, self.slotScroll, maxAt, PAL.surface)
   end
 
+  -- save tools: import / export / rename / delete, or the rename field
+  local ty = y + h - pad - btnH - math.floor(10 * s) - toolsH
+  local chosen = self.selectedSlot[v]
+  local has = chosen ~= nil and #slots > 0
+  if self.renaming == chosen and has then
+    local okW = math.floor(90 * s)
+    local fw = cw - 2 * (okW + math.floor(8 * s))
+    self.renameText = Kit.textfield("rename-field", cx, ty, fw, smallH,
+      self.renameText, "Save name")
+    if Kit.button(cx + fw + math.floor(8 * s), ty, okW, smallH, "Save",
+        { id = "rename-ok", kind = "primary", font = "small" }) then
+      local text = self.renameText
+      self:queue(function() self:renameSave(text) end)
+    end
+    if Kit.button(cx + cw - okW, ty, okW, smallH, "Cancel",
+        { id = "rename-cancel", font = "small" }) then
+      self:queue(function() self.renaming = nil end)
+    end
+  else
+    local tools = {
+      { id = "save-import", label = "Import .sav", enabled = true,
+        run = function() self:pickSave() end },
+      { id = "save-export", label = "Export", enabled = has,
+        run = function() self:exportSave() end },
+      { id = "save-rename", label = "Rename", enabled = has,
+        run = function()
+          self.renaming = chosen
+          local slot
+          for _, sl in ipairs(slots) do if sl.id == chosen then slot = sl end end
+          self.renameText = slot and (slot.label or slot.name) or ""
+          Kit.setFocus("rename-field")
+        end },
+      { id = "save-delete", label = self.armedDelete == v .. ":" .. tostring(chosen)
+          and "Confirm delete" or "Delete", enabled = has, danger = true,
+        run = function() self:deleteSave() end },
+    }
+    local tw = math.floor((cw - (toolCols - 1) * tg) / toolCols)
+    for i, t in ipairs(tools) do
+      local col, row = (i - 1) % toolCols, math.floor((i - 1) / toolCols)
+      if Kit.button(cx + col * (tw + tg), ty + row * (smallH + tg), tw, smallH, t.label,
+          { id = t.id, font = "small", enabled = t.enabled,
+            kind = t.danger and "danger" or nil }) then
+        self:queue(t.run, t.danger)
+      end
+    end
+  end
+
   local by = y + h - pad - btnH
   local half = math.floor((cw - math.floor(10 * s)) / 2)
-  local chosen = self.selectedSlot[v]
   if Kit.button(cx, by, half, btnH, "Continue",
       { id = "continue", kind = "primary", enabled = chosen ~= nil and #slots > 0 }) then
     self:queue(function() self:play(v, chosen) end)
