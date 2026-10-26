@@ -18,7 +18,7 @@ function ImageWriter.applyTitleObp0(image)
   local w, h = image:getWidth(), image:getHeight()
   for y = 0, h - 1 do
     for x = 0, w - 1 do
-      local r, g, b, a = image:getPixel(x, y)
+      local r, _, _, a = image:getPixel(x, y)
       if a ~= 0 then
         if math.abs(r - mid) < 0.02 or math.abs(r - dark) < 0.02 then
           image:setPixel(x, y, 1, 1, 1, 1)

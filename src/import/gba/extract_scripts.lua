@@ -30,10 +30,6 @@ local TEXT_MAX = 1024
 local MOVE_MAX = 256
 local BFS_MAX = 16000
 
-local function json_escape(s)
-  return (tostring(s):gsub("\\", "\\\\"):gsub('"', '\\"'):gsub("\n", "\\n"))
-end
-
 local function serialize_lua(val, indent)
   indent = indent or 0
   local sp = string.rep("  ", indent)

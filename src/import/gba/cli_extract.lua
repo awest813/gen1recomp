@@ -18,7 +18,6 @@ add_path("../..")
 add_path("../../..")
 
 -- Map mods.Kanto-Reforged.* → local sevii when running inside mod tree.
-local real_require = require
 table.insert(package.searchers or package.loaders, 1, function(name)
   local prefix = "mods.Kanto-Reforged."
   if name:sub(1, #prefix) == prefix then
@@ -418,7 +417,7 @@ if pokedexOnly then
   local packCache = FileIO.makeCache(outRoot)
   local rom = assert(Rom.open(imports, "firered"))
   print("Extracting Pokédex data from ROM →", outRoot .. "/data/generated/gba/pokemon/pokedex")
-  local ok = PokedexExtract.run(rom, packCache, {
+  PokedexExtract.run(rom, packCache, {
     cacheRoot = "data/generated/gba",
     force = true,
     progress = function(stage, cur, total)

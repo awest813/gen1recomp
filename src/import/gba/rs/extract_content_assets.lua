@@ -1,5 +1,4 @@
 local A = require("src.import.gba.rs.assets")
-local K = require("src.import.gba.rse.boot_gfx")
 local Catalog = require("src.import.gba.rs.asset_catalog")
 local M = { SUB = "rs/assets", REQUIRED = {"rs/assets/manifest.lua"} }
 for _, spec in ipairs(Catalog) do

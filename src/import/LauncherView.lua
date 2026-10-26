@@ -2878,7 +2878,6 @@ local function buildImportersPanel(imp, x, y, w, availH, m)
   Kit.text("title", Strings("Extra Importers"), x, cy, PAL.heading)
   cy = cy + Kit.textHeight("title") + math.floor(10 * m.s)
 
-  local listTop = cy
   local pad = math.floor(12 * m.s)
 
   for _, row in ipairs(importerRows(imp)) do
@@ -3497,7 +3496,7 @@ local function buildFindPanel(imp, x, y, w, availH, m)
   local pagerH = math.max(Kit.tapMin(), math.floor(30 * m.s))
   local listH = availH - (cy - y) - pagerH - gap
   local perPage = Kit.rowsThatFit(listH, rowH, gap, MIN_FIND_ROWS, 20)
-  local first, last, cur, pages = Kit.pageBounds(page(imp, "find"), #rows, perPage)
+  local first, last, cur = Kit.pageBounds(page(imp, "find"), #rows, perPage)
   setPage(imp, "find", cur)
   local listTop = cy
   setPage(imp, "find", Kit.wheelPage(x, listTop, w, listH, cur, #rows, perPage))
@@ -4130,7 +4129,7 @@ local function buildConfirmModal(imp, m, spec)
   local gap = math.floor(10 * m.s)
   local contentH = titleH + math.floor(12 * m.s) + bodyH
     + (c.toggle and math.floor(12 * m.s) + m.btnH or 0)
-  local px, py, pw, footY, open = modalFrame(imp, m, spec and "_settingsConfirm" or "_modConfirm",
+  local px, _, pw, footY, open = modalFrame(imp, m, spec and "_settingsConfirm" or "_modConfirm",
     w, pad, 0, contentH, m.btnH, c.toggle and gap or math.floor(12 * m.s))
   local top, rw, mark, done = open()
   local cy = top
@@ -6193,7 +6192,7 @@ function Sync.link(imp, m, eng)
     function() imp:_syncFocusField("code2") end)
   cy = cy + fieldH + fit.gap
   cy = cy + Sync.status(imp, m, px + pad, cy, innerW, eng, fit)
-  cy = Sync.row(imp, m, px + pad, cy, innerW, "sync-link-go",
+  Sync.row(imp, m, px + pad, cy, innerW, "sync-link-go",
     Strings("Link this device"), { kind = "primary", enabled = not eng:busy(),
       action = function() imp:_syncLink() end }, fit)
   done()
@@ -6274,7 +6273,7 @@ function Sync.mods(imp, m, eng)
           action = function() imp:_syncApplyMods() end }, fit)
     end
   end
-  cy = cy + Sync.status(imp, m, px + pad, cy, innerW, eng, fit)
+  Sync.status(imp, m, px + pad, cy, innerW, eng, fit)
   done()
   Sync.row(imp, m, px + pad, footY, pw - 2 * pad, "sync-mods-back", Strings("Back"),
     { action = function() imp:_syncView("home") end }, fit)
@@ -6370,7 +6369,7 @@ function Sync.home(imp, m, eng)
       codes and Strings("Get new sync codes") or Strings("Show my sync codes"),
       { enabled = not eng:busy(),
         action = function() imp:_syncCodes() end }, fit)
-    cy = Sync.row(imp, m, px + pad, cy, innerW, "sync-unlink",
+    Sync.row(imp, m, px + pad, cy, innerW, "sync-unlink",
       Strings("Unlink this device"), { kind = "danger",
         action = function() imp:_syncUnlink() end }, fit)
   else
@@ -6378,7 +6377,7 @@ function Sync.home(imp, m, eng)
       Strings("Create sync account"), { kind = "primary",
         enabled = not eng:busy(),
         action = function() imp:_syncCreate() end }, fit)
-    cy = Sync.row(imp, m, px + pad, cy, innerW, "sync-link",
+    Sync.row(imp, m, px + pad, cy, innerW, "sync-link",
       Strings("Link this device"), { kind = "accent",
         action = function() imp:_syncView("link") end }, fit)
   end
@@ -6408,7 +6407,7 @@ function Sync.modOptions(imp, m, eng)
     fit.lines[1]) + math.floor(8 * m.s)
   cy = cy + Kit.textWrapped("micro", names, px + pad, cy, innerW, PAL.muted,
     fit.lines[2]) + math.floor(12 * m.s)
-  cy = Sync.row(imp, m, px + pad, cy, innerW, "sync-options-import",
+  Sync.row(imp, m, px + pad, cy, innerW, "sync-options-import",
     Strings("Import their options"), { kind = "primary",
       action = function() imp:_syncAnswerModOptions(true) end }, fit)
   done()
@@ -6425,8 +6424,8 @@ function Sync.unavailable(imp, m, msg)
     2 * pad + Kit.textHeight("button") + math.floor(22 * m.s), 1, 0,
     { { font = "small", str = msg, w = innerW, max = 4 } })
   local px, pw, cy, footY, done = Sync.title(imp, m, w, pad, fit)
-  cy = cy + Kit.textWrapped("small", msg, px + pad, cy, innerW,
-    PAL.detail, fit.lines[1]) + math.floor(10 * m.s)
+  Kit.textWrapped("small", msg, px + pad, cy, innerW,
+    PAL.detail, fit.lines[1])
   done()
   Sync.row(imp, m, px + pad, footY, pw - 2 * pad, "sync-close",
     Strings("Close"), { action = function() imp:_closeSync() end }, fit)

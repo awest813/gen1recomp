@@ -367,7 +367,7 @@ function BattleTransitionExtract.run(rom, cache, opts)
     local oppPal = load_pal(rom, mugPals[key])
     for _, gender in ipairs(GENDER_KEYS) do
       local pal = merge_player_strip(oppPal, playerPals[gender])
-      local rgba, vw, vh = bake_tilemap_rgba(bannerGfx, pal, vsMap, 32, 20, { opaque0 = true })
+      local rgba = bake_tilemap_rgba(bannerGfx, pal, vsMap, 32, 20, { opaque0 = true })
       cache:write(root .. "/vsbar_" .. key .. "_" .. gender .. ".rgba", rgba)
       -- banner strip alone (useful for debug / partial draws)
       if gender == "male" then

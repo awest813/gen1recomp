@@ -133,7 +133,6 @@ end
 
 function FieldEffectExtract.writeExtract(rom, cache, root, version)
   root = root or "data/generated/gba"
-  version = version or {}
   if not rom or not cache then return nil, "rom and cache required" end
 
   local effects = Versions.FIELD_EFFECTS or {}

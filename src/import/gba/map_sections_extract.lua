@@ -302,7 +302,7 @@ function MapSectionsExtract.getInfo(secId, mapId, floorNum)
       for id, info in pairs(MapSectionsExtract.SECTIONS) do
         local secKey = info.id:sub(8)
         if norm == secKey then
-          bestId, bestLen = id, #secKey
+          bestId = id
           break
         end
         if (norm:find("^" .. secKey) or norm:find(secKey, 1, true))

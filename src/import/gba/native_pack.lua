@@ -554,7 +554,7 @@ function NativePack.writeExtract(cache, root, bundles, grids, borders, pairNames
     for i, cell in ipairs(grid.cells or {}) do
       -- Prefer per-cell classify (mapColl + kind). midIndex is first-sight and
       -- wrongly solidifies indoor carpets that share outdoor TREE mid numbers.
-      local coll = 0xff
+      local coll
       if fromCell and behaviorOf and bundle then
         local beh = behaviorOf(bundle, cell.mid)
         coll = select(1, fromCell(cell.mid, cell.coll, beh, grid.kind))

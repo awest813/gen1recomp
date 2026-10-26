@@ -71,7 +71,7 @@ function M.run(rom,cache,opts)
     priority=berry.oam.priority,affineMode=berry.oam.affineMode,objMode=berry.oam.objMode,paletteTag=berry.paletteTag}
   man.palettes.berries=pals
   for key,name in pairs(TEXTS) do man.texts[key],man.irs[key]=text(c,c:off(name)) end
-  local off=c:off("gOtherText_ResultsOfBlending"); local _,irs=text(c,off)
+  local off=c:off("gOtherText_ResultsOfBlending")
   local bytes=0; repeat bytes=bytes+1 until c:u8(off+bytes-1)==255
   man.texts.berryUsed,man.irs.berryUsed=text(c,off+bytes)
   off=c:off("gOtherText_RPM"); bytes=0; repeat bytes=bytes+1 until c:u8(off+bytes-1)==255

@@ -286,7 +286,6 @@ function Tools.draw(imp, s, x, y, w, m, api)
         Kit.textCenter("micro", stat[2], cx, cy + 7 * sc, cw, PAL.muted)
         Kit.textCenterBold("small", tostring(ivs[stat[1]]), cx, cy + 9 * sc + microH, cw, perfect and PAL.green or PAL.heading)
       end
-      cy = cy + th + cg
     end
     Kit.text("micro", Kit.ellipsize("micro", "The original stays archived. Restore swaps it back.", w - 2 * pad),
       x + pad, y + total - pad - microH, PAL.muted)

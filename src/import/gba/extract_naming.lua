@@ -103,21 +103,6 @@ local function bake4bppSheet(tiles, pal, cols, rows, transparent0, keep)
   end)
 end
 
---- 16×16 OBJ: 4 tiles in row-major 2×2 (matches pret cursor.png).
-local function bakeObj16(tiles4, pal)
-  return encodePng(16, 16, function(x, y)
-    local tx, ty = math.floor(x / 8), math.floor(y / 8)
-    local ti = ty * 2 + tx
-    local base = ti * 32
-    local row = y % 8
-    local px = x % 8
-    local byte = tiles4[base + row * 4 + math.floor(px / 2) + 1] or 0
-    local idx = (px % 2 == 0) and (byte % 16) or math.floor(byte / 16) % 16
-    if idx == 0 then return 0, 0, 0, 0 end
-    return bgr555_to_rgba(pal[idx] or 0, false)
-  end)
-end
-
 local function bake4bppMap(tiles, palBanks, map, mapW, mapH, defaultBank, transparent0)
   defaultBank = defaultBank or 0
   local tileCount = math.floor(#tiles / 32)

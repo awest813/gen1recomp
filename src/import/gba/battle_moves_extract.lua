@@ -43,7 +43,6 @@ function BattleMovesExtract.decodeRow(bytes, off)
 end
 
 function BattleMovesExtract.extract(rom, opts)
-  opts = opts or {}
   local base = assert(Versions.BATTLE_MOVES, "battle_moves_extract: no BATTLE_MOVES key")
   local stride = assert(Versions.BATTLE_MOVE_SIZE, "battle_moves_extract: no BATTLE_MOVE_SIZE key")
   local count = assert(Versions.MOVES_COUNT, "battle_moves_extract: no MOVES_COUNT key")

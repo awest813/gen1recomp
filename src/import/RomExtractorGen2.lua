@@ -2163,7 +2163,7 @@ function RomExtractorGen2:extractTitle()
     local out = ImageWriter.blank(w, h, 0, 0, 0, 1)
     for y = 0, h - 1 do
       for x = 0, w - 1 do
-        local r, g, b, a = image:getPixel(x, y)
+        local r, _, _, a = image:getPixel(x, y)
         if a == 0 then
           out:setPixel(x, y, 0, 0, 0, 0)
         else
@@ -4416,7 +4416,6 @@ function RomExtractorGen2:extractItems()
   local attributes = self:symbol("ItemAttributes")
   local descriptions = self:symbol("ItemDescriptions")
   local pocketOrder = consts.pocketOrder or {}
-  local menuOrder = consts.itemMenuOrder or {}
   local heldOrder = consts.heldEffectOrder or {}
   local out = {
     generation = 2,

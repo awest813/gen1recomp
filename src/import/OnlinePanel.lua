@@ -1,11 +1,8 @@
 
 local Kit = require("src.ui.kit.Kit")
-local Theme = require("src.ui.kit.Theme")
 local Transition = require("src.ui.kit.Transition")
 local Strings = require("src.core.Strings")
 local GameVersion = require("src.core.GameVersion")
-
-local PAL = Theme.PAL
 
 local EMPTY = {}
 
@@ -23,25 +20,8 @@ local LEVELS = { false }
 for level = 5, 100, 5 do LEVELS[#LEVELS + 1] = level end
 OnlinePanel.LEVELS = LEVELS
 
-local STAGE_TEXT = {
-  waiting = "Waiting for a challenger",
-  ready = "Both trainers are picking a team",
-  battling = "Battle in progress",
-  ended = "Match over",
-}
-
-local TOUR_STAGE_TEXT = {
-  registering = "Waiting for trainers",
-  running = "Bracket in progress",
-  finished = "Tournament over",
-}
-
 OnlinePanel.SHOT_CLOCKS = { 3, 6, 9 }
 OnlinePanel.TOUR_MAX_PLAYERS = 16
-
-local function LV()
-  return require("src.import.LauncherView")
-end
 
 local Connect = require("src.online.Connect")
 

@@ -81,7 +81,7 @@ function Bw.poses(sprite,progress)
     signature=table.concat(signature,"/")
     if tick==intro then loopStart=#frames end
     if signature~=last or tick==intro then
-      local pixels,width,height,bounds=Composer.renderIndexed(sprite.graphics,sprite.normal,
+      local pixels,width,_,bounds=Composer.renderIndexed(sprite.graphics,sprite.normal,
         sprite.cells,sprite.nanr,sprite.nmcr,sprite.map,tick)
       local visible={}
       for offset,color in pairs(pixels) do

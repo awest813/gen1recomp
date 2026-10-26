@@ -168,7 +168,6 @@ function Tournaments.draw(imp, x, y, w, availH, m)
   local client = Client()
   local tour = client.tournament()
   local _, gap, tiny = Ui.pads(m)
-  local rowH = math.max(m.rowH, Kit.tapMin())
   local btnH = math.max(m.btnH, Kit.tapMin())
 
   if not tour then

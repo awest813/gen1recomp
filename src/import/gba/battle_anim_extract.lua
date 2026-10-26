@@ -440,21 +440,6 @@ end
 
 -- ── Sprite sheet extraction ───────────────────────────────────────────────
 
---- Decode one GBA 4bpp tile (32 bytes) to 8×8 RGBA pixels into `out[1..64*4]`.
-local function decode_4bpp_tile(rom_bytes, tile_off, pal, out, out_off)
-  for byte_i = 0, 31 do
-    local b    = rom_bytes[tile_off + byte_i + 1] or 0
-    local lo   = b % 16
-    local hi   = math.floor(b / 16) % 16
-    local px   = out_off + byte_i * 8
-    -- low nibble = left pixel (even x), high nibble = right pixel (odd x)
-    local cl = pal[lo]
-    local ch = pal[hi]
-    out[px + 1] = cl[1]; out[px + 2] = cl[2]; out[px + 3] = cl[3]; out[px + 4] = cl[4]
-    out[px + 5] = ch[1]; out[px + 6] = ch[2]; out[px + 7] = ch[3]; out[px + 8] = ch[4]
-  end
-end
-
 --- Decode GBA RGB555 palette bytes (32 bytes = 16 colors) to RGBA table.
 -- Color 0 is forced fully transparent (GBA OBJ convention).
 local function decode_palette(pal_bytes)
@@ -471,7 +456,7 @@ local function decode_palette(pal_bytes)
 end
 
 local bit = require("bit")
-local band, bor, bxor, rshift, lshift = bit.band, bit.bor, bit.bxor, bit.rshift, bit.lshift
+local band, bxor, rshift = bit.band, bit.bxor, bit.rshift
 
 local function pal_ints(pal_bytes, off)
   off = off or 0

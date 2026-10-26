@@ -48,7 +48,6 @@ end
 
 local CacheContract = require("src.import.CacheContract")
 local Transition = require("src.ui.kit.Transition")
-local COMMUNITY_URL = "https://bois.icu"
 
 local TAB_ORDER, TAB_AT = {}, {}
 local function tabOrder()
@@ -66,61 +65,6 @@ local function tabOrder()
   end
   return TAB_AT
 end
-local TRUST_WARNING = "if you did not get this from bryanthaboi's github " ..
-  "or a link from the discord that bryanthaboi himself posted, just know " ..
-  "it might have been tampered with. go to the discord to verify " ..
-  COMMUNITY_URL .. " (or click the logo above)"
--- "Split-screen ROM selector" first-run palette (matches the FirstRun mockup):
--- a dark neon arcade panel, one column per game.
--- Red, Blue, and Yellow share the same importer flow once listed in
--- GameVersion.VERSIONS.  Values are 0-255 RGB; alpha is applied per draw.
-local PAL = {
-  -- radial background gradient (bright navy at top-centre -> near black)
-  bgTop       = { 22, 34, 74 },   -- #16224a
-  bgBot       = { 7, 11, 29 },    -- #070b1d
-  -- neon accents, one per cartridge
-  red         = { 255, 60, 72 },  -- rgb(255,60,72)
-  blue        = { 70, 150, 255 }, -- rgb(70,150,255)
-  gold        = { 255, 203, 5 },  -- rgb(255,203,5)
-  -- card interiors (the dark colour the accent tint fades into)
-  cardRed     = { 20, 12, 26 },   -- #140c1a
-  cardBlue    = { 12, 18, 40 },   -- #0c1228
-  cardGold    = { 30, 22, 8 },    -- #1e1608
-  -- text
-  heading     = { 255, 255, 255 },
-  detail      = { 198, 208, 230 }, -- #c6d0e6
-  warning     = { 159, 176, 208 }, -- #9fb0d0
-  link        = { 127, 208, 255 }, -- #7fd0ff, the bois.icu link
-  linkHover   = { 191, 234, 255 }, -- #bfeaff, brighter on hover
-  white       = { 255, 255, 255 },
-  -- "Play" button (green gradient) + its ink
-  playTop     = { 62, 224, 138 }, -- #3ee08a
-  playBot     = { 22, 163, 90 },  -- #16a35a
-  playInk     = { 6, 32, 18 },    -- #062012
-  -- "Choose ROM" button (red gradient)
-  chooseTop   = { 255, 83, 97 },  -- #ff5361
-  chooseBot   = { 214, 31, 44 },  -- #d61f2c
-  -- disabled "Coming soon" button
-  disabled    = { 120, 132, 158 },
-  disabledInk = { 149, 161, 189 }, -- #95a1bd
-  -- redesign (FirstRun.dc.html): tab chrome, cards, status pills
-  green       = { 62, 224, 138 },  -- #3ee08a  "GOOD TO GO" / toggle-on / LOADED
-  greenDark   = { 22, 163, 90 },   -- #16a35a
-  labelGray   = { 143, 163, 200 }, -- #8fa3c8  letterspaced ROM / SAVE FILES labels
-  cardBorder  = { 120, 150, 220 }, -- rgba(120,150,220,*) card + divider strokes
-  slotBg      = { 9, 14, 34 },     -- rgba(9,14,34,0.6) save-slot row interior
-  modDot      = { 159, 180, 221 }, -- #9fb4dd  MODS chip grid dots + underline
-  -- tab-chip gradients (top -> bottom)
-  chipRedTop  = { 255, 92, 103 },  -- #ff5c67
-  chipRedBot  = { 181, 35, 42 },   -- #b5232a
-  chipBlueTop = { 106, 168, 255 }, -- #6aa8ff
-  chipBlueBot = { 30, 86, 168 },   -- #1e56a8
-  chipGoldTop = { 255, 217, 74 },  -- #ffd94a
-  chipGoldBot = { 199, 154, 0 },   -- #c79a00
-  chipModTop  = { 61, 74, 109 },   -- #3d4a6d
-  chipModBot  = { 32, 42, 69 },    -- #202a45
-  chipInkGold = { 58, 44, 0 },     -- #3a2c00  dark "Y" on the gold chip
-}
 
 -- ------- ROM cache location
 --
@@ -488,8 +432,6 @@ local PICKED_CART = "picked_cart.g1rcart"
 local ROM_BYTES_GEN1 = 1024 * 1024
 local ROM_BYTES_GEN2 = 2 * 1024 * 1024
 local ROM_BYTES_GEN3 = 16 * 1024 * 1024
--- Historical alias: Gen 1 helpers and tests still refer to ROM_BYTES.
-local ROM_BYTES = ROM_BYTES_GEN1
 
 local function isAcceptedRomSize(n)
   return n == ROM_BYTES_GEN1 or n == ROM_BYTES_GEN2 or n == ROM_BYTES_GEN3

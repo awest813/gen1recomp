@@ -2,7 +2,6 @@ local Kit = require("src.ui.kit.Kit")
 local Theme = require("src.ui.kit.Theme")
 local Transition = require("src.ui.kit.Transition")
 local Strings = require("src.core.Strings")
-local Icons = require("src.ui.kit.Icons")
 local Toast = require("src.ui.kit.Toast")
 local UI = {}
 local PAL = Theme.PAL
