@@ -84,14 +84,23 @@ battle.
   in the browser. It allocated 1024², 1536² and 2048² maps. A web/mobile
   profile like PotatoVoxel's Brick would suit it.
 - **Terrarium** requires `src.render.GBCFX`, which doesn't exist in this
-  engine. It should guard the require with `pcall` or drop it.
+  engine. The engine now hands it an inert stand-in (phase 4), but the
+  require should still be guarded with `pcall` or dropped upstream.
 
-### Phase 4: engine guard rails (this repo, medium, optional)
-- A development warning when one mod creates more than N canvases or images
-  in a second. PotatoVoxel's thrash cost a profiler session to find, and a
-  one-line warning naming the call site would have shown it immediately.
-  The `newCanvas` counter used here (wrap `love.graphics.newCanvas`, key by
-  `debug.getinfo(2, "Sl")`) is the starting point.
+### Phase 4: engine guard rails (this repo; done)
+- Done: `src/mods/ResourceGuard.lua` warns once, naming the file and line,
+  when one mod call site creates more than 20 canvases, images, shaders,
+  meshes or sprite batches inside a second. It is installed on any boot with
+  mods; engine calls pass through uncounted.
+- Done: a mod that requires the retired `src.render.GBCFX` (Terrarium) gets
+  an inert stand-in whose calls do nothing, plus one warning naming the mod,
+  instead of a hard error in its handler (`Loader.RETIRED`).
+- Done: `src/render/ShaderPrecision.lua` retries a shader that the browser
+  refuses with "Precisions of uniform 'x' differ between VERTEX and FRAGMENT
+  shaders", qualifying the shared uniforms with `LOVE_HIGHP_OR_MEDIUMP`
+  (the fix the audit hand-applied to Terrarium's four terrain shaders). A
+  shader that compiles is untouched and pays nothing.
+- Pinned by `tests/engine/mod_voxel_compat_test.lua`.
 
 ## Not web issues
 

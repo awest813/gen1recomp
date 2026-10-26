@@ -233,6 +233,37 @@ end
 -- the genuine require, captured before the shim can replace it
 local rawRequire = require
 
+-- Engine modules that existed once and are gone.  A mod written against the
+-- old engine still requires them (Terrarium requires src.render.GBCFX when it
+-- toggles its voxel camera), and a missing module is a hard error in the
+-- middle of whatever handler asked.  The mod gets an inert stand-in instead:
+-- every field is a function that does nothing, which is exactly what the old
+-- call amounts to now that its replacement owns the job.  Reported once per
+-- mod and name so the author still hears about it.
+local RETIRED = {
+  ["src.render.GBCFX"] = "ShaderFX (Options > Shader FX) replaced it",
+}
+Loader.RETIRED = RETIRED
+
+local function noop() end
+local INERT = setmetatable({}, {
+  __index = function() return noop end,
+  __newindex = function() end,
+})
+
+local function retiredModule(name, owner)
+  local why = RETIRED[name]
+  if not why then return nil end
+  local id = type(owner) == "string" and owner or "mod"
+  local key = "retired|" .. id .. "|" .. name
+  if not devShim.warned[key] then
+    devShim.warned[key] = true
+    Logger.warn("[%s] requires %s, which this engine no longer has (%s); "
+      .. "its calls do nothing", id, name, why)
+  end
+  return INERT
+end
+
 -- a module the loader pulls in late on the mod's behalf.  The mod asked for
 -- a facade, not for this module nor for whatever it drags in, so the whole
 -- load runs at shim depth and neither level is attributed to the mod.
@@ -301,6 +332,10 @@ function Loader:_installDevShim()
           return adapter
         end
       end
+    end
+    if RETIRED[name] and package.loaded[name] == nil
+        and (Runtime.currentMod or Runtime.modRequire or callerIsMod(3)) then
+      return retiredModule(name, Runtime.currentMod or Runtime.modRequire)
     end
     if delegateIsStock then
       -- a userdata here may be require's own "loading" sentinel, whose
@@ -2040,6 +2075,8 @@ function Loader:load(data, opts)
   -- mods pays nothing.
   if self.dev or next(self.mods) ~= nil then
     self:_installDevShim()
+    -- names a mod call site that rebuilds canvases/images every frame
+    require("src.mods.ResourceGuard").install()
   end
   for _, mod in ipairs(ordered) do
     -- a mod ahead of this one may have failed and taken its dependents with

@@ -847,6 +847,11 @@ function love.load(args)
 
   require("src.core.RequireGuard").capture()
 
+  -- GLSL ES refuses a program whose stages give one uniform different
+  -- default precisions; retry those with the uniforms qualified (mods'
+  -- desktop-written shaders, in the browser).  Free when a shader compiles.
+  require("src.render.ShaderPrecision").install()
+
   -- Hang gen1tls on love.system before mods boot.  Android already has tls*
   -- from JNI; this is the desktop half.  No DLL / no FFI is fine -- ws://
   -- rooms still work, wss:// just won't.

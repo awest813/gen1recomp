@@ -233,6 +233,7 @@ tests/engine/game3_virtual_objects_test.lua
 tests/engine/gate_gen2_mod_facade.lua
 tests/engine/gate_gen3_mod_api.lua
 tests/engine/gate_gen3_mod_facade.lua
+tests/engine/mod_voxel_compat_test.lua
 tests/engine/gen1_credits_mon_lag_bug2786.lua
 tests/engine/gen1_field_fx_palette_h13.lua
 tests/engine/gen1_hof_no_skip_bug2785.lua
