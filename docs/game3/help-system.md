@@ -31,7 +31,8 @@ and falls back to the bundled constants.
 Run from the project root:
 
 ```sh
-luajit tests/game3_help_test.lua
+luajit tests/engine/game3_help_window_test.lua
+luajit tests/engine/game3_help_window_opcode_test.lua
 luajit tests/game3_flags_extract_preserve_test.lua
 luajit tests/game3_help_rom_test.lua /path/to/firered.gba
 ```
