@@ -71,6 +71,12 @@ function Launcher.new(onLaunch, opts)
   end
   self.selected = (opts.initialGame and self.ready[opts.initialGame]
     and opts.initialGame) or first or self.games[1]
+  -- ask the self-updater (src/update/Check.lua) whether a release is out;
+  -- it works on a worker thread and is a no-op where it cannot run
+  if not opts.noUpdateCheck then
+    local okC, Check = pcall(require, "src.update.Check")
+    if okC then pcall(Check.start) end
+  end
   -- Dev harness: import a ROM from a path at startup, so a scripted run can
   -- exercise the whole import flow without a picker or a drag and drop.
   if opts.importPath then self:startPath(opts.importPath) end
@@ -319,6 +325,33 @@ function Launcher:setOption(key, value)
   end
 end
 
+-- ---------------------------------------------------------------- updates
+
+-- What the update chip says and does right now, or nil when there is nothing
+-- to act on.  Returns label, action (a function or nil), enabled.
+function Launcher:updateChip()
+  local okC, Check = pcall(require, "src.update.Check")
+  if not okC then return nil end
+  local okS, st = pcall(Check.state)
+  if not okS or type(st) ~= "table" then return nil end
+  local status = st.status
+  if status == "available" then
+    return "Update to " .. tostring(st.latest or "new version"),
+      function() Check.download() end, true
+  elseif status == "downloading" or status == "full_downloading" then
+    return ("Downloading %d%%"):format(math.floor((st.progress or 0) * 100)), nil, false
+  elseif status == "ready" then
+    -- Boot.lua mounts the downloaded payload on the next start
+    return "Restart to update", function() love.event.quit("restart") end, true
+  elseif status == "needs_full" or status == "full_ready" then
+    local okA, action = pcall(Check.fullUpdateAction)
+    if okA and action then
+      return action.label, function() Check.performFullUpdate() end, true
+    end
+  end
+  return nil
+end
+
 function Launcher:quit()
   local okP, Platform = pcall(require, "src.core.Platform")
   if okP and Platform.systemQuit and Platform.systemQuit() then return end
@@ -531,8 +564,53 @@ function Launcher:drawSettings(x, y, w, h, s)
     .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
 end
 
+function Launcher:drawNotes(x, y, w, h, s)
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  if not self.notesText then
+    local okP, PatchNotes = pcall(require, "src.update.PatchNotes")
+    local okC, Check = pcall(require, "src.update.Check")
+    local body, ver
+    if okP then
+      local okB, b, v = pcall(PatchNotes.body, okC and Check or nil)
+      if okB then body, ver = b, v end
+    end
+    self.notesText = body or "Unable to fetch patch notes."
+    self.notesVersion = ver
+  end
+  Kit.textBold("title", "What's new" .. (self.notesVersion
+    and ("  v" .. tostring(self.notesVersion)) or ""), cx, cy, PAL.heading)
+  cy = cy + Kit.textHeight("title") + math.floor(12 * s)
+  local viewH = y + h - pad - cy
+  -- wrapped once per width, not per frame
+  local wrapW = cw - Kit.scrollGutter(s)
+  if self.notesWrapW ~= wrapW or not self.notesLines then
+    local lines = {}
+    for raw in (self.notesText .. "\n"):gmatch("(.-)\r?\n") do
+      local line = raw:gsub("^#+%s*", ""):gsub("%*%*", "")
+      for _, wl in ipairs(Kit.wrapLines("small", line, wrapW) or { "" }) do
+        lines[#lines + 1] = wl
+      end
+    end
+    self.notesLines, self.notesWrapW = lines, wrapW
+  end
+  local lines = self.notesLines
+  local lh = Kit.textHeight("small") + math.floor(2 * s)
+  local maxAt = Kit.scrollExtent(#lines * lh, viewH)
+  self.notesScroll = Kit.scrollInput(self.notesScroll or 0, maxAt, cx, cy, cw, viewH)
+  local py = Kit.scrollBegin(cx, cy, cw, viewH, self.notesScroll, maxAt)
+  local first = math.max(1, math.floor((self.notesScroll or 0) / lh))
+  for i = first, math.min(#lines, first + math.ceil(viewH / lh) + 1) do
+    Kit.text("small", lines[i], cx, py + (i - 1) * lh, PAL.text)
+  end
+  Kit.scrollEnd(cx, cy, cw, viewH, self.notesScroll, maxAt, PAL.surface)
+end
+
 function Launcher:drawDetail(x, y, w, h, s)
   if self.page == "settings" then return self:drawSettings(x, y, w, h, s) end
+  if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
   local v = self.selected
   if not v then return end
   local info = GameVersion.info(v)
@@ -713,12 +791,37 @@ function Launcher:draw()
     self:queue(function() self:quit() end)
   end
   local sw = math.max(Kit.tapMin(), math.floor(110 * s))
-  if Kit.button(x + w - qw - math.floor(8 * s) - sw, by, sw, bh,
+  local hgap = math.floor(8 * s)
+  local rx = x + w - qw - hgap - sw
+  if Kit.button(rx, by, sw, bh,
       self.page == "settings" and "Close" or "Settings",
       { id = "settings", active = self.page == "settings" }) then
     self:queue(function()
       self.page = self.page ~= "settings" and "settings" or nil
     end)
+  end
+  local nw = math.max(Kit.tapMin(), Kit.textWidth("small", "What's new") + math.floor(28 * s))
+  local titleRight = x + Kit.textWidth("headline", Version.NAME or "PK:GB") + hgap
+  if rx - hgap - nw >= titleRight then
+    rx = rx - hgap - nw
+    if Kit.button(rx, by, nw, bh, self.page == "notes" and "Close" or "What's new",
+        { id = "notes", font = "small", active = self.page == "notes" }) then
+      self:queue(function()
+        self.page = self.page ~= "notes" and "notes" or nil
+        self.notesScroll = 0
+      end)
+    end
+  end
+  local upLabel, upAction, upEnabled = self:updateChip()
+  if upLabel then
+    local uw = Kit.textWidth("small", upLabel) + math.floor(28 * s)
+    if rx - hgap - uw >= titleRight then
+      if Kit.button(rx - hgap - uw, by, uw, bh, upLabel,
+          { id = "update", font = "small", kind = "warn", glow = upEnabled,
+            enabled = upEnabled }) and upAction then
+        self:queue(upAction)
+      end
+    end
   end
   y = y + hh + math.floor(14 * s)
 

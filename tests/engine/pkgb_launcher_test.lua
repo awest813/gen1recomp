@@ -289,4 +289,50 @@ check(l.message and l.message.text:find("MiB", 1, true) ~= nil,
 eq(io.open(rom, "rb"), nil, "and its temporary copy is removed")
 for k, v in pairs(realSys) do love.system[k] = v end
 
+-- ------------------------------------------------ updater and notes
+local checkState = { status = "uptodate" }
+local downloads, fullUpdates = 0, 0
+package.loaded["src.update.Check"] = {
+  start = function() end,
+  state = function() return checkState end,
+  download = function() downloads = downloads + 1 end,
+  fullUpdateAction = function() return { label = "Download full update" } end,
+  performFullUpdate = function() fullUpdates = fullUpdates + 1 end,
+}
+package.loaded["src.update.PatchNotes"] = {
+  body = function() return "## Issues closed\n\n- **#12** cart padding", "1.4.2" end,
+}
+l = fresh()
+eq(l:updateChip(), nil, "no chip when the game is up to date")
+checkState = { status = "available", latest = "1.4.2" }
+local label, action, enabled = l:updateChip()
+eq(label, "Update to 1.4.2", "a new release is offered by version")
+check(enabled and action, "and can be started")
+action()
+eq(downloads, 1, "which downloads the update")
+checkState = { status = "downloading", progress = 0.42 }
+label, action, enabled = l:updateChip()
+eq(label, "Downloading 42%", "the download shows its progress")
+check(not enabled and action == nil, "and cannot be pressed twice")
+checkState = { status = "ready" }
+eq(select(1, l:updateChip()), "Restart to update", "a downloaded update asks for a restart")
+checkState = { status = "needs_full" }
+label, action = l:updateChip()
+eq(label, "Download full update", "a full update names the platform's action")
+action()
+eq(fullUpdates, 1, "and performs it")
+checkState = { status = "available", latest = "1.4.2" }
+window(1280, 720)
+local ut = drawText(l)
+check(ut:find("Update to 1.4.2", 1, true) ~= nil, "the chip is on screen")
+l.page = "notes"
+local nt = drawText(l)
+check(nt:find("v1.4.2", 1, true) and nt:find("cart padding", 1, true),
+  "What's new shows the patch notes for that version")
+check(not nt:find("**", 1, true) and not nt:find("##", 1, true),
+  "with the markdown markers stripped")
+local wrapped = l.notesLines
+drawText(l)
+check(l.notesLines == wrapped, "and wraps them once, not every frame")
+
 T.finish("pkgb launcher")
