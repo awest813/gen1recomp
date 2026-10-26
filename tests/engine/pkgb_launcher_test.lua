@@ -221,7 +221,6 @@ eq(#imported, 1, "a save for a game without its ROM is refused")
 -- options; start this section from a known options table)
 l = fresh()
 savedOptions, saves = { musicVol = 5, sfxVol = 7, videoMode = "windowed" }, 0
-l.opts_ = nil
 eq(l:options().musicVol, 5, "settings read the saved options")
 l:setOption("musicVol", 6)
 eq(savedOptions.musicVol, 6, "a change is written straight to the options")
@@ -421,5 +420,130 @@ check(drawText(l):find("Use classic", 1, true) ~= nil, "Settings offers the clas
 l:setOption("launcherUi", "classic")
 eq(savedOptions.launcherUi, "classic", "and remembers the switch")
 check(drawText(l):find("Keep this one", 1, true) ~= nil, "which can be undone")
+
+-- ------------------------------------------------------------------ carts
+local cartSlots = { cartcreated = {}, active = {}, deleted = {} }
+local SD = package.loaded["src.core.SaveData"]
+SD.listCartSlots = function(id)
+  if id ~= "hard" then return {} end
+  return { { id = "c1", exists = true, name = "HARD", meta = { timeText = "1:00",
+    badges = 1, dexCount = 9 } } }
+end
+SD.activeCartSlot = function(id) return cartSlots.active[id] or "c1" end
+SD.setActiveCartSlot = function(id, slot) cartSlots.active[id] = slot return true end
+SD.createCartSlot = function(id)
+  cartSlots.cartcreated[#cartSlots.cartcreated + 1] = id
+  return "c9"
+end
+SD.deleteCartSlot = function(id, slot)
+  cartSlots.deleted[#cartSlots.deleted + 1] = id .. ":" .. slot
+  return true
+end
+SD.renameCartSlot = function() return true end
+local installedCarts = {
+  { id = "hard", title = "Hard Mode", base = "gold", version = "1.2.0", author = "maker",
+    seal = "sealed" },
+  { id = "pinned", title = "Needs Mods", base = "gold", seal = "sealed" },
+}
+local cartCalls = { installed = {}, removed = {} }
+package.loaded["src.carts.CartStore"] = {
+  listFor = function(version)
+    local out = {}
+    for _, c in ipairs(installedCarts) do if c.base == version then out[#out + 1] = c end end
+    return out
+  end,
+  get = function(id) return { id = id } end,
+  install = function(bytes)
+    cartCalls.installed[#cartCalls.installed + 1] = bytes
+    if bytes == "junk" then return nil, "BAD CART" end
+    installedCarts[#installedCarts + 1] = { id = "fresh", title = "Fresh", base = "gold" }
+    return { id = "fresh", title = "Fresh", base = "gold" }
+  end,
+  uninstall = function(id)
+    cartCalls.removed[#cartCalls.removed + 1] = id
+    for i, c in ipairs(installedCarts) do
+      if c.id == id then table.remove(installedCarts, i) break end
+    end
+    return true
+  end,
+}
+package.loaded["src.mods.Loader"] = {
+  planCart = function(cart)
+    if cart and cart.id == "pinned" then
+      return { refused = true, message = "Needs Mods: missing base-mod" }
+    end
+    return { refused = false }
+  end,
+}
+window(1280, 720)
+savedOptions.activeCart = nil
+l = fresh()
+l.selected = "gold"
+check(drawText(l):find("Carts", 1, true) ~= nil, "an imported game offers its Carts page")
+eq(l:activeCart("gold"), nil, "a game plays as the original until a cart is chosen")
+l.page = "carts"
+local ct = drawText(l)
+check(ct:find("The original game", 1, true) and ct:find("Hard Mode", 1, true),
+  "the Carts page lists the original and each installed cart")
+check(ct:find("Install cart", 1, true) ~= nil, "and offers to install one")
+l:selectCart("gold", "hard")
+eq(savedOptions.activeCart and savedOptions.activeCart.gold, "hard",
+  "the chosen cart is remembered for the next start")
+eq(#l:slotsFor("gold"), 1, "a cart lists its own saves")
+eq(l:slotsFor("gold")[1].id, "c1", "not the original game's")
+l.page = nil
+local pt = drawText(l)
+check(pt:find("Playing as Hard Mode", 1, true) ~= nil, "the game panel names the cart")
+launched = {}
+local launchedCart
+l.onLaunch = function(version, cartId) launched[#launched + 1] = version; launchedCart = cartId end
+l:play("gold", "c1")
+check(launched[1] == "gold" and launchedCart == "hard", "Continue boots the game as the cart")
+eq(cartSlots.active.hard, "c1", "on the cart's chosen save")
+-- SaveData's own writes (a new slot's registry) replace its options table
+local replaced = {}
+for k, v in pairs(savedOptions) do replaced[k] = v end
+replaced.cartSlots = { hard = { list = { "c9" } } }
+savedOptions = replaced
+l:newGame("gold")
+eq(cartSlots.cartcreated[1], "hard", "New game makes the save inside the cart")
+check(savedOptions.cartSlots and savedOptions.cartSlots.hard,
+  "and launching never writes back an older copy of the options over SaveData's")
+l.selectedSlot[l:scopeKey("gold")] = "c1"
+l:deleteSave(); l:deleteSave()
+eq(cartSlots.deleted[1], "hard:c1", "a cart save is deleted from the cart")
+l:importSave("/x.sav", "x.sav")
+check(l.message.kind == "error", "a .sav does not import into a cart")
+
+launched, launchedCart = {}, nil
+l:selectCart("gold", "pinned")
+l:play("gold", "c1")
+eq(#launched, 0, "a cart the mod loader would refuse does not start")
+check(l.message.text:find("missing base-mod", 1, true) ~= nil, "and says what is missing")
+
+l:selectCart("gold", nil)
+eq(l:scopeKey("gold"), "gold", "choosing the original goes back to its saves")
+eq(savedOptions.activeCart, nil, "and forgets the cart")
+
+l:installCart("cartbytes", "fresh.g1rcart")
+eq(l:activeCart("gold"), "fresh", "an installed cart is chosen for its game")
+check(l.message.text:find("Fresh", 1, true) ~= nil, "and named")
+l:installCart("junk", "junk.g1rcart")
+check(l.message.kind == "error" and l.message.text:find("BAD CART", 1, true), "a bad cart is refused")
+local fresh2 = l:cartsFor("gold")[3]
+l:removeCart("gold", fresh2)
+eq(#cartCalls.removed, 0, "the first Remove only arms")
+l:removeCart("gold", fresh2)
+eq(cartCalls.removed[1], "fresh", "the second uninstalls")
+eq(l:activeCart("gold"), nil, "and the game goes back to the original")
+local cartFile = { getFilename = function() return "C:\\carts\\x.g1rcart" end,
+  open = function() end, close = function() end, read = function() return "cartbytes" end }
+l:filedropped(cartFile)
+eq(#cartCalls.installed, 3, "a dropped .g1rcart installs as a cart")
+window(390, 844)
+l.page = "carts"
+drawText(l)
+l.page = nil
+drawText(l)
 
 T.finish("pkgb launcher")

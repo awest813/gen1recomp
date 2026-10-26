@@ -31,6 +31,7 @@ Launcher.CREDIT = "Based on the Pokemon Gen 1 Recompilation Project by BOIS "
 local ROM_KIND = { label = "Game Boy ROM",
   exts = { "gb", "gbc", "gba", "zip", "7z" } }
 local MOD_KIND = { label = "Mod package", exts = { "zip" } }
+local CART_KIND = { label = "Custom cart", exts = { "g1rcart" } }
 
 -- ------------------------------------------------------------------ model
 
@@ -62,10 +63,19 @@ function Launcher.new(onLaunch, opts)
     message = nil,       -- { text, kind = "error" | "info" }
     job = nil,           -- the running ImportJob
     selectedSlot = {},
+    cart = {},           -- version -> chosen custom cart id (nil: the original)
     listScroll = 0,
     slotScroll = 0,
   }, Launcher)
   self:refresh()
+  local okS, SaveData = pcall(require, "src.core.SaveData")
+  local okO, saved = false, nil
+  if okS then okO, saved = pcall(SaveData.loadOptions) end
+  if okO and type(saved) == "table" and type(saved.activeCart) == "table" then
+    for version, id in pairs(saved.activeCart) do
+      if type(id) == "string" then self.cart[version] = id end
+    end
+  end
   local first
   for _, v in ipairs(self.games) do
     if self.ready[v] then first = first or v end
@@ -94,23 +104,179 @@ function Launcher:refresh()
   self.slots = {}
 end
 
-function Launcher:slotsFor(version)
-  local list = self.slots[version]
-  if list then return list end
+-- ------------------------------------------------------------------ carts
+
+-- Installed custom carts for a game (src/carts/CartStore.lua), cached.
+function Launcher:cartsFor(version)
+  self.cartRows = self.cartRows or {}
+  local rows = self.cartRows[version]
+  if rows then return rows end
+  local ok, CartStore = pcall(require, "src.carts.CartStore")
+  local okL, got = false, nil
+  if ok then okL, got = pcall(CartStore.listFor, version) end
+  rows = (okL and type(got) == "table") and got or {}
+  self.cartRows[version] = rows
+  return rows
+end
+
+-- The cart a game plays as, or nil for the original; a remembered cart that
+-- is no longer installed reads as the original.
+function Launcher:activeCart(version)
+  local id = self.cart[version]
+  if not id then return nil end
+  for _, row in ipairs(self:cartsFor(version)) do
+    if row.id == id then return id, row end
+  end
+  return nil
+end
+
+-- Saves are kept per game, and per cart inside a game: the key both caches
+-- (self.slots, self.selectedSlot) are indexed by.
+function Launcher:scopeKey(version)
+  local cart = self:activeCart(version)
+  return cart and (version .. "#" .. cart) or version
+end
+
+-- SaveData's slot calls for the game's current scope.
+function Launcher:store(version)
+  local SaveData = require("src.core.SaveData")
+  local cart = self:activeCart(version)
+  if cart then
+    return {
+      list = function() return SaveData.listCartSlots(cart) end,
+      active = function() return SaveData.activeCartSlot(cart) end,
+      setActive = function(id) return SaveData.setActiveCartSlot(cart, id) end,
+      create = function() return SaveData.createCartSlot(cart) end,
+      delete = function(id) return SaveData.deleteCartSlot(cart, id) end,
+      rename = function(id, name) return SaveData.renameCartSlot(cart, id, name) end,
+      cart = cart,
+    }
+  end
+  return {
+    list = function() return SaveData.listSlots(version) end,
+    active = function() return SaveData.activeSlot(version) end,
+    setActive = function(id) return SaveData.setActiveSlot(version, id) end,
+    create = function() return SaveData.createSlot(version) end,
+    delete = function(id) return SaveData.deleteSlot(version, id) end,
+    rename = function(id, name) return SaveData.renameSlot(version, id, name) end,
+  }
+end
+
+-- What the mod loader will make of a cart's pinned mods: nil when it can
+-- run, else the reason it will be refused.
+function Launcher:cartProblem(version)
+  local cart = self:activeCart(version)
+  if not cart then return nil end
+  self.cartPlans = self.cartPlans or {}
+  local plan = self.cartPlans[cart]
+  if plan == nil then
+    plan = false
+    pcall(function()
+      local installed = {}
+      for _, row in ipairs(self:modsFor(version)) do
+        if row.manifest then
+          installed[row.id] = { id = row.id, version = row.manifest.version }
+        end
+      end
+      local report = require("src.mods.Loader").planCart(
+        require("src.carts.CartStore").get(cart), installed)
+      if report and report.refused then
+        plan = tostring(report.message or "this cart cannot start")
+        -- the message leads with the cart's title, which the panel already shows
+        local title = tostring(report.title or "") .. ": "
+        if plan:sub(1, #title) == title then plan = plan:sub(#title + 1) end
+      end
+    end)
+    self.cartPlans[cart] = plan
+  end
+  return plan or nil
+end
+
+function Launcher:selectCart(version, id)
+  self.cart[version] = id
+  self.cartPlans = nil
+  self:rememberCarts()
+end
+
+function Launcher:rememberCarts()
+  local opts = self:options()
+  local map = {}
+  for version, id in pairs(self.cart) do
+    if self:activeCart(version) == id then map[version] = id end
+  end
+  opts.activeCart = next(map) ~= nil and map or nil
   local ok, SaveData = pcall(require, "src.core.SaveData")
+  if ok then pcall(SaveData.saveOptions, opts) end
+end
+
+function Launcher:installCart(data, name)
+  local CartStore = require("src.carts.CartStore")
+  local ok, cart, err = pcall(CartStore.install, data)
+  if not ok then cart, err = nil, cart end
+  self.cartRows, self.cartPlans = nil, nil
+  if not cart then
+    return self:say("Could not install " .. tostring(name or "that cart") .. ": "
+      .. tostring(err), "error")
+  end
+  if cart.base and self.ready[cart.base] ~= nil then
+    self.selected = cart.base
+    self:selectCart(cart.base, cart.id)
+  end
+  local info = cart.base and GameVersion.info(cart.base)
+  self:say(("Installed %s%s."):format(tostring(cart.title or cart.id),
+    info and (" for " .. info.displayName) or ""), "info")
+end
+
+function Launcher:removeCart(version, row)
+  local key = "cart:" .. tostring(row.id)
+  if self.armedDelete ~= key then
+    self.armedDelete = key
+    return self:say("Press Remove again to uninstall " .. tostring(row.title)
+      .. ". Its saves are kept.", "info")
+  end
+  self.armedDelete = nil
+  local ok, done, err = pcall(require("src.carts.CartStore").uninstall, row.id)
+  if self.cart[version] == row.id then self.cart[version] = nil end
+  self.cartRows, self.cartPlans = nil, nil
+  if not (ok and done) then
+    return self:say("Could not remove " .. tostring(row.title) .. ": "
+      .. tostring(ok and err or done), "error")
+  end
+  self:say(tostring(row.title) .. " was removed.", "info")
+end
+
+function Launcher:pickCart()
+  if self:requestHostPick("cart") then return end
+  local ok, FilePicker = pcall(require, "src.core.FilePicker")
+  if not (ok and FilePicker.available()) then
+    return self:say("Drop a .g1rcart file onto this window to install it.", "info")
+  end
+  local path = FilePicker.open("Choose a custom cart", CART_KIND)
+  if not path then return end
+  local data, err = FilePicker.read(path)
+  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
+  self:installCart(data, FilePicker.basename(path))
+end
+
+function Launcher:slotsFor(version)
+  local key = self:scopeKey(version)
+  local list = self.slots[key]
+  if list then return list end
+  local okS, store = pcall(self.store, self, version)
   list = {}
-  if ok then
-    local okL, got = pcall(SaveData.listSlots, version)
+  if okS then
+    local okL, got = pcall(store.list)
     if okL and type(got) == "table" then
       for _, s in ipairs(got) do
         if s.exists then list[#list + 1] = s end
       end
     end
   end
-  self.slots[version] = list
-  if not self.selectedSlot[version] and list[1] then
-    local okA, active = pcall(SaveData.activeSlot, version)
-    self.selectedSlot[version] = okA and active or list[1].id
+  self.slots[key] = list
+  if not self.selectedSlot[key] and list[1] then
+    local okA, active = false, nil
+    if okS then okA, active = pcall(store.active) end
+    self.selectedSlot[key] = okA and active or list[1].id
   end
   return list
 end
@@ -177,6 +343,14 @@ function Launcher:pollHostPick()
     self.pendingPick = nil
     local FilePicker = require("src.core.FilePicker")
     local name = FilePicker.basename(path)
+    if kind == "cart" then
+      local data, err = FilePicker.read(path)
+      pcall(os.remove, path)
+      if not data then
+        return self:say("Could not read that file: " .. tostring(err), "error")
+      end
+      return self:installCart(data, name)
+    end
     if kind == "mod" then
       local data, err = FilePicker.read(path)
       pcall(os.remove, path)
@@ -242,7 +416,7 @@ function Launcher:toggleMod(version, row)
   local ModLibrary = require("src.mods.ModLibrary")
   local ok, err = pcall(ModLibrary.setEnabled, row.id, not row.enabled, version)
   if not ok then return self:say("Could not change that mod: " .. tostring(err), "error") end
-  self.modRows = nil
+  self.modRows, self.cartPlans = nil, nil
   self:say(("%s is %s for %s. It applies the next time the game starts."):format(
     row.name, row.enabled and "off" or "on", GameVersion.info(version).displayName), "info")
 end
@@ -256,7 +430,7 @@ function Launcher:removeMod(row)
   self.armedDelete = nil
   local ModLibrary = require("src.mods.ModLibrary")
   local ok, done, err = pcall(ModLibrary.uninstall, row.folder)
-  self.modRows = nil
+  self.modRows, self.cartPlans = nil, nil
   if not (ok and done) then
     return self:say("Could not remove " .. tostring(row.name) .. ": "
       .. tostring(ok and err or done), "error")
@@ -268,7 +442,7 @@ function Launcher:installMod(data, name)
   local ModLibrary = require("src.mods.ModLibrary")
   local ok, manifest, err = pcall(ModLibrary.installZip, data, name)
   if not ok then manifest, err = nil, manifest end
-  self.modRows = nil
+  self.modRows, self.cartPlans = nil, nil
   if not manifest then
     return self:say("Could not install " .. tostring(name or "that mod") .. ": "
       .. tostring(err), "error")
@@ -295,17 +469,22 @@ function Launcher:pickMod()
 end
 
 function Launcher:play(version, slotId)
-  local SaveData = require("src.core.SaveData")
-  if slotId then
-    SaveData.setActiveSlot(version, slotId)
-  end
+  local problem = self:cartProblem(version)
+  if problem then return self:say(problem, "error") end
+  local store = self:store(version)
+  if slotId then store.setActive(slotId) end
+  -- the next start opens on this game, playing as this cart
+  local opts = self:options()
+  opts.lastVersion = version
+  self:rememberCarts()
   self.launched = version
-  if self.onLaunch then self.onLaunch(version, nil, {}) end
+  if self.onLaunch then self.onLaunch(version, store.cart, {}) end
 end
 
 function Launcher:newGame(version)
-  local SaveData = require("src.core.SaveData")
-  local id = SaveData.createSlot(version)
+  local problem = self:cartProblem(version)
+  if problem then return self:say(problem, "error") end
+  local id = self:store(version).create()
   if not id then return self:say("Could not create a save slot.", "error") end
   self:play(version, id)
 end
@@ -315,7 +494,7 @@ end
 local SAVE_KIND = { label = "Save file", exts = { "sav", "srm", "sa1", "dsv", "sgm" } }
 
 function Launcher:selectedSaveId(version)
-  return self.selectedSlot[version or self.selected]
+  return self.selectedSlot[self:scopeKey(version or self.selected)]
 end
 
 -- `source` is a dropped LÖVE file, an absolute path, or raw bytes.
@@ -323,6 +502,9 @@ function Launcher:importSave(source, name)
   local v = self.selected
   if not (v and self.ready[v]) then
     return self:say("Import the game's ROM before importing a save for it.", "error")
+  end
+  if self:activeCart(v) then
+    return self:say("Save files import into the original game, not a cart.", "error")
   end
   local SaveFileIO = require("src.import.SaveFileIO")
   local ok, result = SaveFileIO.importToSlot(source, v)
@@ -347,6 +529,9 @@ end
 function Launcher:exportSave()
   local v, id = self.selected, self:selectedSaveId()
   if not (v and id) then return end
+  if self:activeCart(v) then
+    return self:say("Only the original game's saves export as .sav files.", "error")
+  end
   local SaveData = require("src.core.SaveData")
   SaveData.setActiveSlot(v, id)
   local SaveFileIO = require("src.import.SaveFileIO")
@@ -364,9 +549,9 @@ function Launcher:deleteSave()
     return self:say("Press Delete again to remove this save for good.", "error")
   end
   self.armedDelete = nil
-  local SaveData = require("src.core.SaveData")
-  local ok, err = SaveData.deleteSlot(v, id)
-  self.slots[v], self.selectedSlot[v] = nil, nil
+  local key = self:scopeKey(v)
+  local ok, err = self:store(v).delete(id)
+  self.slots[key], self.selectedSlot[key] = nil, nil
   if ok == false then return self:say("Could not delete: " .. tostring(err), "error") end
   self:say("Save deleted.", "info")
 end
@@ -376,9 +561,8 @@ function Launcher:renameSave(name)
   self.renaming = nil
   if not (v and id) then return end
   name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-  local SaveData = require("src.core.SaveData")
-  local ok, err = SaveData.renameSlot(v, id, name ~= "" and name or nil)
-  self.slots[v] = nil
+  local ok, err = self:store(v).rename(id, name ~= "" and name or nil)
+  self.slots[self:scopeKey(v)] = nil
   if ok == false then return self:say("Could not rename: " .. tostring(err), "error") end
 end
 
@@ -386,14 +570,16 @@ end
 
 -- The options this launcher edits, read and written through SaveData so the
 -- game sees exactly what was chosen.
+-- Read fresh every time (SaveData caches the file by revision): SaveData's
+-- own writes -- a new save slot, a mod switch -- replace its table, and
+-- writing back a copy held from before would undo them.
 function Launcher:options()
-  if not self.opts_ then
-    local ok, SaveData = pcall(require, "src.core.SaveData")
-    local okL, opts = false, nil
-    if ok then okL, opts = pcall(SaveData.loadOptions) end
-    self.opts_ = (okL and type(opts) == "table") and opts or {}
-  end
-  return self.opts_
+  local ok, SaveData = pcall(require, "src.core.SaveData")
+  local okL, opts = false, nil
+  if ok then okL, opts = pcall(SaveData.loadOptions) end
+  if okL and type(opts) == "table" then return opts end
+  self.fallbackOpts = self.fallbackOpts or {}
+  return self.fallbackOpts
 end
 
 function Launcher:setOption(key, value)
@@ -534,6 +720,7 @@ function Launcher:filedropped(file)
   if isSaveName(fname) then
     return self:importSave(file, fname:match("[^/\\]+$") or fname)
   end
+  local isCart = fname:lower():match("%.g1rcart$") ~= nil
   -- a .zip dropped on the Mods page is a mod; anywhere else, a zipped ROM
   local asMod = self.page == "mods" and fname:lower():match("%.zip$") ~= nil
   local ok, data = pcall(function()
@@ -547,6 +734,7 @@ function Launcher:filedropped(file)
     return self:say("Could not read the dropped file.", "error")
   end
   if asMod then return self:installMod(data, name:match("[^/\\]+$") or name) end
+  if isCart then return self:installCart(data, name:match("[^/\\]+$") or name) end
   self:importData(data, name:match("[^/\\]+$") or name)
 end
 
@@ -560,7 +748,10 @@ end
 
 -- Hooks main.lua calls on any launcher when another screen hands control
 -- back (save editor, skin studio) or saves changed underneath it.
-function Launcher:focus() self:refresh() self.modRows = nil end
+function Launcher:focus()
+  self:refresh()
+  self.modRows, self.cartRows, self.cartPlans = nil, nil, nil
+end
 function Launcher:savesChanged() self.slots = {} end
 function Launcher:resumeAfterOverlay() self:refresh() end
 function Launcher:prepareOverlayHandoff() end
@@ -796,11 +987,90 @@ function Launcher:drawMods(x, y, w, h, s)
   Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
 end
 
+function Launcher:drawCarts(x, y, w, h, s)
+  local v = self.selected
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
+  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
+  if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)),
+      "Back", { id = "carts-back", font = "small" }) then
+    self:queue(function() self.page = nil end)
+  end
+  Kit.textBold("title", "Carts", cx, cy, PAL.heading)
+  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
+  Kit.text("small", "Play " .. GameVersion.info(v).displayName .. " as", cx, cy, PAL.muted)
+  cy = cy + Kit.textHeight("small") + math.floor(14 * s)
+
+  local carts = self:cartsFor(v)
+  local active = self:activeCart(v)
+  local rows = { { original = true, title = "The original game",
+                   detail = "No cart: your own mods and saves" } }
+  for _, c in ipairs(carts) do rows[#rows + 1] = c end
+  local hint = "Or drop a .g1rcart file onto this window. Each cart keeps "
+    .. "its own saves."
+  local hintH = Kit.wrapHeight("micro", hint, cw)
+  local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
+  local gap = math.floor(4 * s)
+  local viewH = math.max(rowH, y + h - pad - btnH - hintH - math.floor(22 * s) - cy)
+  local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
+  self.cartScroll = Kit.scrollInput(self.cartScroll or 0, maxAt, cx, cy, cw, viewH)
+  local py = Kit.scrollBegin(cx, cy, cw, viewH, self.cartScroll, maxAt)
+  local rw = cw - Kit.scrollGutter(s)
+  local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Confirm") + math.floor(24 * s))
+  local bh = math.max(Kit.tapMin(), math.floor(32 * s))
+  for i, row in ipairs(rows) do
+    local ry = py + (i - 1) * (rowH + gap)
+    local chosen = (row.original and active == nil) or (row.id ~= nil and row.id == active)
+    local clicked, ink = Kit.row(cx, ry, rw, rowH, chosen,
+      "cart-" .. tostring(row.id or "original"))
+    local tx = cx + math.floor(12 * s)
+    local textW = rw - bw - math.floor(36 * s)
+    Kit.text("button", Kit.ellipsize("button", tostring(row.title or row.id), textW),
+      tx, ry + math.floor(6 * s), ink or PAL.text)
+    local detail = row.detail
+    if not detail then
+      local parts = {}
+      if row.version then parts[#parts + 1] = "v" .. tostring(row.version) end
+      if row.author then parts[#parts + 1] = "by " .. tostring(row.author) end
+      if row.seal and row.seal ~= "open" then parts[#parts + 1] = "sealed" end
+      detail = table.concat(parts, "  -  ")
+    end
+    Kit.text("micro", Kit.ellipsize("micro", detail, textW), tx,
+      ry + rowH - Kit.textHeight("micro") - math.floor(8 * s),
+      chosen and (ink or PAL.text) or PAL.muted)
+    if clicked then
+      self:queue(function() self:selectCart(v, row.id) end)
+    end
+    if not row.original then
+      local armed = self.armedDelete == "cart:" .. tostring(row.id)
+      if Kit.button(cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2, bw, bh,
+          armed and "Confirm" or "Remove",
+          { id = "cart-remove-" .. tostring(row.id), font = "small", kind = "danger" }) then
+        self:queue(function() self:removeCart(v, row) end, true)
+      end
+    end
+  end
+  Kit.scrollEnd(cx, cy, cw, viewH, self.cartScroll, maxAt, PAL.surface)
+
+  local by = y + h - pad - btnH - hintH - math.floor(8 * s)
+  if Kit.button(cx, by, math.min(cw, math.floor(260 * s)), btnH, "Install cart",
+      { id = "cart-install", kind = "accent" }) then
+    self:queue(function() self:pickCart() end)
+  end
+  Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
+end
+
 function Launcher:drawDetail(x, y, w, h, s)
   if self.page == "settings" then return self:drawSettings(x, y, w, h, s) end
   if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
   if self.page == "mods" and self.selected and self.ready[self.selected] then
     return self:drawMods(x, y, w, h, s)
+  end
+  if self.page == "carts" and self.selected and self.ready[self.selected] then
+    return self:drawCarts(x, y, w, h, s)
   end
   local v = self.selected
   if not v then return end
@@ -840,12 +1110,27 @@ function Launcher:drawDetail(x, y, w, h, s)
   end
 
   local slots = self:slotsFor(v)
+  local scope = self:scopeKey(v)
+  local cartId, cartRow = self:activeCart(v)
   do
-    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + math.floor(32 * s))
     local mh = math.max(Kit.tapMin(), math.floor(32 * s))
+    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + math.floor(32 * s))
+    local kw = math.max(Kit.tapMin(), Kit.textWidth("small", "Carts") + math.floor(32 * s))
     if Kit.button(cx + cw - mw, y + pad, mw, mh, "Mods", { id = "mods", font = "small" }) then
       self:queue(function() self.page = "mods"; self.modScroll = 0 end)
     end
+    if Kit.button(cx + cw - mw - math.floor(8 * s) - kw, y + pad, kw, mh, "Carts",
+        { id = "carts", font = "small", active = cartId ~= nil }) then
+      self:queue(function() self.page = "carts"; self.cartScroll = 0 end)
+    end
+  end
+  local problem = self:cartProblem(v)
+  if cartRow then
+    local line = "Playing as " .. tostring(cartRow.title or cartId)
+    if problem then line = line .. " - " .. problem end
+    Kit.text("small", Kit.ellipsize("small", line, cw), cx, cy - math.floor(8 * s),
+      problem and PAL.red or PAL.blue)
+    cy = cy + Kit.textHeight("small") + math.floor(4 * s)
   end
   Kit.caption(cx, cy, "SAVES", PAL.caption)
   cy = cy + Kit.textHeight("caption") + math.floor(8 * s)
@@ -869,7 +1154,7 @@ function Launcher:drawDetail(x, y, w, h, s)
     local py = Kit.scrollBegin(cx, cy, cw, viewH, self.slotScroll, maxAt)
     for i, slot in ipairs(slots) do
       local ry = py + (i - 1) * (rowH + gap)
-      local chosen = self.selectedSlot[v] == slot.id
+      local chosen = self.selectedSlot[scope] == slot.id
       local clicked, ink = Kit.row(cx, ry, cw - Kit.scrollGutter(s), rowH, chosen,
         "slot-" .. slot.id)
       local title = slot.label or slot.name or slot.id
@@ -884,7 +1169,7 @@ function Launcher:drawDetail(x, y, w, h, s)
           chosen and (ink or PAL.text) or PAL.muted)
       end
       if clicked then
-        self:queue(function() self.selectedSlot[v] = slot.id end)
+        self:queue(function() self.selectedSlot[scope] = slot.id end)
       end
     end
     Kit.scrollEnd(cx, cy, cw, viewH, self.slotScroll, maxAt, PAL.surface)
@@ -892,7 +1177,7 @@ function Launcher:drawDetail(x, y, w, h, s)
 
   -- save tools: import / export / rename / delete, or the rename field
   local ty = y + h - pad - btnH - math.floor(10 * s) - toolsH
-  local chosen = self.selectedSlot[v]
+  local chosen = self.selectedSlot[scope]
   local has = chosen ~= nil and #slots > 0
   if self.renaming == chosen and has then
     local okW = math.floor(90 * s)
@@ -910,9 +1195,9 @@ function Launcher:drawDetail(x, y, w, h, s)
     end
   else
     local tools = {
-      { id = "save-import", label = "Import .sav", enabled = true,
+      { id = "save-import", label = "Import .sav", enabled = cartId == nil,
         run = function() self:pickSave() end },
-      { id = "save-export", label = "Export", enabled = has,
+      { id = "save-export", label = "Export", enabled = has and cartId == nil,
         run = function() self:exportSave() end },
       { id = "save-rename", label = "Rename", enabled = has,
         run = function()
@@ -940,11 +1225,12 @@ function Launcher:drawDetail(x, y, w, h, s)
   local by = y + h - pad - btnH
   local half = math.floor((cw - math.floor(10 * s)) / 2)
   if Kit.button(cx, by, half, btnH, "Continue",
-      { id = "continue", kind = "primary", enabled = chosen ~= nil and #slots > 0 }) then
+      { id = "continue", kind = "primary",
+        enabled = chosen ~= nil and #slots > 0 and not problem }) then
     self:queue(function() self:play(v, chosen) end)
   end
   if Kit.button(cx + cw - half, by, half, btnH, "New game",
-      { id = "newgame", kind = "accent" }) then
+      { id = "newgame", kind = "accent", enabled = not problem }) then
     self:queue(function() self:newGame(v) end)
   end
 end
