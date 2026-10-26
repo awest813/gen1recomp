@@ -742,6 +742,7 @@ tests/engine/trainer_true_color.lua
 tests/engine/transition_identity_pop_bug1663.lua
 tests/engine/ttf_font_mode.lua
 tests/engine/turn_in_place_bug415.lua
+tests/engine/ui_frame_alloc_perf.lua
 tests/engine/ui_kit_pagination.lua
 tests/engine/ui_layout_option.lua
 tests/engine/ui_letterbox_test.lua

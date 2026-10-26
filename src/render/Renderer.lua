@@ -810,39 +810,88 @@ end
 
 -- Take a rect out of a list of rects, splitting each overlapped one into up
 -- to four pieces.  Used to vacate an anchored UI region from the letterbox
--- blit, so the element is drawn at its anchor and not also in place.
-local function subtractRect(list, x, y, w, h)
-  local out = {}
+-- blit, so the element is drawn at its anchor and not also in place.  The
+-- lists are flat (x, y, w, h runs) and caller-owned, so the frames that run
+-- this every frame (a docked dialogue box, the battle dim) build nothing:
+-- the n rects in src are cut into dst, and dst's rect count returned.
+local function putRect(dst, n, x, y, w, h)
+  local i = n * 4
+  dst[i + 1], dst[i + 2], dst[i + 3], dst[i + 4] = x, y, w, h
+  return n + 1
+end
+
+local function subtractRect(src, n, dst, x, y, w, h)
+  local m = 0
   local x2, y2 = x + w, y + h
-  for _, r in ipairs(list) do
-    local rx, ry, rw, rh = r[1], r[2], r[3], r[4]
+  for i = 0, n * 4 - 1, 4 do
+    local rx, ry, rw, rh = src[i + 1], src[i + 2], src[i + 3], src[i + 4]
     local rx2, ry2 = rx + rw, ry + rh
     if x2 <= rx or x >= rx2 or y2 <= ry or y >= ry2 then
-      out[#out + 1] = r -- disjoint
+      m = putRect(dst, m, rx, ry, rw, rh) -- disjoint
     else
-      if ry < y then out[#out + 1] = { rx, ry, rw, y - ry } end
-      if y2 < ry2 then out[#out + 1] = { rx, y2, rw, ry2 - y2 } end
+      if ry < y then m = putRect(dst, m, rx, ry, rw, y - ry) end
+      if y2 < ry2 then m = putRect(dst, m, rx, y2, rw, ry2 - y2) end
       local ty, ty2 = math.max(ry, y), math.min(ry2, y2)
-      if rx < x then out[#out + 1] = { rx, ty, x - rx, ty2 - ty } end
-      if x2 < rx2 then out[#out + 1] = { x2, ty, rx2 - x2, ty2 - ty } end
+      if rx < x then m = putRect(dst, m, rx, ty, x - rx, ty2 - ty) end
+      if x2 < rx2 then m = putRect(dst, m, x2, ty, rx2 - x2, ty2 - ty) end
     end
   end
-  return out
+  return m
+end
+
+-- Fill the window rect (vx, vy, vw, vh) outside (x, y, w, h) in the current
+-- colour: the voids around the letterbox, for the battle dim and void veil.
+local voidSrc, voidRects = {}, {}
+local function fillOutside(vx, vy, vw, vh, x, y, w, h)
+  putRect(voidSrc, 0, vx, vy, vw, vh)
+  for i = 0, subtractRect(voidSrc, 1, voidRects, x, y, w, h) * 4 - 1, 4 do
+    love.graphics.rectangle("fill", voidRects[i + 1], voidRects[i + 2],
+                            voidRects[i + 3], voidRects[i + 4])
+  end
 end
 
 -- A UI element that should sit against a screen edge rather than inside the
 -- centred letterbox.  Declared during the element's own draw, in UI-canvas
 -- pixels, and consumed by endFrame this frame only.
 --   anchor: "bottom" | "topright" | "topleft" | "bottomright"
+-- A docked box re-declares the same anchor every frame, so the list is one
+-- renderer-owned table emptied at a frame's first anchor, and the last
+-- frame's record in each slot is kept while it is still exactly what would
+-- be built (every field equal, nothing added).
 local function addUIAnchor(renderer, x, y, w, h, anchor, windowClamped,
                            canvas, extract)
-  renderer.uiAnchors = renderer.uiAnchors or {}
-  renderer.uiAnchors[#renderer.uiAnchors + 1] = {
-    x = x, y = y, w = w, h = h, anchor = anchor,
-    windowClamped = windowClamped and true or false,
-    canvas = canvas,
-    extract = extract ~= false,
-  }
+  local list = renderer.uiAnchors
+  if not list then
+    list = renderer.anchorList or {}
+    for i = #list, 1, -1 do list[i] = nil end
+    renderer.anchorList, renderer.uiAnchors = list, list
+  end
+  local anchorRecs = renderer.anchorRecs
+  if not anchorRecs then
+    anchorRecs = {}
+    renderer.anchorRecs = anchorRecs
+  end
+  local n = #list + 1
+  windowClamped = windowClamped and true or false
+  extract = extract ~= false
+  local rec = anchorRecs[n]
+  local keys = 0
+  if rec then
+    for _ in pairs(rec) do keys = keys + 1 end
+  end
+  if not (rec and rec.x == x and rec.y == y and rec.w == w and rec.h == h
+          and rec.anchor == anchor and rec.windowClamped == windowClamped
+          and rec.canvas == canvas and rec.extract == extract
+          and keys == 8) then
+    rec = {
+      x = x, y = y, w = w, h = h, anchor = anchor,
+      windowClamped = windowClamped,
+      canvas = canvas,
+      extract = extract,
+    }
+    anchorRecs[n] = rec
+  end
+  list[n] = rec
 end
 
 function Renderer:setUIAnchor(x, y, w, h, anchor)
@@ -927,6 +976,13 @@ function Renderer:frameRects()
 end
 
 local playfieldRects, endFrameRects = {}, {}
+local restRects, spareRects, placedRects = {}, {}, {}
+
+-- endFrame's default surround shade, off the live Game's data
+local function gamePaperShade()
+  local Game = package.loaded["src.core.Game"]
+  return PaletteFX.paperShade(Game and Game.data)
+end
 
 function Renderer.clipToView(r, x, y, w, h)
   local x2, y2 = math.min(x + w, r.vux + r.vuw), math.min(y + h, r.vuy + r.vuh)
@@ -1068,8 +1124,7 @@ function Renderer:endFrame(zones, worldZones)
     local base = stack and stack.visibleBase and stack:visibleBase()
     local state = base and stack.states and stack.states[base]
     local ownState = self.surroundState
-    local paperShade = self.paperShade
-      or function() return PaletteFX.paperShade(Game and Game.data) end
+    local paperShade = self.paperShade or gamePaperShade
     if ownState ~= nil then
       state = ownState or nil
       stack = nil
@@ -1281,17 +1336,13 @@ function Renderer:endFrame(zones, worldZones)
   -- (and its duplicate #772).
   if self.battleDim and self.battleDim > 0 then
     love.graphics.setColor(0, 0, 0, self.battleDim)
-    for _, r in ipairs(subtractRect({ { vux, vuy, vuw, vuh } }, uox, uoy, uvpw, uvph)) do
-      love.graphics.rectangle("fill", r[1], r[2], r[3], r[4])
-    end
+    fillOutside(vux, vuy, vuw, vuh, uox, uoy, uvpw, uvph)
     love.graphics.setColor(1, 1, 1, 1)
   end
   local voidVeil = self.voidVeil
   if voidVeil and (voidVeil[4] or 0) > 0 then
     love.graphics.setColor(voidVeil[1], voidVeil[2], voidVeil[3], voidVeil[4])
-    for _, r in ipairs(subtractRect({ { vux, vuy, vuw, vuh } }, uox, uoy, uvpw, uvph)) do
-      love.graphics.rectangle("fill", r[1], r[2], r[3], r[4])
-    end
+    fillOutside(vux, vuy, vuw, vuh, uox, uoy, uvpw, uvph)
     love.graphics.setColor(1, 1, 1, 1)
   end
 
@@ -1331,9 +1382,13 @@ function Renderer:endFrame(zones, worldZones)
     blit(self, R, self.canvas, Ux, Uy, zones, Ux, Uy, uox, uoy,
          clipToView(R, uox, uoy, uvpw, uvph))
   else
-    local rest = { { clipToView(R, uox, uoy, uvpw, uvph) } }
-    local placed = {}
-    for _, a in ipairs(anchors) do
+    -- rest: the letterbox left after each extracted anchor is cut out
+    -- (flat rects, swapped between two scratch lists); placed: each
+    -- anchor's window rect, four numbers per anchor in anchor order
+    local rest, spare = restRects, spareRects
+    local nRest = putRect(rest, 0, clipToView(R, uox, uoy, uvpw, uvph))
+    local placed = placedRects
+    for k, a in ipairs(anchors) do
       local dw, dh = a.w * Ux, a.h * Uy
       -- Anchors are edge-RELATIVE: an element keeps its distance from the
       -- canvas edge, measured against the screen edge instead.  That is what
@@ -1359,22 +1414,26 @@ function Renderer:endFrame(zones, worldZones)
         dx = math.max(vux, math.min(math.max(vux, vux + vuw - dw), dx))
         dy = math.max(vuy, math.min(math.max(vuy, vuy + vuh - dh), dy))
       end
-      placed[#placed + 1] = { a = a, dx = dx, dy = dy, dw = dw, dh = dh }
+      putRect(placed, k - 1, dx, dy, dw, dh)
       if a.extract then
-        rest = subtractRect(rest, uox + a.x * Ux, uoy + a.y * Uy, dw, dh)
+        nRest = subtractRect(rest, nRest, spare, uox + a.x * Ux,
+                             uoy + a.y * Uy, dw, dh)
+        rest, spare = spare, rest
       end
     end
-    for _, r in ipairs(rest) do
+    for i = 0, nRest * 4 - 1, 4 do
       blit(self, R, self.canvas, Ux, Uy, zones, Ux, Uy, uox, uoy,
-           r[1], r[2], r[3], r[4])
+           rest[i + 1], rest[i + 2], rest[i + 3], rest[i + 4])
     end
-    for _, p in ipairs(placed) do
+    for k, a in ipairs(anchors) do
+      local i = (k - 1) * 4
+      local dx, dy = placed[i + 1], placed[i + 2]
       -- shift the draw origin so canvas pixel (a.x, a.y) lands on (dx, dy).
       -- The zone scissors are computed from the same origin, so an SGB
       -- region travels with the element instead of staying in the letterbox.
-      blit(self, R, p.a.canvas or self.canvas, Ux, Uy, zones, Ux, Uy,
-           p.dx - p.a.x * Ux, p.dy - p.a.y * Uy,
-           clipToView(R, p.dx, p.dy, p.dw, p.dh))
+      blit(self, R, a.canvas or self.canvas, Ux, Uy, zones, Ux, Uy,
+           dx - a.x * Ux, dy - a.y * Uy,
+           clipToView(R, dx, dy, placed[i + 3], placed[i + 4]))
     end
   end
   local uiRedraws = PaletteFX.uiSpriteRedraws()
