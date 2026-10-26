@@ -191,6 +191,21 @@ do
   local w3 = OverworldState:sgbWorldZones()
   check(w3 ~= w2 and w3[1].colors == ROUTE, "a retinted world zone is rebuilt")
 
+  -- a render.zones / render.compose subscriber may keep what it is handed,
+  -- so a hooked frame never gets last frame's list back
+  local Runtime = require("src.mods.Runtime")
+  local savedChains = Runtime.hooks.chains
+  for _, hook in ipairs({ "render.zones", "render.compose" }) do
+    Runtime.hooks.chains = { [hook] = {} }
+    local h1, h2 = OverworldState:sgbPalettes(), OverworldState:sgbPalettes()
+    check(h1 ~= h2 and h2[1].colors == ROUTE,
+      hook .. " subscriber: the UI zone list is fresh every frame")
+    local hw1, hw2 = OverworldState:sgbWorldZones(), OverworldState:sgbWorldZones()
+    check(hw1 ~= hw2 and hw2[1].colors == ROUTE,
+      hook .. " subscriber: the world zone list is fresh every frame")
+  end
+  Runtime.hooks.chains = savedChains
+
   -- vanilla GameViewport: one rect, refilled, and still the full window
   local r1 = GameViewport.begin(1)
   local r2 = GameViewport.begin(1)

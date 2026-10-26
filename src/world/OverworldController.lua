@@ -940,7 +940,13 @@ local function countKeys(t)
   return n
 end
 
+-- A render.zones / render.compose subscriber is handed these lists and may
+-- keep or edit them, so a hooked frame always builds fresh ones (the rule
+-- PaletteFX.keepZones follows).
 local function steadyZones(zones, colors, x, y, w, h)
+  if Runtime.wantsHook("render.zones") or Runtime.wantsHook("render.compose") then
+    return false
+  end
   local z = zones and zones[1]
   return z ~= nil and z.colors == colors and z.x == x and z.y == y
     and z.w == w and z.h == h and countKeys(zones) == 1 and countKeys(z) == 5
