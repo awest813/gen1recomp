@@ -135,7 +135,65 @@ function Launcher:importData(data, name)
   end
 end
 
+-- The browser (and UWP) build opens files through an async bridge on
+-- love.system: pickFile(kind) shows the picker, and the chosen file later
+-- appears through getPickedFile() as a temporary path (or getPickError()
+-- explains why not).  See ports/web/native/lovejs_bridge.cpp.
+local function hostPicker()
+  local sys = love and love.system
+  if sys and type(sys.pickFile) == "function"
+      and type(sys.getPickedFile) == "function" then
+    return sys
+  end
+  return nil
+end
+
+function Launcher:requestHostPick(kind)
+  local sys = hostPicker()
+  if not sys then return false end
+  local ok, started = pcall(sys.pickFile, kind)
+  if not ok or started == false then
+    self:say("The file picker could not open.", "error")
+    return true
+  end
+  self.pendingPick = kind
+  return true
+end
+
+-- Collect a finished host pick; called from update().
+function Launcher:pollHostPick()
+  local sys = self.pendingPick and hostPicker()
+  if not sys then return end
+  local kind = self.pendingPick
+  local okP, path = pcall(sys.getPickedFile)
+  if okP and type(path) == "string" and path ~= "" then
+    self.pendingPick = nil
+    local FilePicker = require("src.core.FilePicker")
+    local name = FilePicker.basename(path)
+    if kind == "sav" then
+      -- by path: SaveFileIO only takes raw bytes for a bare 32 KiB image,
+      -- and a Gen 2 save (RTC footer) or a Gen 3 one is larger
+      self:importSave(path, name)
+      pcall(os.remove, path)
+      return
+    end
+    local data, err = FilePicker.read(path)
+    pcall(os.remove, path)
+    if not data then
+      return self:say("Could not read that file: " .. tostring(err), "error")
+    end
+    return self:importData(data, name)
+  end
+  local okE, err = false, nil
+  if type(sys.getPickError) == "function" then okE, err = pcall(sys.getPickError) end
+  if okE and type(err) == "string" and err ~= "" then
+    self.pendingPick = nil
+    self:say(err, "error")
+  end
+end
+
 function Launcher:pickRom()
+  if self:requestHostPick("rom") then return end
   local ok, FilePicker = pcall(require, "src.core.FilePicker")
   if not (ok and FilePicker.available()) then
     return self:say("Drop a .gb, .gbc or .gba file onto this window to "
@@ -189,6 +247,7 @@ function Launcher:importSave(source, name)
 end
 
 function Launcher:pickSave()
+  if self:requestHostPick("sav") then return end
   local ok, FilePicker = pcall(require, "src.core.FilePicker")
   if not (ok and FilePicker.available()) then
     return self:say("Drop a .sav file onto this window to import it.", "info")
@@ -269,6 +328,7 @@ end
 -- ------------------------------------------------------------- host hooks
 
 function Launcher:update(dt)
+  self:pollHostPick()
   if self.job then
     local state = self.job:step(0.008)
     if state == "done" then

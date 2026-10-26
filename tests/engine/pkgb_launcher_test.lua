@@ -250,4 +250,43 @@ Kit.button = realButton2
 check(rects2["musicVol-up"] and rects2["sfxVol-down"] and rects2["video-mode"],
   "every setting has a control")
 
+-- ------------------------------------------------- browser file picker
+local picks, queued, pickErr = {}, nil, nil
+love.system = love.system or {}
+local realSys = { pickFile = love.system.pickFile, getPickedFile = love.system.getPickedFile,
+  getPickError = love.system.getPickError }
+love.system.pickFile = function(kind) picks[#picks + 1] = kind return true end
+love.system.getPickedFile = function() local p = queued queued = nil return p end
+love.system.getPickError = function() local e = pickErr pickErr = nil return e end
+
+l = fresh()
+local nImported = #imported
+l:pickSave()
+eq(picks[1], "sav", "Import .sav asks the browser for a save file")
+l:update(0)
+eq(#imported, nImported, "nothing happens until the pick arrives")
+local tmp = os.tmpname()
+local fh = io.open(tmp, "wb") fh:write(("\0"):rep(32786)) fh:close()
+queued = tmp
+l:update(0)
+eq(imported[#imported].source, tmp, "a picked save is imported by path (fits any save size)")
+eq(io.open(tmp, "rb"), nil, "and the temporary copy is removed")
+
+l:pickRom()
+eq(picks[2], "rom", "Import ROM asks the browser for a ROM")
+pickErr = "The picker was closed."
+l:update(0)
+check(l.message and l.message.text == "The picker was closed.", "a picker error is shown")
+eq(l.pendingPick, nil, "and the pick is over")
+
+local rom = os.tmpname()
+fh = io.open(rom, "wb") fh:write("not a rom") fh:close()
+l:pickRom()
+queued = rom
+l:update(0)
+check(l.message and l.message.text:find("MiB", 1, true) ~= nil,
+  "a picked ROM goes through the same verification as a dropped one")
+eq(io.open(rom, "rb"), nil, "and its temporary copy is removed")
+for k, v in pairs(realSys) do love.system[k] = v end
+
 T.finish("pkgb launcher")
