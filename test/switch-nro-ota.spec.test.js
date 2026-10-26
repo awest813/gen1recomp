@@ -378,8 +378,6 @@ test('AC-006: LOVE no NX continua sem rede de updater @spec:AC-006', () => {
   assert.ok(read('src/update/Check.lua').length > 0);
   assert.ok(read('src/update/check_worker.lua').length > 0);
   assert.ok(read('src/core/HostShell.lua').length > 0);
-  assert.match(read('src/import/RomImporter.lua'), /updaterAllowed|networkValidated|Check/);
-  assert.ok(read('src/import/LauncherView.lua').length > 0);
 
   const switchOta = read('src/update/SwitchOta.lua');
   assert.doesNotMatch(switchOta, /networkValidated\s*=\s*true/);

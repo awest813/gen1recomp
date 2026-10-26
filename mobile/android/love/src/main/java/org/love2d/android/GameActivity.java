@@ -1394,7 +1394,7 @@ public class GameActivity extends SDLActivity {
      * equivalent, so unlike showFilePicker this stays 19+ (#584); the false
      * return degraded on the Lua side (the old launcher's export) to "Exported
      * inside the app folder", which is the correct pre-KitKat behavior.
-     * src/launcher/Launcher.lua exports through SaveFileIO and does not call this.
+     * src/launcher/Launcher.lua (shareExport) stages the file and calls this.
      */
     /** Legacy single-argument entry; resolves the save dir itself. */
     @Keep

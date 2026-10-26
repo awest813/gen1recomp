@@ -12,8 +12,6 @@ local ALLOW = {
   { "src/render/ShaderFX.lua", "love.graphics.newCanvas(dims.w, dims.h)" },
   { "src/render/ShaderFX.lua", "love.graphics.newCanvas(outW, outH)" },
   { "src/box/Showcase.lua", "love.graphics.newCanvas(1136,432)" },
-  { "src/import/LauncherSplash.lua", "love.graphics.newCanvas(width, height)" },
-  { "src/import/CartLabelArt.lua", "g.newCanvas(w, h)" },
 }
 
 local function rel(path)

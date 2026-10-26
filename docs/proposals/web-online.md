@@ -2,7 +2,9 @@
 
 Status: plan. Companion to [web-port.md](web-port.md). Today the browser
 build says "Online play needs the desktop or mobile app"
-(`src/import/online/Home.lua`, `OnlinePanel.connect` refuses on Web).
+(`src/import/online/Home.lua`, `OnlinePanel.connect` refuses on Web; the old
+launcher, since replaced by `src/launcher/`, where Online is
+`src/launcher/OnlinePage.lua`).
 
 ## Goal
 
@@ -12,7 +14,8 @@ version. Desktop and mobile clients must not need to change.
 
 ## How online play works today
 
-- **Layers.** UI (`src/import/OnlinePanel.lua`, `src/import/online/*`) calls
+- **Layers.** UI (`src/import/OnlinePanel.lua`, `src/import/online/*`; now
+  `src/launcher/OnlinePage.lua`) calls
   `src/online/Connect.lua` (name, optional ticket, connect). That drives
   `src/online/Client.lua`, the one process-wide connection (lobby, rooms,
   tournaments, invites, plaza, groups, resume). Messages go through
@@ -162,7 +165,7 @@ lands.
 
 ### Phase 3: unblock the UI (this repo), small
 - Remove the Web refusals (`OnlinePanel.connect`/`doConnect`, `Home.lua`
-  note) when the transport is available. Keep them when it isn't (e.g. an old
+  note; the old launcher, since replaced by `src/launcher/OnlinePage.lua`) when the transport is available. Keep them when it isn't (e.g. an old
   love.js without the bridge functions).
 - Hide LAN link and Discord rows on Web.
 - Tickets through `Fetch` once the sync server sends CORS. Until then,

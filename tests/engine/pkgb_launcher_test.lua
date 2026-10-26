@@ -790,4 +790,111 @@ do
   love.system.updateShortcuts = nil
 end
 
+-- ------------------------------------------- phone save export handoff
+do
+  local lfs = love.filesystem
+  local saved = { getInfo = lfs.getInfo, read = lfs.read, remove = lfs.remove, write = lfs.write }
+  local disk = { ["exports/gold/gen1recomp-gold-slot1.sav"] = "SAVBYTES" }
+  lfs.getInfo = function(p) if disk[p] then return { type = "file" } end return nil end
+  lfs.read = function(p) return disk[p] end
+  lfs.remove = function(p) disk[p] = nil return true end
+  lfs.write = function(p, b) disk[p] = b return true end
+  local suggested
+  love.system.createFile = function(name) suggested = name return true end
+  local e = fresh()
+  check(e:shareExport("/data/save/exports/gold/gen1recomp-gold-slot1.sav"), "a phone hands the export to the save dialog")
+  eq(disk["pending_export.sav"], "SAVBYTES", "staged where the host reads it")
+  eq(suggested, "gen1recomp-gold-slot1.sav", "with its file name suggested")
+  e:update(0)
+  check(e.pendingExport, "and waits for the host")
+  disk["export_done.flag"] = "ok"
+  e:update(0)
+  check(not e.pendingExport and disk["pending_export.sav"] == nil, "the host's done flag clears it")
+  eq(e.message.text, "Save exported.", "and says so")
+  love.system.createFile = nil
+  check(not e:shareExport("/x/exports/a.sav"), "a desktop keeps the plain export")
+  for k, v in pairs(saved) do lfs[k] = v end
+end
+
+-- ------------------------------- mods that need a file or an asset pack
+do
+  local stored = {}
+  package.loaded["src.mods.RequiredImports"] = {
+    specs = function(m) return m.required_imports or {} end,
+    inspect = function(m)
+      local rows = {}
+      for _, spec in ipairs(m.required_imports or {}) do
+        rows[#rows + 1] = { id = spec.id, name = spec.name, required = true, spec = spec,
+          present = stored[spec.id] ~= nil }
+      end
+      return rows
+    end,
+    importData = function(_, id, data)
+      if data ~= "GOODROM" then return nil, "MD5 does not match" end
+      stored[id] = data
+      return true, "abc"
+    end,
+  }
+  local imported = {}
+  package.loaded["src.import.Importers"] = {
+    all = function() return { { id = "pmd_red", name = "Mystery Dungeon", status = "beta",
+      module = "tests.fake_importer", summary = "sprites", source = { name = "PMD dump", formats = { "gba" } } } } end,
+    get = function(id) return id == "pmd_red" and { id = id, name = "Mystery Dungeon",
+      module = "tests.fake_importer", source = { name = "PMD dump", formats = { "gba" } } } or nil end,
+    state = function() return imported.pmd and "ready" or "missing" end,
+    resolve = function(spec) return imported.pmd and {} or nil end,
+  }
+  package.loaded["tests.fake_importer"] = { job = function(rom)
+    return coroutine.create(function()
+      coroutine.yield({ done = 1, total = 2, status = "Assembling" })
+      if rom ~= "PMDROM" then error("wrong dump", 0) end
+      imported.pmd = true
+      return {}
+    end)
+  end }
+  local ML = package.loaded["src.mods.ModLibrary"]
+  local realList = ML.list
+  ML.list = function()
+    return {
+      { id = "stadium", name = "Stadium Mod", folder = "mods/stadium", supported = true, enabled = true,
+        manifest = { id = "stadium", path = "mods/stadium",
+          required_imports = { { id = "st2", name = "Stadium 2 ROM", file = "st2.z64" } } } },
+      { id = "pmdfollow", name = "Follower", folder = "mods/pmdfollow", supported = true, enabled = true,
+        manifest = { id = "pmdfollow", path = "mods/pmdfollow",
+          required_assets = { { importer = "pmd_red", pack = "sprites" } } } },
+    }
+  end
+  window(1280, 720)
+  local m = fresh()
+  m.selected, m.page = "gold", "mods"
+  local mt = drawText(m)
+  check(mt:find("Needs Stadium 2 ROM", 1, true) ~= nil, "a mod missing a file says which")
+  check(mt:find("Add file", 1, true) ~= nil, "and offers to add it")
+  check(mt:find("Mystery Dungeon asset import", 1, true) ~= nil, "a mod missing an asset pack says which")
+  check(mt:find("Get pack", 1, true) ~= nil, "and points to the importer")
+  local rows = m:modsFor("gold")
+  m.pendingModFile = { manifest = rows[1].manifest, spec = rows[1].manifest.required_imports[1], name = "Stadium Mod" }
+  m:storeModFile("BADROM")
+  check(m.message.kind == "error" and m.message.text:find("MD5", 1, true), "a wrong file is refused with the reason")
+  m.pendingModFile = { manifest = rows[1].manifest, spec = rows[1].manifest.required_imports[1], name = "Stadium Mod" }
+  m:storeModFile("GOODROM")
+  eq(stored.st2, "GOODROM", "the right file is stored for that mod")
+  check(not drawText(m):find("Needs Stadium 2 ROM", 1, true), "and the mod no longer asks for it")
+  m.page = "importers"
+  check(drawText(m):find("Mystery Dungeon", 1, true) ~= nil, "the importers page lists importers")
+  m.pendingImporter = "pmd_red"
+  m:startImporter("PMDROM")
+  check(m.assetJob ~= nil, "an importer runs as a job")
+  for _ = 1, 5 do m:update(0) end
+  eq(m.assetJob, nil, "and finishes")
+  check(imported.pmd and m.message.text:find("assets imported", 1, true), "writing its packs")
+  m.pendingImporter = "pmd_red"
+  m:startImporter("WRONG")
+  for _ = 1, 5 do m:update(0) end
+  check(m.message.kind == "error" and m.message.text:find("wrong dump", 1, true), "a wrong dump fails with the reason")
+  m.page = "mods"
+  check(not drawText(m):find("Get pack", 1, true), "an imported pack satisfies the mod")
+  ML.list = realList
+end
+
 T.finish("pkgb launcher")

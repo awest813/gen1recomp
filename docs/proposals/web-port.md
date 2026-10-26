@@ -1,5 +1,11 @@
 # Proposal: browser (web) port, Gen 1 first
 
+(Historical record. `src/import/RomImporter.lua`, `LauncherView.lua`,
+`LauncherSplash.lua` and `LauncherThemeVideo.lua`, cited below with their
+line numbers at the time, are the old launcher, since replaced by
+`src/launcher/`; host picks now go through `Launcher:requestHostPick` /
+`Launcher:pollHostPick` in `src/launcher/Launcher.lua`.)
+
 ## Summary
 
 Ship G1R in the browser by running the existing LÖVE 11.5 codebase under

@@ -20,16 +20,14 @@ local dispatchSource = assert(main:match('(        if name == "quit" then.-)\n  
 local function scenario(osName, state, options)
   options = options or {}
   local stats = { events = {}, joins = 0, presence = 0, markers = 0,
-    sessions = 0, editor = 0, platform = 0, splash = 0, theme = 0,
+    sessions = 0, editor = 0, platform = 0,
     observe = 0, flush = 0 }
   local env = setmetatable({ processEnded = false, quitToLauncher = false,
     launchedIntoGame = options.shortcut or false, editorMode = state == "editor",
     RELAUNCH_MARKER = "marker" }, { __index = _G })
   env.os = setmetatable({ getenv = function() return nil end }, { __index = os })
   env.Game = state == "game" and {} or nil
-  env.Importer = state ~= "game" and { _themeVideo = {
-    release = function() stats.theme = stats.theme + 1 end } } or nil
-  env.launcherSplash = { release = function() stats.splash = stats.splash + 1 end }
+  env.Importer = state ~= "game" and {} or nil
   env.EditorApp = { quit = function() stats.editor = stats.editor + 1 return true end }
   env.PlatformHooks = { quitToLauncher = function(fn)
     stats.platform = stats.platform + 1
@@ -77,12 +75,9 @@ for _, state in ipairs({ "game", "launcher", "editor" }) do
   eq(stats.markers, 0, "NX " .. state .. " writes no launcher handoff")
   eq(stats.platform, 0, "NX " .. state .. " bypasses platform veto")
   eq(stats.editor, 0, "NX " .. state .. " bypasses editor veto")
-  eq(stats.splash, 1, "NX " .. state .. " releases splash")
   if state ~= "game" then
-    eq(stats.theme, 1, "NX " .. state .. " releases launcher theme")
     eq(stats.observe, 1, "NX " .. state .. " observes launcher window")
     eq(stats.flush, 1, "NX " .. state .. " flushes launcher window")
-    eq(env.Importer._themeVideo, nil, "NX " .. state .. " drops theme reference")
   end
   eq(callbacks.dispatch(), 0, "NX " .. state .. " accepts repeated quit")
   eq(stats.joins, 1, "NX " .. state .. " repeated quit keeps teardown idempotent")

@@ -17,7 +17,8 @@ The canvas UI also needs a deliberate accessibility strategy.
 
 Keep import validation, queued actions, touch deduplication, per-game enable
 state, save export and browser storage safeguards as implementation contracts.
-LauncherView paints importer state; do not create a second independent copy
+LauncherView (the old launcher, since replaced by `src/launcher/`) paints
+importer state; do not create a second independent copy
 of that state in a new presentation layer.
 
 ## Navigation and core screens

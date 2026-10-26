@@ -28,6 +28,55 @@ ModLibrary.MAX_ZIP_BYTES = 512 * 1024 * 1024
 
 local function fsys(fs) return fs or love.filesystem end
 
+-- A portable install (portable.txt, src/import/CacheFs.lua) keeps mods in the
+-- game folder, which love.filesystem can read (it is mounted) but never
+-- write: writes and deletes go through CacheFs there (#330).  An injected
+-- fs (tests) is used as given.
+local function portable(custom)
+  if custom then return nil end
+  local ok, CacheFs = pcall(require, "src.import.CacheFs")
+  if not ok then return nil end
+  local okR, root = pcall(CacheFs.root)
+  if okR and root then return CacheFs, root end
+  return nil
+end
+
+local function sink(fs, custom)
+  local CacheFs = portable(custom)
+  if CacheFs then
+    local function scoped(fn, ...)
+      local saved = CacheFs.prefix
+      CacheFs.prefix = ""
+      local ok, a, b = pcall(fn, ...)
+      CacheFs.prefix = saved
+      if not ok then return false, a end
+      return a, b
+    end
+    return {
+      write = function(path, body) return scoped(CacheFs.write, path, body) end,
+      mkdir = function() return true end,  -- CacheFs.write makes parents
+      remove = function(path, isDir)
+        return scoped(isDir and CacheFs.removeDir or CacheFs.remove, path)
+      end,
+    }
+  end
+  return {
+    write = fs.write,
+    mkdir = fs.createDirectory,
+    remove = function(path) return fs.remove(path) end,
+  }
+end
+
+-- Where installed mods live: the save directory, or a portable game folder.
+-- Anything else (the game's own archive) is a built-in mod.
+local function writableDir(fs, real, custom)
+  if real == nil then return true end
+  local saveDir = fs.getSaveDirectory and fs.getSaveDirectory()
+  if real == saveDir then return true end
+  local _, root = portable(custom)
+  return root ~= nil and real == root
+end
+
 local function readManifest(fs, folder)
   local raw = fs.read(folder .. "/manifest.json")
   if type(raw) ~= "string" then return nil, "no manifest.json" end
@@ -50,6 +99,7 @@ end
 -- Every installed mod, sorted by name, as rows the UI can show directly.
 -- `version` (optional) fills in `supported` and `enabled` for that game.
 function ModLibrary.list(version, fs)
+  local custom = fs ~= nil
   fs = fsys(fs)
   local rows = {}
   if not (fs.getInfo and fs.getInfo(ModLibrary.ROOT)) then return rows end
@@ -66,8 +116,7 @@ function ModLibrary.list(version, fs)
       -- mods shipped inside the game folder are read-only: only the ones in
       -- the save directory can be uninstalled
       local real = fs.getRealDirectory and fs.getRealDirectory(folder)
-      local saveDir = fs.getSaveDirectory and fs.getSaveDirectory()
-      local row = { folder = folder, bundled = real ~= nil and saveDir ~= nil and real ~= saveDir }
+      local row = { folder = folder, bundled = not writableDir(fs, real, custom) }
       if manifest then
         row.id = manifest.id
         row.name = manifest.name or manifest.id
@@ -106,31 +155,33 @@ function ModLibrary.setEnabled(id, enabled, version)
   return SaveData.saveOptions(options)
 end
 
-local function copyTree(fs, from, to)
-  fs.createDirectory(to)
+local function copyTree(fs, out, from, to)
+  out.mkdir(to)
   for _, name in ipairs(fs.getDirectoryItems(from) or {}) do
     local src, dst = from .. "/" .. name, to .. "/" .. name
     local info = fs.getInfo(src)
     if info and info.type == "directory" then
-      copyTree(fs, src, dst)
+      copyTree(fs, out, src, dst)
     elseif info then
       local body = fs.read(src)
       if type(body) ~= "string" then error("could not read " .. src, 0) end
-      local ok, err = fs.write(dst, body)
+      local ok, err = out.write(dst, body)
       if not ok then error("could not write " .. dst .. ": " .. tostring(err), 0) end
     end
   end
 end
 
-local function removeTree(fs, path)
+local function removeTree(fs, path, out)
+  out = out or sink(fs, true)
   local info = fs.getInfo(path)
   if not info then return end
-  if info.type == "directory" then
+  local isDir = info.type == "directory"
+  if isDir then
     for _, name in ipairs(fs.getDirectoryItems(path) or {}) do
-      removeTree(fs, path .. "/" .. name)
+      removeTree(fs, path .. "/" .. name, out)
     end
   end
-  fs.remove(path)
+  out.remove(path, isDir)
 end
 ModLibrary._removeTree = removeTree
 
@@ -154,6 +205,7 @@ end
 function ModLibrary.installZip(bytes, name, opts)
   opts = opts or {}
   local fs = fsys(opts.fs)
+  local out = sink(fs, opts.fs ~= nil)
   if type(bytes) ~= "string" or bytes == "" then return nil, "the file was empty" end
   if #bytes > ModLibrary.MAX_ZIP_BYTES then return nil, "that .zip is too large" end
   if bytes:sub(1, 2) ~= "PK" then return nil, "that is not a .zip file" end
@@ -184,10 +236,10 @@ function ModLibrary.installZip(bytes, name, opts)
         result = { exists = true, manifest = manifest }
         return
       end
-      removeTree(fs, target)
+      removeTree(fs, target, out)
     end
-    fs.createDirectory(ModLibrary.ROOT)
-    copyTree(fs, root, target)
+    out.mkdir(ModLibrary.ROOT)
+    copyTree(fs, out, root, target)
     result = manifest
   end)
   pcall(fs.unmount, data)
@@ -197,29 +249,42 @@ function ModLibrary.installZip(bytes, name, opts)
 end
 
 function ModLibrary.uninstall(folder, fs)
+  local custom = fs ~= nil
   fs = fsys(fs)
   if type(folder) ~= "string" or folder:sub(1, #ModLibrary.ROOT + 1)
       ~= ModLibrary.ROOT .. "/" or folder:find("..", 1, true) then
     return false, "not an installed mod folder"
   end
-  removeTree(fs, folder)
+  removeTree(fs, folder, sink(fs, custom))
+  if portable(custom) then
+    -- a copy an older build wrote to the OS save directory instead (#330)
+    removeTree(fs, folder, sink(fs, true))
+  end
   if fs.getInfo(folder) == nil then return true end
-  -- a game-folder mod of the same name still shows through; the player's
-  -- copy is gone, which is what uninstalling it means
+  -- a built-in mod of the same name still shows through; the player's copy
+  -- is gone, which is what uninstalling it means
   local real = fs.getRealDirectory and fs.getRealDirectory(folder)
-  local saveDir = fs.getSaveDirectory and fs.getSaveDirectory()
-  if real and saveDir and real ~= saveDir then return true end
+  if not writableDir(fs, real, custom) then return true end
   return false, "the mod's files could not all be removed"
 end
 
--- Ids a manifest depends on that are not installed.
+-- Ids a manifest depends on that are not installed.  Dependencies come
+-- parsed from Manifest.validate (dependencySpecs: "id@range#owner/repo"
+-- already split into id and range); the raw list is the fallback.
 function ModLibrary.missingDependencies(manifest, rows)
   local have = {}
   for _, row in ipairs(rows or {}) do have[row.id] = true end
   local missing = {}
-  for _, dep in ipairs(manifest and manifest.dependencies or {}) do
-    local id = type(dep) == "table" and dep.id or dep
-    if type(id) == "string" and not have[id] then missing[#missing + 1] = id end
+  local specs = manifest and manifest.dependencySpecs
+  if type(specs) ~= "table" then
+    specs = {}
+    for _, dep in ipairs(manifest and manifest.dependencies or {}) do
+      local id = type(dep) == "table" and dep.id or tostring(dep):match("^([%w_%-]+)")
+      specs[#specs + 1] = { id = id }
+    end
+  end
+  for _, spec in ipairs(specs) do
+    if type(spec.id) == "string" and not have[spec.id] then missing[#missing + 1] = spec.id end
   end
   return missing
 end

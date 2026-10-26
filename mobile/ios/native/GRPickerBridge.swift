@@ -427,8 +427,8 @@ public final class GRPickerBridge: NSObject {
         let delegate = PickerDelegate { urls in
             guard !urls.isEmpty else { return }
             // Same completion signal love-android's GameActivity writes;
-            // the old launcher consumed it and cleared pending_export.sav;
-            // src/launcher/Launcher.lua does not read it yet.
+            // Launcher:pollExport (src/launcher/Launcher.lua) consumes it and
+            // clears pending_export.sav.
             let flag = dir.appendingPathComponent("export_done.flag")
             try? "ok".data(using: .utf8)?.write(to: flag)
         }

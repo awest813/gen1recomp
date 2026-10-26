@@ -247,16 +247,12 @@ promising a restart that would change nothing.
 ### What the player sees
 
 All three surfaces read the same derivation -- the two UIs and the loader --
-so they cannot disagree about your mod. The launcher's mod panel carries a
-`Show for:` chip row (All games / Red / Gold / ...) and a per-mod tag from
-`ModTargets.chip` -- `GEN 1`, `GEN 1+2`, `RED/GOLD`, `BLUE` -- greyed out when
-the mod does not run on the selected game, with the line `Not for this game`
-(`src/import/LauncherView.lua:320`) and the detail from `ModTargets.detail`,
-`For Gen 1, not Gold`. The in-game manager shows the same thing as
-`ENABLED (NOT THIS GAME)` with the skipped glyph, plus an inert `FOR GEN 1+2`
-row on the detail screen. The launcher's dependency verdict asks the same
-question of your dependencies: a mod whose hard dependency does not run on the
-selected game reads `Needs <id> (not for Gold)` rather than `Ready`.
+so they cannot disagree about your mod. The launcher's Mods page lists the
+mods for the selected game and marks one that does not run on it with the line
+`Not made for this game` (`Launcher:drawMods` in `src/launcher/Launcher.lua`,
+from `ModTargets.supports` via `ModLibrary.list`). The in-game manager shows
+the same thing as `ENABLED (NOT THIS GAME)` with the skipped glyph, plus an
+inert `FOR GEN 1+2` row (from `ModTargets.chip`) on the detail screen.
 
 ### Scoping dependencies per game / generation
 

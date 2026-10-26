@@ -51,7 +51,7 @@ return function(game)
   local restored = require("src.core.game3.save_schema_firered").fromSaveTable(save)
   check(restored.version == "leafgreen" and #restored.party == #session.party, "LeafGreen save round trip")
   U.shot(game, DIR .. "/bedroom.png")
-  if require("src.import.RomImporter").isReady("firered") then
+  if require("src.import.CacheContract").isImported("firered") then
     local Lifecycle = require("src.core.SessionLifecycle")
     for _, edition in ipairs({ "firered", "leafgreen" }) do
       local oldBundle = require("src.core.game3.scripting.space").bundle

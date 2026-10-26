@@ -73,7 +73,7 @@ local ALLOW = {
   },
   ["src/launcher/Launcher.lua"] = {
     { reason = PICKER_TEMP, pat = "pcall%(love%.filesystem%.remove, PICKED%[kind%]%)", n = 1 },
-    { reason = PICKER_TEMP, pat = "^%s*local lfs = love%.filesystem$", n = 1 },
+    { reason = PICKER_TEMP, pat = "^%s*local lfs = love%.filesystem$", n = 3 },
   },
 }
 

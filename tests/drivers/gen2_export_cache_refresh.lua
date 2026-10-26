@@ -4,7 +4,7 @@ return function(game)
   local SaveData = require("src.core.SaveData")
   local CacheFs = require("src.import.CacheFs")
   local Contract = require("src.import.CacheContract")
-  local Importer = require("src.import.RomImporter")
+  local Launcher = require("src.launcher.Launcher")
   local Writer = require("src.import.LuaWriter")
   local Gen2Save = require("src.save_convert.Gen2Save")
   local Compat = require("src.save_convert.Compat")
@@ -45,15 +45,22 @@ return function(game)
   local function tableRead(name)
     return assert(loadstring(cacheRead("data/generated/" .. name .. ".lua")))()
   end
-  local imp = Importer.new(nil, { launcher = true })
-  imp._inputBlocked = true
+  local imp = Launcher.new(function() end, { noUpdateCheck = true })
+  -- the launcher's Export button: the chosen game and save, then exportSave()
+  local function exportSave(slotId)
+    imp.selected = "crystal"
+    imp.selectedSlot[imp:scopeKey("crystal")] = slotId
+    imp:exportSave()
+    local m = assert(imp.message, "export left no notice")
+    return { ok = m.kind ~= "error", text = m.text }
+  end
   assert(imp.ready.crystal, "fresh Crystal cache must be ready before reproduction")
   local constants = tableRead("constants")
   assert(constants.spriteContext and constants.spriteContext.edition == "crystal", "fresh ROM metadata required")
   constants.spriteContext = nil
   cacheWrite("data/generated/constants.lua", Writer.encode(constants))
   cacheWrite(Contract.MARKER_PATH, "rom-cache-v12-crystal4:" .. GameVersion.info("crystal").sha1)
-  assert(not Importer.isReady("crystal"), "old cache must fail the current contract")
+  assert(not Contract.isImported("crystal"), "old cache must fail the current contract")
 
   local slot = assert(SaveData.createSlot("crystal"))
   assert(SaveData.writeSlot("crystal", slot, {
@@ -65,8 +72,7 @@ return function(game)
     playerState = "normal", party = {}, events = {}, playTime = { hours = 0, minutes = 52 },
   }))
   assert(SaveData.setActiveSlot("crystal", slot))
-  imp:exportSave("crystal")
-  local notice = assert(imp.saveNotice.crystal)
+  local notice = exportSave(slot)
   assert(not notice.ok and notice.text:find(
     "this save cannot be exported onto map 26/3: Gen 2 sprite metadata is missing (re-import the ROM)", 1, true),
     "missing metadata did not reproduce the reported export refusal: " .. tostring(notice.text))
@@ -76,25 +82,26 @@ return function(game)
 
   local previousUpdate, previousDraw = rawget(game, "update"), rawget(game, "draw")
   game.update, game.draw = function() end, function() end
-  imp:reimport("crystal")
-  assert(not imp.ready.crystal and imp.chooseVersion == "crystal", "public reimport action did not select Crystal")
+  imp:refresh()
+  assert(not imp.ready.crystal, "the launcher must see the old Crystal cache as not imported")
   imp:startPath(path)
+  local job = assert(imp.job, "ROM import did not start: " .. tostring(imp.message and imp.message.text))
+  assert(job.version == "crystal", "the ROM import did not select Crystal")
   local deadline = love.timer.getTime() + 24
   for _ = 1, 100000 do
-    if imp.workState ~= "working" or love.timer.getTime() >= deadline then break end
+    if not imp.job or love.timer.getTime() >= deadline then break end
     imp:update(1 / 60)
     U.wait(1)
   end
-  assert(imp.workState == "complete" and imp.completeVersion == "crystal",
-    "actual ROM reimport did not complete: " .. tostring(imp.status) .. " " .. tostring(imp.detail))
-  assert(Importer.isReady("crystal"), "regenerated cache does not satisfy the current contract")
-  assert(cacheRead(Contract.MARKER_PATH) == Contract.markerFor("crystal", imp.romSha1), "regenerated marker has wrong provenance")
+  assert(imp.job == nil and job.state == "done" and imp.ready.crystal,
+    "actual ROM reimport did not complete: " .. tostring(job.state) .. " " .. tostring(job.error))
+  assert(Contract.isImported("crystal"), "regenerated cache does not satisfy the current contract")
+  assert(cacheRead(Contract.MARKER_PATH) == Contract.markerFor("crystal", job.sha1), "regenerated marker has wrong provenance")
   local regenerated = tableRead("constants")
   assert(regenerated.spriteContext and regenerated.spriteContext.edition == "crystal", "reimport did not generate Crystal sprite metadata")
   U.log("PASS actual SHA-verified ROM extraction regenerated current Crystal metadata")
 
-  imp:exportSave("crystal")
-  notice = assert(imp.saveNotice.crystal)
+  notice = exportSave(slot)
   assert(notice.ok, "same-session export after reimport failed: " .. tostring(notice.text))
   local bytes = assert(love.filesystem.read(output))
   assert(#bytes == Gen2Save.SAVE_SIZE, "export size is not a complete SRAM image")

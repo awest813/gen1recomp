@@ -103,6 +103,11 @@ function Launcher.new(onLaunch, opts)
     return require("src.import.CacheFs").portableError()
   end)
   if okF and portableErr then self:say(tostring(portableErr), "error") end
+  -- Switch / PS4 import folders: make them, then take what is waiting
+  if require("src.launcher.Inbox").enabled() then
+    pcall(require("src.launcher.Inbox").prepare)
+    self:queue(function() self:scanInbox() end)
+  end
   -- back from an online battle: reopen Online and sign back in
   if opts.initialGame == "online" then
     self:openOnline()
@@ -267,6 +272,7 @@ function Launcher:installCart(data, name)
   local info = cart.base and GameVersion.info(cart.base)
   self:say(("Installed %s%s."):format(tostring(cart.title or cart.id),
     info and (" for " .. info.displayName) or ""), "info")
+  return true
 end
 
 function Launcher:removeCart(version, row)
@@ -360,7 +366,7 @@ end
 --            name per kind (mobile/android/.../System.cpp,
 --            mobile/ios/native/GRPickerBridge.swift).
 local PICKED = { rom = "picked_rom.gb", mod = "picked_mod.zip", sav = "picked_save.sav",
-                 cart = "picked_cart.g1rcart" }
+                 cart = "picked_cart.g1rcart", required_import = "picked_required_import.bin" }
 
 local function hostPicker()
   local sys = love and love.system
@@ -401,6 +407,8 @@ function Launcher:takePick(kind, path, name, read, release)
   local data, err = read()
   release()
   if kind == "box" then return self:importBox(data, err) end
+  if kind == "modfile" then return self:storeModFile(data, err) end
+  if kind == "importer" then return self:startImporter(data, err) end
   if not data then
     return self:say("Could not read that file: " .. tostring(err), "error")
   end
@@ -514,6 +522,209 @@ function Launcher:installMod(data, name)
     text = text .. " It also needs: " .. table.concat(missing, ", ") .. "."
   end
   self:say(text, #missing > 0 and "error" or "info")
+  return true
+end
+
+-- What a mod still needs before it can load: files the player supplies
+-- (required_imports, src/mods/RequiredImports.lua) and asset packs an
+-- importer builds from another game (required_assets, src/import/Importers.lua).
+-- Returns { file = first missing import spec, pack = first missing pack spec,
+-- text = one line for the row } or nil when nothing is missing.
+function Launcher:modNeeds(row)
+  if type(row) ~= "table" then return nil end
+  -- checked once per mod list: a stored file may be hashed to verify it
+  if row.needChecked then return row.need end
+  row.needChecked = true
+  row.need = self:findModNeeds(row)
+  return row.need
+end
+
+function Launcher:findModNeeds(row)
+  local manifest = row.manifest
+  if type(manifest) ~= "table" then return nil end
+  local need = {}
+  local okR, RequiredImports = pcall(require, "src.mods.RequiredImports")
+  if okR and #(RequiredImports.specs(manifest)) > 0 then
+    local okI, rows = pcall(RequiredImports.inspect, manifest)
+    for _, r in ipairs(okI and rows or {}) do
+      if not r.present and r.required and not need.file then
+        need.file, need.text = r.spec, "Needs " .. tostring(r.name)
+          .. (r.error and (" (" .. tostring(r.error) .. ")") or "")
+      end
+    end
+  end
+  if not need.file and #(manifest.required_assets or {}) > 0 then
+    local Importers = require("src.import.Importers")
+    for _, spec in ipairs(manifest.required_assets) do
+      if not Importers.resolve(spec) then
+        local desc = Importers.get(spec.importer)
+        need.pack = spec
+        need.text = "Needs the " .. tostring(desc and desc.name or spec.importer)
+          .. " asset import"
+        break
+      end
+    end
+  end
+  return need.text and need or nil
+end
+
+-- Pick the file a mod asked for and store it for that mod alone.
+function Launcher:addModFile(row, spec)
+  self.pendingModFile = { manifest = row.manifest, spec = spec, name = row.name }
+  if self:requestHostPick("required_import", "modfile") then return end
+  local ok, FilePicker = pcall(require, "src.core.FilePicker")
+  if not (ok and FilePicker.available()) then
+    self.pendingModFile = nil
+    return self:say("This platform has no file picker for mod files.", "error")
+  end
+  local path = FilePicker.open("Choose " .. tostring(spec.name), { label = spec.name, exts = {} })
+  if not path then self.pendingModFile = nil return end
+  local data, err = FilePicker.read(path)
+  self:storeModFile(data, err)
+end
+
+function Launcher:storeModFile(data, err)
+  local want = self.pendingModFile
+  self.pendingModFile = nil
+  if not want then return end
+  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
+  local RequiredImports = require("src.mods.RequiredImports")
+  local ok, why = RequiredImports.importData(want.manifest, want.spec.id, data)
+  self.modRows = nil
+  if not ok then
+    return self:say(tostring(want.spec.name) .. " was not accepted: " .. tostring(why), "error")
+  end
+  self:say(("%s now has %s."):format(tostring(want.name), tostring(want.spec.name)), "info")
+end
+
+-- ------------------------------------------------------- asset importers
+
+-- Start an importer (src/import/Importers.lua) on a dump the player picks:
+-- its job is a coroutine that writes asset packs other mods can use.
+function Launcher:runImporter(id)
+  if self.assetJob then return self:say("An import is already running.", "error") end
+  self.pendingImporter = id
+  if self:requestHostPick("required_import", "importer") then return end
+  local ok, FilePicker = pcall(require, "src.core.FilePicker")
+  if not (ok and FilePicker.available()) then
+    self.pendingImporter = nil
+    return self:say("This platform has no file picker for importer sources.", "error")
+  end
+  local desc = require("src.import.Importers").get(id)
+  local path = FilePicker.open("Choose " .. tostring(desc and desc.source and desc.source.name or id),
+    { label = desc and desc.name or id, exts = desc and desc.source and desc.source.formats or {} })
+  if not path then self.pendingImporter = nil return end
+  local data, err = FilePicker.read(path)
+  self:startImporter(data, err)
+end
+
+function Launcher:startImporter(data, err)
+  local id = self.pendingImporter
+  self.pendingImporter = nil
+  if not id then return end
+  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
+  local desc = require("src.import.Importers").get(id)
+  local okM, module = pcall(require, desc and desc.module or "")
+  if not okM or type(module) ~= "table" or type(module.job) ~= "function" then
+    return self:say("That importer is not available in this build.", "error")
+  end
+  local okJ, co = pcall(module.job, data)
+  if not okJ or type(co) ~= "thread" then return self:say(tostring(co), "error") end
+  self.assetJob = { id = id, name = desc.name, co = co, done = 0, total = 1,
+    status = "Starting" }
+end
+
+function Launcher:stepImporter(budget)
+  local job = self.assetJob
+  if not job then return end
+  local clock = love.timer and love.timer.getTime
+  local deadline = clock and (clock() + (budget or 0.008))
+  repeat
+    local ok, info = coroutine.resume(job.co)
+    if not ok then
+      self.assetJob = nil
+      return self:say(tostring(job.name) .. " import failed: " .. tostring(info), "error")
+    end
+    if coroutine.status(job.co) == "dead" then
+      self.assetJob, self.modRows = nil, nil
+      return self:say(tostring(job.name) .. " assets imported.", "info")
+    end
+    if type(info) == "table" then
+      job.done, job.total = tonumber(info.done) or job.done, tonumber(info.total) or job.total
+      job.status = info.status or job.status
+    end
+  until not deadline or clock() >= deadline
+end
+
+-- --------------------------------------------------------- import folder
+
+-- Switch / PS4: take whatever waits in the imports folders
+-- (src/launcher/Inbox.lua).  A file that imported is removed; one that did
+-- not stays, reported once, so the player can see what was wrong.
+function Launcher:scanInbox()
+  local Inbox = require("src.launcher.Inbox")
+  local lfs = love.filesystem
+  self.inboxTried = self.inboxTried or {}
+  local took, failed = 0, nil
+  for _, item in ipairs(Inbox.scan()) do
+    if not self.inboxTried[item.path] then
+      self.inboxTried[item.path] = true
+      local ok
+      if item.kind == "save" then
+        if self.ready[item.version] then
+          local was = self.selected
+          self.selected = item.version
+          ok = self:importSave(lfs.getSaveDirectory() .. "/" .. item.path, item.name, nil,
+            function() Inbox.take(item) end)
+          if ok == "confirm" then ok = nil else self.selected = was end
+        end
+      elseif item.kind == "rom" then
+        if not self:importing() then
+          self:importData(lfs.read(item.path), item.name)
+          ok = self:importing()
+          if not ok then self.inboxTried[item.path] = true end
+        else
+          self.inboxTried[item.path] = nil -- one ROM at a time; next scan
+        end
+      else
+        local data = lfs.read(item.path)
+        if item.kind == "mod" then ok = self:installMod(data, item.name)
+        elseif item.kind == "cart" then ok = self:installCart(data, item.name)
+        elseif item.kind == "modfile" then ok = self:storeInboxModFile(data) end
+      end
+      if ok == true then
+        Inbox.take(item)
+        took = took + 1
+      elseif ok == false or ok == nil then
+        failed = failed or (self.message and self.message.kind == "error" and self.message.text)
+      end
+    end
+  end
+  if failed then self:say(failed, "error")
+  elseif took > 1 then self:say(("Imported %d files from the imports folder."):format(took), "info") end
+  return took
+end
+
+-- A file from imports/baseroms/: offer it to every installed mod still
+-- missing one; RequiredImports checks its MD5 against each.
+function Launcher:storeInboxModFile(data)
+  if not data then return false end
+  local RequiredImports = require("src.mods.RequiredImports")
+  for _, row in ipairs(require("src.mods.ModLibrary").list()) do
+    local manifest = row.manifest
+    if manifest and #(RequiredImports.specs(manifest)) > 0 then
+      local okI, rows = pcall(RequiredImports.inspect, manifest)
+      for _, r in ipairs(okI and rows or {}) do
+        if not r.present and RequiredImports.importData(manifest, r.id, data) then
+          self.modRows = nil
+          self:say(("%s now has %s."):format(tostring(row.name), tostring(r.name)), "info")
+          return true
+        end
+      end
+    end
+  end
+  self:say("No installed mod is waiting for that file.", "error")
+  return false
 end
 
 function Launcher:pickMod()
@@ -681,6 +892,7 @@ function Launcher:importSave(source, name, force, cleanup)
   local okA, active = pcall(SaveData.activeSlot, v)
   if okA and active then self.selectedSlot[v] = active end
   self:say((name and (name .. " ") or "The save ") .. "was imported as a new save.", "info")
+  return true
 end
 
 function Launcher:editSave()
@@ -722,7 +934,42 @@ function Launcher:exportSave()
   local SaveFileIO = require("src.import.SaveFileIO")
   local ok, result = SaveFileIO.exportActiveSlot(v)
   if not ok then return self:say("Export failed: " .. tostring(result), "error") end
+  if self:shareExport(result) then return end
   self:say("Exported to " .. tostring(result), "info")
+end
+
+-- Android and iOS keep the export in the app's own folder, out of the
+-- player's reach: stage it as pending_export.sav and let the system's save
+-- dialog (love.system.createFile) copy it where they choose.  The host
+-- writes export_done.flag when it has (GameActivity.java,
+-- GRPickerBridge.swift).
+function Launcher:shareExport(path)
+  local sys, lfs = love and love.system, love and love.filesystem
+  if not (sys and type(sys.createFile) == "function" and lfs) then return false end
+  local rel = tostring(path):match("(exports/.*)$")
+  local bytes = rel and lfs.read(rel)
+  if not bytes then return false end
+  pcall(lfs.remove, "export_done.flag")
+  if not lfs.write("pending_export.sav", bytes) then return false end
+  local okC, started = pcall(sys.createFile, rel:match("[^/]+$"))
+  if not okC or started == false then
+    pcall(lfs.remove, "pending_export.sav")
+    return false
+  end
+  self.pendingExport = true
+  self:say("Choose where to save the file.", "info")
+  return true
+end
+
+function Launcher:pollExport()
+  if not self.pendingExport then return end
+  local lfs = love.filesystem
+  if lfs.getInfo("export_done.flag") then
+    self.pendingExport = nil
+    pcall(lfs.remove, "export_done.flag")
+    pcall(lfs.remove, "pending_export.sav")
+    self:say("Save exported.", "info")
+  end
 end
 
 -- Delete takes two presses: the first arms it, any other action disarms.
@@ -844,6 +1091,8 @@ end
 -- ------------------------------------------------------------- host hooks
 
 function Launcher:update(dt)
+  pcall(self.pollExport, self)
+  if self.assetJob then self:stepImporter(0.008) end
   local okP, errP = pcall(self.pollHostPick, self)
   if not okP then
     self.pendingPick = nil
@@ -944,18 +1193,38 @@ function Launcher:mousereleased(x, y, button)
 end
 
 function Launcher:mousemoved(x, y) showcase(self, "pointerMoved", "mouse", x, y) end
+-- A finger drags lists (Kit.dragBegin/dragAdd feed every scroll area); one
+-- that moved further than a tap is a drag, not a press.
+local DRAG_SLOP = 12
+
 function Launcher:touchpressed(id, x, y)
   if showcase(self, "pointerPressed", id, x, y) then return end
   self.pressAt = { x = x, y = y }
+  self.touchY = y
+  Kit.dragBegin(x, y)
 end
-function Launcher:touchmoved(id, x, y) showcase(self, "pointerMoved", id, x, y) end
+function Launcher:touchmoved(id, x, y)
+  if showcase(self, "pointerMoved", id, x, y) then return end
+  if self.touchY then
+    Kit.dragAdd(self.touchY - y)  -- finger up scrolls the content down
+    self.touchY = y
+  end
+  local p = self.pressAt
+  if p and (math.abs(x - p.x) > DRAG_SLOP or math.abs(y - p.y) > DRAG_SLOP) then
+    self.pressAt = nil
+  end
+end
 function Launcher:touchreleased(id, x, y)
+  self.touchY = nil
   if showcase(self, "pointerReleased", id) then
     self.pressAt = nil
+    Kit.dragEnd()
     return
   end
   if self.pressAt then self.click = { x = x, y = y } end
   self.pressAt = nil
+  -- the drag ends after the frame that reads it
+  self:queue(function() Kit.dragEnd() end, true)
 end
 
 function Launcher:wheelmoved(_, dy) self.wheel = (self.wheel or 0) + dy end
@@ -995,7 +1264,12 @@ function Launcher:keypressed(key)
   return false
 end
 
+local POPUP_KEYS = { dpup = "up", dpdown = "down", a = "return", b = "escape" }
+
 function Launcher:gamepadpressed(_, button)
+  -- a Box popup or rename prompt owns the pad while it is up
+  if self._boxPrompt and button == "b" then return self:keypressed("escape") end
+  if self._boxPopup and POPUP_KEYS[button] then return self:keypressed(POPUP_KEYS[button]) end
   if button == "b" and not Kit.focus then
     if self._boxPopup or self._boxPrompt or self.page then return self:keypressed("escape") end
   end
@@ -1078,6 +1352,7 @@ end
 -- back (save editor, skin studio) or saves changed underneath it.
 function Launcher:focus()
   self:refresh()
+  if require("src.launcher.Inbox").enabled() then self:queue(function() self:scanInbox() end) end
   self.modRows, self.cartRows, self.cartPlans = nil, nil, nil
 end
 function Launcher:savesChanged() self.slots = {} end
@@ -1217,6 +1492,22 @@ function Launcher:drawSettings(x, y, w, h, s)
     end
     cy = cy + rowH + math.floor(10 * s)
   end
+  local Inbox = require("src.launcher.Inbox")
+  if Inbox.enabled() then
+    label("Imports folder", cy)
+    local iw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - iw, cy, iw, rowH, "Scan again", { id = "inbox-scan", font = "small" }) then
+      self:queue(function()
+        self.inboxTried = {}
+        if self:scanInbox() == 0 and not (self.message and self.message.kind == "error") then
+          self:say("Nothing new in " .. Inbox.location() .. ".", "info")
+        end
+      end)
+    end
+    cy = cy + rowH + math.floor(4 * s)
+    Kit.text("micro", Kit.ellipsize("micro", "Copy files into " .. Inbox.location(), cw), cx, cy, PAL.faint)
+    cy = cy + Kit.textHeight("micro") + math.floor(10 * s)
+  end
   label("Save sync", cy)
   local syncW = math.floor(math.min(cw * 0.5, 300 * s))
   local SyncEngine = package.loaded["src.sync.SyncEngine"]
@@ -1348,10 +1639,13 @@ function Launcher:drawMods(x, y, w, h, s)
       local ry = py + (i - 1) * (rowH + gap)
       Kit.row(cx, ry, rw, rowH, false, "mod-" .. tostring(row.folder))
       local tx = cx + math.floor(12 * s)
-      local textW = rw - 2 * bw - math.floor(36 * s)
+      local need = not row.broken and row.supported and self:modNeeds(row) or nil
+      local textW = rw - (need and 3 or 2) * (bw + math.floor(8 * s)) - math.floor(20 * s)
       Kit.text("button", Kit.ellipsize("button", row.name, textW), tx, ry + math.floor(6 * s), PAL.text)
       local detail
-      if row.broken then
+      if need then
+        detail = need.text
+      elseif row.broken then
         detail = "Broken: " .. row.broken
       elseif not row.supported then
         detail = "Not made for this game"
@@ -1365,9 +1659,19 @@ function Launcher:drawMods(x, y, w, h, s)
       end
       Kit.text("micro", Kit.ellipsize("micro", detail, textW),
         tx, ry + rowH - Kit.textHeight("micro") - math.floor(8 * s),
-        row.broken and PAL.red or PAL.muted)
+        row.broken and PAL.red or need and PAL.yellow or PAL.muted)
       local by = ry + (rowH - bh) / 2
       local onX = cx + rw - 2 * bw - math.floor(16 * s)
+      if need then
+        local label = need.file and "Add file" or "Get pack"
+        if Kit.button(onX - bw - math.floor(8 * s), by, bw, bh, label,
+            { id = "mod-need-" .. tostring(row.folder), font = "small", kind = "accent" }) then
+          self:queue(function()
+            if need.file then self:addModFile(row, need.file)
+            else self.page = "importers" end
+          end)
+        end
+      end
       local usable = not row.broken and row.supported
       if Kit.button(onX, by, bw, bh, row.enabled and usable and "On" or "Off",
           { id = "mod-toggle-" .. tostring(row.folder), font = "small",
@@ -1388,11 +1692,70 @@ function Launcher:drawMods(x, y, w, h, s)
   end
 
   local by = y + h - pad - btnH - hintH - math.floor(8 * s)
-  if Kit.button(cx, by, math.min(cw, math.floor(260 * s)), btnH, "Install mod .zip",
+  local iw = math.min(math.floor((cw - math.floor(10 * s)) / 2), math.floor(260 * s))
+  if Kit.button(cx, by, iw, btnH, "Install mod .zip",
       { id = "mod-install", kind = "accent" }) then
     self:queue(function() self:pickMod() end)
   end
+  if Kit.button(cx + iw + math.floor(10 * s), by, iw, btnH, "Asset importers",
+      { id = "mod-importers" }) then
+    self:queue(function() self.page = "importers" end)
+  end
   Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
+end
+
+local IMPORTER_STATE = { ready = "Imported", partial = "Partly imported",
+  missing = "Not imported", planned = "Coming later" }
+
+function Launcher:drawImporters(x, y, w, h, s)
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
+  local backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + math.floor(32 * s))
+  if Kit.button(cx + cw - backW, cy, backW, smallH, "Back", { id = "importers-back", font = "small" }) then
+    self:queue(function() self.page = "mods" end)
+  end
+  Kit.textBold("title", "Asset importers", cx, cy, PAL.heading)
+  cy = cy + Kit.textHeight("title") + math.floor(4 * s)
+  local intro = "Some mods use art or sound from another game you own. Import it once "
+    .. "here and every mod that asks for it can use it."
+  Kit.textWrapped("small", intro, cx, cy, cw - backW - math.floor(10 * s), PAL.muted)
+  cy = cy + Kit.wrapHeight("small", intro, cw - backW - math.floor(10 * s)) + math.floor(14 * s)
+
+  local job = self.assetJob
+  if job then
+    Kit.text("small", Kit.ellipsize("small", tostring(job.name) .. ": " .. tostring(job.status), cw),
+      cx, cy, PAL.text)
+    cy = cy + Kit.textHeight("small") + math.floor(6 * s)
+    Theme.meter(cx, cy, cw, math.floor(10 * s), (job.done or 0) / math.max(1, job.total or 1), PAL.green)
+    cy = cy + math.floor(22 * s)
+  end
+  local Importers = require("src.import.Importers")
+  local entryH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(64 * s))
+  local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Import") + math.floor(28 * s))
+  for _, desc in ipairs(Importers.all()) do
+    local okS, state = pcall(Importers.state, desc.id)
+    state = okS and state or "missing"
+    Kit.row(cx, cy, cw, entryH, false, "importer-" .. desc.id)
+    local textW = cw - bw - math.floor(36 * s)
+    Kit.text("button", Kit.ellipsize("button", tostring(desc.name), textW), cx + math.floor(12 * s),
+      cy + math.floor(6 * s), PAL.text)
+    local line = (IMPORTER_STATE[state] or state) .. "  -  " .. tostring(desc.summary or "")
+    Kit.text("micro", Kit.ellipsize("micro", line, textW), cx + math.floor(12 * s),
+      cy + entryH - Kit.textHeight("micro") - math.floor(8 * s),
+      state == "ready" and PAL.green or PAL.muted)
+    if Kit.button(cx + cw - bw - math.floor(8 * s), cy + (entryH - smallH) / 2, bw, smallH,
+        state == "ready" and "Redo" or "Import",
+        { id = "importer-run-" .. desc.id, font = "small",
+          enabled = state ~= "planned" and not job }) then
+      local id = desc.id
+      self:queue(function() self:runImporter(id) end)
+    end
+    cy = cy + entryH + math.floor(4 * s)
+  end
+  return cy - y + pad
 end
 
 function Launcher:drawCarts(x, y, w, h, s)
@@ -1543,6 +1906,9 @@ function Launcher:drawPage(x, y, w, h, s)
   if self.page == "carts" and self.selected and self.ready[self.selected] then
     return self:drawCarts(x, y, w, h, s)
   end
+  if self.page == "importers" then
+    return self:drawFitted("importers", x, y, w, h, s, self.drawImporters)
+  end
   return self:drawGame(x, y, w, h, s)
 end
 
@@ -1588,8 +1954,10 @@ function Launcher:drawGame(x, y, w, h, s)
       self:queue(function() self:pickRom() end)
     end
     cy = cy + btnH + math.floor(8 * s)
-    Kit.text("micro", "Or drop the .gb / .gbc / .gba file onto this window.",
-      cx, cy, PAL.faint)
+    local Inbox = require("src.launcher.Inbox")
+    Kit.text("micro", Kit.ellipsize("micro", Inbox.enabled()
+      and ("Or copy it into " .. Inbox.location() .. " and choose Settings > Scan again.")
+      or "Or drop the .gb / .gbc / .gba file onto this window.", cw), cx, cy, PAL.faint)
     return cy + Kit.textHeight("micro") + pad - y
   end
 
@@ -1800,7 +2168,15 @@ function Launcher:drawBoxOverlays(s)
     PAL.heading)
   cy = cy + Kit.textHeight("title") + math.floor(12 * s)
   local text = Kit.textfield("box-prompt", cx, cy, cw, fieldH, prompt.text, "")
-  if prompt.maxLen and #text > prompt.maxLen then text = text:sub(1, prompt.maxLen) end
+  if prompt.maxLen then
+    -- maxLen counts characters, not bytes: "é" is one
+    local count, cut = 0, #text
+    for pos in text:gmatch("()[^\128-\191]") do
+      count = count + 1
+      if count > prompt.maxLen then cut = pos - 1 break end
+    end
+    text = text:sub(1, cut)
+  end
   prompt.text = text
   cy = cy + fieldH + math.floor(12 * s)
   local bw = math.floor((cw - math.floor(10 * s)) / 2)

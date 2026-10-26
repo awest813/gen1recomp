@@ -860,3 +860,4 @@ tests/engine/relay_address_test.lua
 tests/engine/online_page_test.lua
 tests/engine/online_page_relay_test.lua
 tests/engine/sync_page_test.lua
+tests/engine/import_folder_test.lua

@@ -82,36 +82,16 @@ Input:gamepadpressed(mapped, "dpleft")
 Input:step()
 check(Input:isDown("left"), "mapped pad still routes through gamepad events")
 
--- The launcher has a separate virtual cursor, so prove generic joystick
--- events reach its left-stick and D-pad state too.
-local RomImporter = require("src.import.RomImporter")
-local importer = setmetatable({
-  _padCursor = { x = 0, y = 0 }, _padCursorActive = false,
-  _padAxis = { leftx = 0, lefty = 0, righty = 0 },
-  _padDir = {}, _rawHatDirs = {}, _padInited = true,
-  -- FlexLove view marker: without it the pad A path is a no-op (headless).
-  _flex = true,
-}, RomImporter)
-local clicked = false
-local prevView = package.loaded["src.import.LauncherView"]
-package.loaded["src.import.LauncherView"] = {
-  clickAt = function() clicked = true end,
-}
-importer:joystickaxis(nil, 1, -0.8)
-check(importer._padAxis.leftx == -0.8,
-  "raw joystick left axis reaches the launcher cursor")
-importer:joystickhat(nil, 1, "r")
-check(importer._padDir.dpright,
-  "raw joystick hat reaches the launcher cursor")
-importer:joystickhat(nil, 1, "c")
-check(not importer._padDir.dpright,
-  "raw joystick hat release clears the launcher cursor")
-importer:joystickpressed(nil, 1)
-check(clicked, "raw joystick primary button clicks the launcher cursor")
-clicked = false
-importer:joystickpressed(mapped, 1)
-check(not clicked, "mapped pad does not double-click the launcher cursor")
-package.loaded["src.import.LauncherView"] = prevView
+-- The launcher (src/launcher/Launcher.lua) drives its focus ring from raw
+-- joystick hats too, for the same unmapped handhelds.
+local Launcher = require("src.launcher.Launcher")
+local Kit = require("src.ui.kit.Kit")
+Kit._navQueue = nil
+Launcher.joystickhat({}, nil, 1, "r")
+check(Kit._navQueue == "right", "raw joystick hat moves the launcher focus ring")
+Kit._navQueue = nil
+Launcher.joystickhat({}, nil, 1, "c")
+check(Kit._navQueue == nil, "a centred hat does not move the launcher focus ring")
 
 -- Drivers that only inject pressQueue still get a one-step hold.
 Input:reset()

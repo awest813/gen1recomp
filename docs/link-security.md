@@ -52,12 +52,12 @@ the party against `rule` the same way and answers `party_ineligible`.
 Spectators are held to the profile too: a spectator runs the same engine to
 render the battle.
 
-**The client checks it before it will join or boot.** The ONLINE tab runs
-`ArenaData.equal` (everything except `rule`) against its own profile for
-every lobby row and greys out the ones it cannot play, with
-`ArenaData.describeMismatch` naming the first differing field so the reason
-is *what* differs rather than "incompatible"
-(`src/import/OnlinePanel.lua`). The battle it then boots is constructed
+**The client checks it before it will join or boot.** The launcher's Online
+page runs `ArenaData.equal` (everything except `rule`) against its own profile
+for every open room and disables Join on the ones it cannot play, marking them
+`not your game` (`OnlinePage:compatible` in `src/launcher/OnlinePage.lua`).
+`ArenaData.describeMismatch` can name the first differing field when a caller
+wants to say *what* differs rather than "incompatible". The battle it then boots is constructed
 with `strict = true` (`ArenaBoot.battleOpts`), so a mon that cannot be
 rebuilt from real species data refuses the battle instead of being
 approximated into a desync.

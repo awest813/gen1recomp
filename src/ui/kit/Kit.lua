@@ -972,7 +972,8 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
     syncSoftKeyboard(id, x, y, w, h)
     for _, e in ipairs(edits) do
       if e == "\b" then
-        value = value:sub(1, -2)
+        -- one whole character: a UTF-8 lead byte and its continuation bytes
+        value = value:gsub("[^\128-\191][\128-\191]*$", "", 1)
       elseif e == "\r" then
         Kit.blur()
         focused = false

@@ -240,4 +240,7 @@ check(files["mods/indexed/main.lua"] ~= nil, "into mods/<id>/")
 local okI, errI = ModLibrary.installFromIndex({ id = "gone", downloadURL = "https://example.com/gone.zip" })
 check(not okI and errI == "404", "a failed download says why")
 
+eq(table.concat(ModLibrary.missingDependencies({ dependencies = { "colorlib@^1.2.0#Acme/ColorLib", "zeta" } },
+  ModLibrary.list()), ","), "colorlib", "a dependency written as id@range#repo is matched by its id")
+
 T.finish("mod library")

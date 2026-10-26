@@ -855,7 +855,8 @@ implementation fails this assertion; the revised implementation passes.
 The loop is pinned as shell 5, preserving historical shell 4.
 
 A diagnostic payload based on the CI artifact contains the exact four
-changed source files (main, Version, LauncherView and RomImporter), verified
+changed source files (main, Version, LauncherView and RomImporter -- the old
+launcher, since replaced by `src/launcher/`), verified
 byte-for-byte; build ID 987fee2790aadd38. In the stationary, unmodded Pallet
 Town sample at 1280x720, 54 timing windows recorded 1,656 completed frames
 and 10 late intervals, with a 51.8 ms worst interval. Most windows had zero

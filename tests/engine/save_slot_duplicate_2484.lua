@@ -168,30 +168,6 @@ do
   T.check(type(err) == "string", "missing: with a reason")
 end
 
-do
-  local files = fresh("red", "red")
-  local RomImporter = require("src.import.RomImporter")
-  local imp = RomImporter.new(function() end, { launcher = true })
-  imp._sync = false
-  imp:_refreshSlots("red")
-  imp:_duplicateSlot("red", "slot1")
-  T.eq(imp.activeSlot.red, "slot2", "launcher: Duplicate selects the copy")
-  T.eq(imp.saveNotice.red and imp.saveNotice.red.ok, true, "launcher: and reports success")
-  local label
-  for _, s in ipairs(imp.slots.red or {}) do
-    if s.id == "slot2" then label = s.label end
-  end
-  T.eq(label, "MAIN copy", "launcher: the copy is labelled after the original")
-  T.check(files["saves/red/slot2.lua"] ~= nil, "launcher: and written to disk")
-end
-
-do
-  local src = assert(io.open("src/import/LauncherView.lua")):read("*a")
-  local body = src:match("local function saveActions%(.-\nend\n")
-  T.check(body and body:find("_duplicateSlot(scope, slot.id)", 1, true) ~= nil,
-    "launcher: the save card offers a Duplicate action")
-end
-
 love.filesystem = realFS
 
 T.finish("save_slot_duplicate_2484")

@@ -181,6 +181,9 @@ function vfs.load(name)
   return load(body, name)
 end
 
+-- ModLibrary.installZip wraps the .zip bytes and mounts them
+function vfs.newFileData(bytes, name) return { bytes = bytes, name = name } end
+
 function vfs.mount(_, point)
   for rel, body in pairs(ARCHIVE) do arch[point .. "/" .. rel] = body end
   return true
@@ -200,17 +203,17 @@ function vfs.getSaveDirectory() return SANDBOX .. "/os-save-dir" end
 local savedLoveFs = love.filesystem
 local savedPortableBaseDir = SaveData.portableBaseDir
 local savedCacheFs = package.loaded["src.import.CacheFs"]
-local savedLauncherMods = package.loaded["src.mods.LauncherMods"]
+local savedModLibrary = package.loaded["src.mods.ModLibrary"]
 
 -- CacheFs caches its resolved root (and its mkdir probe) at module level, so
 -- each half of this suite needs its own copy.  Both are restored at the end.
 local function freshModules(portableDir)
   package.loaded["src.import.CacheFs"] = nil
-  package.loaded["src.mods.LauncherMods"] = nil
+  package.loaded["src.mods.ModLibrary"] = nil
   SaveData.portableBaseDir = function() return portableDir end
-  local LauncherMods = require("src.mods.LauncherMods")
+  local ModLibrary = require("src.mods.ModLibrary")
   local CacheFs = require("src.import.CacheFs")
-  return LauncherMods, CacheFs
+  return ModLibrary, CacheFs
 end
 
 local function saveTreeKeys(prefix)
@@ -245,9 +248,11 @@ local function run()
   resetTrees()
   eq(plainCache.root(), nil, "with no portable folder the cache root stays unset")
 
-  local ok, id = plainMods.installZip(ZIP_PATH)
-  check(ok == true, "a non-portable install still succeeds (" .. tostring(id) .. ")")
-  eq(id, MOD_ID, "and reports the manifest id")
+  local zipBytes = fileBody(ZIP_PATH)
+  local installedManifest, installErr = plainMods.installZip(zipBytes, "portable_probe.zip")
+  check(installedManifest ~= nil,
+    "a non-portable install still succeeds (" .. tostring(installErr) .. ")")
+  eq(installedManifest and installedManifest.id, MOD_ID, "and reports the manifest id")
   check(save["mods/" .. MOD_ID .. "/manifest.json"] ~= nil,
     "a non-portable install still lands in the OS save directory")
   check(save["mods/" .. MOD_ID .. "/data/extra.txt"] ~= nil,
@@ -257,7 +262,7 @@ local function run()
 
   check(contains(listedIds(plainMods.list()), MOD_ID),
     "the mods panel lists it")
-  local uok = plainMods.uninstall(MOD_ID)
+  local uok = plainMods.uninstall("mods/" .. MOD_ID)
   check(uok == true, "a non-portable uninstall succeeds")
   eq(#saveTreeKeys("mods/"), 0,
     "and clears the save-directory tree, so the row stays gone")
@@ -287,13 +292,13 @@ local function run()
   -- The launcher leaves CacheFs.prefix on whichever version it last imported,
   -- but the mods tree is shared, so this must NOT land in blue/mods/.
   portableCache.prefix = "blue/"
-  ok, id = portableMods.installZip(ZIP_PATH)
+  installedManifest, installErr = portableMods.installZip(zipBytes, "portable_probe.zip")
   eq(portableCache.prefix, "blue/",
     "installZip hands the version prefix back to the launcher")
   portableCache.prefix = ""
 
-  check(ok == true, "a portable install succeeds (" .. tostring(id) .. ")")
-  eq(id, MOD_ID, "and reports the manifest id")
+  check(installedManifest ~= nil, "a portable install succeeds (" .. tostring(installErr) .. ")")
+  eq(installedManifest and installedManifest.id, MOD_ID, "and reports the manifest id")
 
   local installed = GAME_FOLDER .. "/mods/" .. MOD_ID
   check(fileExists(installed .. "/manifest.json"),
@@ -315,7 +320,7 @@ local function run()
 
   -- ------------------------------------------------- portable uninstall
   local uerr
-  uok, uerr = portableMods.uninstall(MOD_ID)
+  uok, uerr = portableMods.uninstall("mods/" .. MOD_ID)
   check(uok == true, "a portable uninstall succeeds (" .. tostring(uerr) .. ")")
   check(not fileExists(installed .. "/manifest.json"),
     "uninstall deletes the real files out of the game folder (#330)")
@@ -341,7 +346,7 @@ local function run()
   check(wrote, "staged a mod that was already sitting in the game folder")
   check(contains(listedIds(portableMods.list()), shipped),
     "the panel lists it (reads have always found the game folder)")
-  uok, uerr = portableMods.uninstall(shipped)
+  uok, uerr = portableMods.uninstall("mods/" .. shipped)
   check(uok == true, "uninstalling it succeeds (" .. tostring(uerr) .. ")")
   check(not fileExists(shippedDir .. "/manifest.json"),
     "and it really is deleted off the disk this time (#330)")
@@ -359,7 +364,7 @@ local function run()
   save["mods/" .. legacy .. "/main.lua"] = "return function() end\n"
   check(contains(listedIds(portableMods.list()), legacy),
     "a pre-fix copy in the OS save directory shows up in the panel")
-  uok = portableMods.uninstall(legacy)
+  uok = portableMods.uninstall("mods/" .. legacy)
   check(uok == true, "uninstalling it succeeds")
   eq(#saveTreeKeys("mods/" .. legacy), 0,
     "and a pre-fix copy stranded in the OS save directory is cleared too")
@@ -370,7 +375,7 @@ local ok, err = pcall(run)
 love.filesystem = savedLoveFs
 SaveData.portableBaseDir = savedPortableBaseDir
 package.loaded["src.import.CacheFs"] = savedCacheFs
-package.loaded["src.mods.LauncherMods"] = savedLauncherMods
+package.loaded["src.mods.ModLibrary"] = savedModLibrary
 rmrf(SANDBOX)
 
 if not ok then check(false, "suite raised: " .. tostring(err)) end

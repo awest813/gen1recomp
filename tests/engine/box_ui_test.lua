@@ -3,16 +3,16 @@ love = love or require("tests.love_stub")
 local T = require("tests.harness")
 local Kit = require("src.ui.kit.Kit")
 local UI = require("src.import.BoxUI")
-local View = require("src.import.LauncherView")
-local Importer = require("src.import.RomImporter")
+local BoxHost = require("src.import.BoxHost")
+local Launcher = require("src.launcher.Launcher")
 local Store = require("src.box.Store")
 local Transition = require("src.ui.kit.Transition")
 love.graphics.setLineJoin = love.graphics.setLineJoin or function() end
 love.graphics.newShader = love.graphics.newShader or function() return {} end
 local clock = 100
 love.timer.getTime = function() return clock end
-local controls, texts, original = {}, {}, View.btn
-View.btn = function(imp, x, y, w, h, id, label, opts)
+local controls, texts, original = {}, {}, BoxHost.kit.btn
+BoxHost.kit.btn = function(imp, x, y, w, h, id, label, opts)
   controls[id] = { x = x, y = y, w = w, h = h, label = label, opts = opts }
   return original(imp, x, y, w, h, id, label, opts)
 end
@@ -23,13 +23,13 @@ end
 local function launcher(width, height)
   love.graphics.getDimensions = function() return width, height end
   love.graphics.getPixelDimensions = function() return width, height end
-  local imp = Importer.new(function() end, { launcher = true })
+  local imp = Launcher.new(function() end, { noUpdateCheck = true })
+  imp:openBox()
   local service = { state = Store.new() }
   service.read = function(_, source)
     service.lastRead = source.path
     return { version = source.version, party = {}, boxes = {} }, nil, source.path
   end
-  imp.tab = "box"
   imp._boxState = { service = service, sources = {
     { version = "red", label = "Red · First", path = "first", slotId = "slot1" },
     { version = "emerald", label = "Emerald · Second", path = "second", slotId = "slot2" } },
@@ -40,9 +40,7 @@ local function launcher(width, height)
 end
 local function draw(imp, click)
   clock = clock + .3; controls, texts = {}, {}
-  imp._clickPt = click; View.draw(imp)
-  local queue = imp._uiActions; imp._uiActions = {}
-  imp:runActions(queue or {})
+  imp.click = click; imp:draw(); imp:update(0)
 end
 local function click(imp, id)
   local r = assert(controls[id], id)
@@ -59,7 +57,7 @@ for _, size in ipairs({ { 360, 780 }, { 390, 844 }, { 1024, 768 }, { 1360, 860 }
     "game and tools pickers have icons at " .. size[1])
   T.check(not table.concat(texts):find("Game save", 1, true), "ambiguous Game save label is gone")
   click(imp, "box-choose-save")
-  T.eq(View.modalKey(imp), "_boxPopup", "game picker owns the modal input layer")
+  T.check(imp._boxPopup ~= nil, "game picker owns the modal input layer")
   T.eq(imp._boxPopup.index, 1, "picker opens at the current playthrough")
   click(imp, "box-popup-option-2")
   T.eq(imp._boxState.sourceIndex, 2, "choosing a game changes the linked playthrough")
@@ -145,7 +143,7 @@ T.eq(changes, 1, "a retired popup action cannot apply twice")
 settle(imp)
 UI.open(imp, "Box", UI.values((function() local out = {}; for i = 1, 25 do out[i] = i end; return out end)()), 1,
   function(value) changes = value end)
-settle(imp); imp._padCursorActive = false; imp.isNX = false
+settle(imp)
 for _ = 1, 10 do imp:gamepadpressed(nil, "dpdown"); settle(imp) end
 T.eq(imp._boxPopup.index, 11, "controller navigation crosses the visible row boundary")
 T.check(imp._boxPopup.scroll > 0, "controller reveals the selected option")
@@ -156,14 +154,14 @@ UI.open(imp, "Box", UI.values((function() local out = {}; for i = 1, 25 do out[i
 settle(imp)
 local row = controls["box-popup-option-2"]
 local fx, fy = row.x + row.w / 2, row.y + row.h / 2
-View.touchpressed(imp, "finger", fx, fy)
-for step = 1, 8 do View.touchmoved(imp, "finger", fx, fy - step * 30) end
+imp:touchpressed("finger", fx, fy)
+for step = 1, 8 do imp:touchmoved("finger", fx, fy - step * 30) end
 settle(imp)
 T.check(imp._boxPopup.scroll > 0, "a finger drag scrolls a long popup list")
 local scrolled = imp._boxPopup.scroll
-View.touchmoved(imp, "finger", fx, fy); settle(imp)
+imp:touchmoved("finger", fx, fy); settle(imp)
 T.check(imp._boxPopup.scroll < scrolled, "dragging back scrolls the popup list up")
-View.touchreleased(imp, "finger", fx, fy); settle(imp)
+imp:touchreleased("finger", fx, fy); settle(imp)
 T.check(imp._boxPopup ~= nil, "a drag does not pick an option")
 keyboardChoice(imp, "escape")
 UI.open(imp, "Box", {}, nil); settle(imp)
@@ -173,7 +171,7 @@ UI.open(imp, "Box", {}, nil); settle(imp)
 draw(imp, { x = 1, y = 1 }); settle(imp)
 T.eq(imp._boxPopup, nil, "outside tap closes without activating the launcher")
 UI.open(imp, "Box", {}, nil); Kit.focus = "box-chooser-filter"
-imp:_switchTab("mods")
+imp:closeBox()
 T.eq(imp._boxPopup, nil, "leaving Box dismisses its popup")
 T.eq(Kit.focus, nil, "leaving Box releases picker text focus")
 
@@ -196,5 +194,5 @@ Transition.reduceMotion = true
 UI.change(imp, state, "view", "box", -1)
 T.check(not Transition.active("box"), "reduced motion changes Box instantly")
 Transition.reduceMotion = false; Transition.reset()
-View.btn, love.graphics.print = original, printText
+BoxHost.kit.btn, love.graphics.print = original, printText
 T.finish()

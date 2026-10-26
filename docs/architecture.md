@@ -5,7 +5,7 @@ packaged first boot
 user-provided Pokemon Red ROM
         |
         v
-RomImporter + RomExtractor (Lua)
+Launcher + ImportJob + RomExtractor (Lua)
         |
         +--> private data/generated/*.lua
         +--> private assets/generated/**/*.png
@@ -27,7 +27,8 @@ the same core data and graphics into the source tree for verification.
 
 | Area | Files | Role |
 | --- | --- | --- |
-| import | `src/import/RomImporter.lua` | first-boot UI, ROM validation, cache ownership |
+| launcher | `src/launcher/Launcher.lua` | first-boot UI: game list, ROM import, save slots, mods, settings |
+| import | `src/import/ImportJob.lua` | ROM validation, extraction run, cache publish |
 | | `src/import/RomExtractor.lua` | ROM tables, text, pictures, PNGs, audio programs |
 | core | `src/core/Game.lua` | service owner: data, input, renderer, stack, save |
 | | `src/core/Data.lua` | loads `data/generated/*`, resolves TEXT_* pointers |
@@ -99,9 +100,9 @@ does and does not guarantee.
 - Mods in an arena: `Loader:load(data, { mode = ... })` runs `disableAll`
   (verified translations only) for a vanilla arena and `cartOnly` for a
   sealed-cart one, without touching the player's saved enable state.
-- `src/import/OnlinePanel.lua` plus `src/import/online/` are the launcher's
-  ONLINE tab: a small stack of screens (home, play, setup, room, watch,
-  tournaments, trade) drawn from `Client`, `ArenaData` and `TeamPick`.
+- `src/launcher/OnlinePage.lua` is the launcher's Online page: connect,
+  host or join a room, pick a team and battle, or trade, drawn from
+  `Connect`, `Client`, `ArenaData`, `TeamPick`, `ArenaBoot` and `Trade`.
 
 ## Map scripts
 
@@ -158,7 +159,7 @@ sprite's feet" checks.
   The importer still SHA-checks whatever file is found. `--timeout` (default
   900) must be a positive integer. Each tool prints its usage with `--help`.
 - `luajit tools/driver_preflight.lua <identity> <version>` prints `READY` or
-  `STALE <reason>` using the same checks as `RomImporter.isReady`.
+  `STALE <reason>` using the same checks as `CacheContract.isImported` (via `CacheContract.isReady`).
 - `tools/run_driver.sh <version> <identity> <driver.lua> [shotdir]` runs the
   preflight, reimports a stale identity, then runs the driver under a
   watchdog. The first run uses `POKEPORT_SPEED=200` (a caller's

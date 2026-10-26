@@ -1,4 +1,4 @@
--- the OPTION row and its ladder, the launcher gear row, the mod-facing member
+-- the OPTION row and its ladder, the mod-facing member
 -- table -- plus the band geometry Game2 paints, asserted as rectangles rather
 -- than as pixels.
 --
@@ -41,7 +41,6 @@ local BattleState = require("src.ui.gen2.BattleState")
 local Chrome = require("src.ui.gen2.Chrome")
 local Game2 = require("src.core.Game2")
 local Gen2Compat = require("src.mods.Gen2Compat")
-local LauncherSettings = require("src.import.LauncherSettings")
 local OptionsMenu = require("src.ui.gen2.OptionsMenu")
 local Save = require("src.core.gen2.Save")
 local ScreenPosition = require("src.core.ScreenPosition")
@@ -153,49 +152,6 @@ if builtFit then
   check("left walks the ladder the other way", menu.options.battleFit, "fill")
   menu:cycle(builtFit, -1)
   check("and back", menu.options.battleFit, "fixed")
-end
-
--- ------------------------------------------------------ the launcher gear
-
-local model = LauncherSettings.open(nil, "gold")
-local gearRow
-for _, section in ipairs(model.sections) do
-  for _, row in ipairs(section.rows) do
-    if row.label == "BATTLE BG" then gearRow = row end
-  end
-end
-check("the gold gear offers BATTLE BG", gearRow ~= nil, true)
-if gearRow then
-  model.opts.gold.battleBg = nil
-  check("an options.lua with no battleBg reads WHITE", gearRow.value(), "WHITE")
-  gearRow.step(1)
-  check("stepping writes the gold block, not the flat Gen 1 one",
-    model.opts.gold.battleBg, "black")
-  check("and the row reads BLACK", gearRow.value(), "BLACK")
-  gearRow.step(1)
-  check("stepping again reaches world", model.opts.gold.battleBg, "world")
-  check("and the row reads WORLD", gearRow.value(), "WORLD")
-  gearRow.step(1)
-  check("stepping again returns to white", model.opts.gold.battleBg, "white")
-end
-
-local gearSize
-for _, section in ipairs(model.sections) do
-  for _, row in ipairs(section.rows) do
-    if row.label == "BATTLE SIZE" then gearSize = row end
-  end
-end
-check("the gold gear offers BATTLE SIZE", gearSize ~= nil, true)
-if gearSize then
-  model.opts.gold.battleFit = nil
-  check("an options.lua with no battleFit reads FIXED", gearSize.value(),
-    "FIXED")
-  gearSize.step(1)
-  check("stepping writes the gold block, not the flat Gen 1 one",
-    model.opts.gold.battleFit, "fill")
-  check("and the row reads FILL", gearSize.value(), "FILL")
-  gearSize.step(1)
-  check("stepping again returns to fixed", model.opts.gold.battleFit, "fixed")
 end
 
 -- ---------------------------------------------------------- the battle end
@@ -520,25 +476,6 @@ if builtLayout then
   check("and back", menu.options.battleLayout, "og")
 end
 
-local gearLayout
-for _, section in ipairs(model.sections) do
-  for _, row in ipairs(section.rows) do
-    if row.label == "BATTLE LAYOUT" then gearLayout = row end
-  end
-end
-check("the gold gear offers BATTLE LAYOUT", gearLayout ~= nil, true)
-if gearLayout then
-  model.opts.gold.battleLayout = nil
-  check("an options.lua with no battleLayout reads OG", gearLayout.value(),
-    "OG")
-  gearLayout.step(1)
-  check("stepping writes the gold block, not the flat Gen 1 one",
-    model.opts.gold.battleLayout, "wide")
-  check("and the row reads WIDE", gearLayout.value(), "WIDE")
-  gearLayout.step(1)
-  check("stepping again returns to og", model.opts.gold.battleLayout, "og")
-end
-
 local wideLayout = BattleState.wideLayout
 check("the Gold battle screen answers wideLayout", type(wideLayout), "function")
 check("under the same name Gen 1 uses",
@@ -776,36 +713,6 @@ if builtHud and builtLayout then
   check("LAYOUT still walks back to wide", menu.options.battleLayout, "wide")
   check("without touching the HUD", menu.options.battleHud, "standard")
   menu.options.battleLayout = "og"
-end
-
-local gearHud, gearBg
-for _, section in ipairs(model.sections) do
-  for _, row in ipairs(section.rows) do
-    if row.label == "BATTLE HUD" then gearHud = row end
-    if row.label == "BATTLE BG" then gearBg = row end
-  end
-end
-check("the gold gear offers BATTLE HUD", gearHud ~= nil, true)
-if gearHud and gearLayout and gearBg then
-  local gold = model.opts.gold
-  gold.battleLayout, gold.battleHud = "og", "extended"
-  check("the gear reads STANDARD under OG", gearHud.value(), "STANDARD")
-  check("stepping under OG changes nothing", gearHud.step(1), false)
-  check("but writes standard back", gold.battleHud, "standard")
-  gold.battleLayout = "wide"
-  gearHud.step(1)
-  check("under WIDE it toggles", gold.battleHud, "extended")
-  check("and reads EXTENDED", gearHud.value(), "EXTENDED")
-  gold.battleFit, gold.battleBg = "fill", "black"
-  check("FILL + EXTENDED locks BATTLE BG", gearBg.value(), "AUTO (FILL HUD)")
-  check("and its step is refused", gearBg.step(1), false)
-  check("so the stored bg is untouched", gold.battleBg, "black")
-  gold.battleFit = "fixed"
-  check("FIXED unlocks it again", gearBg.value(), "BLACK")
-  gearLayout.step(1)
-  check("stepping LAYOUT to og", gold.battleLayout, "og")
-  check("resets the HUD in the gear too", gold.battleHud, "standard")
-  gold.battleBg = "white"
 end
 
 local extendedHUD = BattleState.extendedHUD

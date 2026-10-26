@@ -5,7 +5,8 @@ local S = require("tests.harness").suite("rom import from archives")
 local check, eq = S.check, S.eq
 
 local RomArchive = require("src.import.RomArchive")
-local RomImporter = require("src.import.RomImporter")
+local ImportJob = require("src.import.ImportJob")
+local Launcher = require("src.launcher.Launcher")
 
 local KIND_7Z = "7z\188\175\39\28"
 local zipProbe = RomArchive._zipProbeBytes()
@@ -206,42 +207,35 @@ love.data.encode = function(_, _, digest)
   return "0000000000000000000000000000000000000000"
 end
 
-local function freshImporter(extra)
-  local ri = setmetatable({ tab = "red", workState = nil }, RomImporter)
-  for k, v in pairs(extra or {}) do ri[k] = v end
-  return ri
-end
-
 userEntries = { ["Red.gb"] = string.rep("R", 2000) }
-local ri = freshImporter()
-ri:startData(userArchive, "pack.zip")
-eq(ri.workState, "error", "wrong-size cart in a zip lands in the error state")
-check(tostring(ri.detail):find("2000 bytes", 1, true) ~= nil,
-  "the size filter runs before any read: " .. tostring(ri.detail))
+local rom, why = ImportJob.verify(userArchive, "pack.zip")
+eq(rom, nil, "wrong-size cart in a zip is refused")
+check(tostring(why):find("2000 bytes", 1, true) ~= nil,
+  "the size filter runs before any read: " .. tostring(why))
 
 userEntries = { ["Red.gb"] = string.rep("X", 1048576) }
-ri = freshImporter()
-ri:startData(userArchive, "pack.zip")
-eq(ri.workState, "error", "unknown-sha cart in a zip errors too")
-check(tostring(ri.detail):find("Unsupported ROM (SHA-1", 1, true) ~= nil,
-  "the SHA-1 gate runs on the unwrapped bytes: " .. tostring(ri.detail))
+rom, why = ImportJob.verify(userArchive, "pack.zip")
+eq(rom, nil, "unknown-sha cart in a zip is refused too")
+check(tostring(why):find("Unsupported ROM (SHA-1", 1, true) ~= nil,
+  "the SHA-1 gate runs on the unwrapped bytes: " .. tostring(why))
 
 local realMax = RomArchive.MAX_ARCHIVE_BYTES
 RomArchive.MAX_ARCHIVE_BYTES = 10
-ri = freshImporter()
-ri:startData(userArchive, "pack.zip")
+rom, why = ImportJob.verify(userArchive, "pack.zip")
 RomArchive.MAX_ARCHIVE_BYTES = realMax
-eq(ri.workState, "error", "an oversized archive is refused before mounting")
-check(tostring(ri.detail):find(".zip", 1, true) ~= nil,
-  "the oversize message names the format: " .. tostring(ri.detail))
+eq(rom, nil, "an oversized archive is refused before mounting")
+check(tostring(why):find(".zip", 1, true) ~= nil,
+  "the oversize message names the format: " .. tostring(why))
 
-ri = freshImporter()
-ri:startData(sevenZFile, "cart.7z")
-eq(ri.workState, "error", "a 7z drop takes the same startData path")
-check(tostring(ri.detail):find("cannot open .7z", 1, true) ~= nil,
-  "and is refused by caps: " .. tostring(ri.detail))
+rom, why = ImportJob.verify(sevenZFile, "cart.7z")
+eq(rom, nil, "a 7z takes the same verify path")
+check(tostring(why):find("cannot open .7z", 1, true) ~= nil,
+  "and is refused by caps: " .. tostring(why))
 
 userEntries = { ["Red.gb"] = goodBody }
+rom, why = ImportJob.verify(userArchive, "pack.zip")
+eq(rom and rom.version, "red", "a zipped Red cart verifies as Red: " .. tostring(why))
+eq(rom and #rom.data, #goodBody, "and hands on the unwrapped cartridge")
 
 local function fakeFile(path, content)
   return {
@@ -253,23 +247,37 @@ local function fakeFile(path, content)
   }
 end
 
-ri = freshImporter({ tab = "red" })
-local started
-ri.startData = function(self, data, name, src)
-  started = { data = data, name = name, src = src }
+-- the launcher's drop handler, without building the whole launcher
+local function bareLauncher(extra)
+  local l = setmetatable({ actions = {}, opts = {}, ready = {}, games = {} }, Launcher)
+  for k, v in pairs(extra or {}) do l[k] = v end
+  return l
 end
-ri:filedropped(fakeFile("/tmp/packs/cart-pack.zip", userArchive))
-check(started ~= nil, "a game-tab zip holding a cart routes to startData")
-if started then
-  eq(started.data, userArchive, "startData receives the archive payload (it unwraps)")
-  eq(started.name, "/tmp/packs/cart-pack.zip", "and the dropped path for display")
+local function runQueued(l)
+  local pending = l.actions
+  l.actions = {}
+  for _, fn in ipairs(pending) do fn() end
 end
 
-ri = freshImporter({ tab = "red" })
-ri:filedropped(fakeFile("/tmp/cart.7z", sevenZFile))
-eq(ri.workState, "error", "a dropped .7z reaches startData via the generic path")
-check(tostring(ri.detail):find("cannot open .7z", 1, true) ~= nil,
-  "and is refused when the platform lacks 7z: " .. tostring(ri.detail))
+local started
+local l = bareLauncher({ importData = function(_, data, name)
+  started = { data = data, name = name }
+end })
+l:filedropped(fakeFile("/tmp/packs/cart-pack.zip", userArchive))
+runQueued(l)
+check(started ~= nil, "a zip holding a cart dropped on the launcher routes to importData")
+if started then
+  eq(started.data, userArchive, "importData receives the archive payload (it unwraps)")
+  eq(started.name, "cart-pack.zip", "and the dropped file's name for display")
+end
+
+l = bareLauncher()
+l:filedropped(fakeFile("/tmp/cart.7z", sevenZFile))
+runQueued(l)
+eq(l.message and l.message.kind, "error", "a dropped .7z reaches the import via the generic path")
+check(tostring(l.message and l.message.text):find("cannot open .7z", 1, true) ~= nil,
+  "and is refused when the platform lacks 7z: " .. tostring(l.message and l.message.text))
+eq(l.job, nil, "and no import starts")
 
 love.filesystem = savedFs
 love.data.hash = savedData.hash

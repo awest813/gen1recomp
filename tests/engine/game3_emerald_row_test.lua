@@ -36,9 +36,6 @@ if f then
   f:close()
   check(body:find(SHA, 1, true) ~= nil, "emerald manifest carries the sha1")
 end
-local label = io.open(GameVersion.info("emerald").cartLabel, "rb")
-check(label ~= nil, "emerald label art exists")
-if label then label:close() end
 
 local ok, ModProfile = pcall(require, "src.mods.ModProfile")
 if ok and type(ModProfile) == "table" then
