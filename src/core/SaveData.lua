@@ -3160,6 +3160,17 @@ end
 -- Shared with the Hall of Fame reset, which pokered writes as a literal
 -- (HallOfFameResetEventsAndSaveScript: wLastBlackoutMap := PALLET_TOWN)
 -- rather than deriving from the spawn.
+-- defaultHeal's map alone, building nothing: the overworld palette asks for
+-- it every frame until the player first steps outdoors.
+function SaveData.defaultHealMap(boot)
+  if type(boot) ~= "table" then return "PALLET_TOWN" end
+  local h = boot.lastHeal
+  if h then return h.map end
+  local map = boot.startMap or "REDS_HOUSE_2F"
+  if map == "REDS_HOUSE_2F" then return "PALLET_TOWN" end
+  return map
+end
+
 function SaveData.defaultHeal(boot)
   boot = type(boot) == "table" and boot or {}
   local h = boot.lastHeal

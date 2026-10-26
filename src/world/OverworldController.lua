@@ -909,9 +909,9 @@ function OverworldState:paletteNameFor(map)
     -- is itself an interior and would fall through to the ROUTE default.
     -- defaultHeal derives the same zero-fill map (wLastBlackoutMap shares
     -- the reasoning) and lets a total conversion redirect it.
-    local boot = (Game.data.field and Game.data.field.boot) or {}
+    local boot = Game.data.field and Game.data.field.boot
     local last = self.lastOutdoor and self.lastOutdoor.id
-                 or require("src.core.SaveData").defaultHeal(boot).map
+                 or require("src.core.SaveData").defaultHealMap(boot)
     local lastDef = last and Game.data.maps[last]
     name = (last and paletteLookup(palettes, last, lastDef and lastDef.tileset))
            or palettes.default

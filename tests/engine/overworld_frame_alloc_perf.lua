@@ -200,4 +200,31 @@ do
   check(not GameViewport.active(), "and stays a pass-through")
 end
 
+-- Before the first outdoor visit the palette falls back to the default heal
+-- map every frame; SaveData.defaultHealMap answers it without building the
+-- heal table defaultHeal returns, and must name the same map.
+do
+  local SaveData = require("src.core.SaveData")
+  local boots = {
+    {}, { startMap = "REDS_HOUSE_2F" }, { startMap = "ROUTE_1", startX = 2 },
+    { lastHeal = { map = "VIRIDIAN_CITY", x = 1, y = 2 } },
+    { lastHeal = { map = "CERULEAN_CITY" }, startMap = "ROUTE_9" },
+  }
+  for i, boot in ipairs(boots) do
+    eq(SaveData.defaultHealMap(boot), SaveData.defaultHeal(boot).map,
+      "defaultHealMap matches defaultHeal, case " .. i)
+  end
+  eq(SaveData.defaultHealMap(nil), SaveData.defaultHeal(nil).map,
+    "defaultHealMap matches defaultHeal with no boot table")
+  local boot = boots[2]
+  collectgarbage("collect")
+  collectgarbage("stop")
+  local before = collectgarbage("count")
+  for _ = 1, 1000 do SaveData.defaultHealMap(boot) end
+  local grown = collectgarbage("count") - before
+  collectgarbage("restart")
+  check(grown < 0.5, ("defaultHealMap builds nothing (%.2f KB over 1000 calls)")
+    :format(grown))
+end
+
 T.finish("overworld_frame_alloc_perf")
