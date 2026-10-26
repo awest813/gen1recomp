@@ -1434,6 +1434,15 @@ end
 
 -- The game list, grouped by generation: a colour stripe per game, and for
 -- an imported one its trainer and play time; the rest offer Import.
+-- A list row's name over its detail line, centred as a pair in the row.
+local function twoLines(title, detail, x, y, h, w, titleInk, detailInk, s)
+  local th, dh = Kit.textHeight("button"), Kit.textHeight("micro")
+  local top = y + (h - th - dh - Theme.space("xxs", s)) / 2
+  Kit.text("button", Kit.ellipsize("button", tostring(title), w), x, top, titleInk)
+  Kit.text("micro", Kit.ellipsize("micro", tostring(detail or ""), w), x, top + th + Theme.space("xxs", s),
+    detailInk)
+end
+
 function Launcher:drawGameList(x, y, w, h, s)
   local rowH = math.max(Kit.tapMin(), math.floor(50 * s))
   local gap = Theme.space("xs", s)
@@ -1583,7 +1592,7 @@ function Launcher:drawSettings(x, y, w, h, s)
     local full = VideoMode.normalize(opts.videoMode) == "borderless"
     local bw = math.floor(math.min(cw * 0.5, 300 * s))
     if Kit.button(cx + cw - bw, cy, bw, rowH, full and "Fullscreen" or "Windowed",
-        { id = "video-mode" }) then
+        { id = "video-mode", font = "small" }) then
       self:queue(function()
         self:setOption("videoMode", full and "windowed" or "borderless")
       end)
@@ -1616,9 +1625,11 @@ function Launcher:drawSettings(x, y, w, h, s)
     cy = cy + rowH
     fieldW = cw
   end
-  self.relayDraft = Kit.textfield("relay-field", cx + cw - fieldW, cy,
+  local relayEnd
+  self.relayDraft, relayEnd = Kit.textfield("relay-field", cx + cw - fieldW, cy,
     fieldW - saveW - math.floor(8 * s), rowH, self.relayDraft, Net.DEFAULT_RELAY_ADDRESS)
-  if Kit.button(cx + cw - saveW, cy, saveW, rowH, "Save", { id = "relay-save", font = "small" }) then
+  if Kit.button(cx + cw - saveW, cy, saveW, rowH, "Save", { id = "relay-save", font = "small" })
+      or relayEnd == "submit" then
     local draft = self.relayDraft
     self:queue(function() self:setRelay(draft) end)
   end
@@ -1772,7 +1783,6 @@ function Launcher:drawMods(x, y, w, h, s)
       local tx = cx + math.floor(12 * s)
       local need = not row.broken and row.supported and self:modNeeds(row) or nil
       local textW = rw - (need and 3 or 2) * (bw + math.floor(8 * s)) - math.floor(20 * s)
-      Kit.text("button", Kit.ellipsize("button", row.name, textW), tx, ry + math.floor(6 * s), PAL.text)
       local detail
       if need then
         detail = need.text
@@ -1788,9 +1798,8 @@ function Launcher:drawMods(x, y, w, h, s)
         detail = table.concat(parts, "  -  ")
         if detail == "" then detail = row.id end
       end
-      Kit.text("micro", Kit.ellipsize("micro", detail, textW),
-        tx, ry + rowH - Kit.textHeight("micro") - math.floor(8 * s),
-        row.broken and PAL.red or need and PAL.yellow or PAL.muted)
+      twoLines(row.name, detail, tx, ry, rowH, textW, PAL.text,
+        row.broken and PAL.red or need and PAL.yellow or PAL.muted, s)
       local by = ry + (rowH - bh) / 2
       local onX = cx + rw - 2 * bw - math.floor(16 * s)
       if need then
@@ -1865,12 +1874,9 @@ function Launcher:drawImporters(x, y, w, h, s)
     state = okS and state or "missing"
     Kit.row(cx, cy, cw, entryH, false, "importer-" .. desc.id)
     local textW = cw - bw - math.floor(36 * s)
-    Kit.text("button", Kit.ellipsize("button", tostring(desc.name), textW), cx + math.floor(12 * s),
-      cy + math.floor(6 * s), PAL.text)
     local line = (IMPORTER_STATE[state] or state) .. "  -  " .. tostring(desc.summary or "")
-    Kit.text("micro", Kit.ellipsize("micro", line, textW), cx + math.floor(12 * s),
-      cy + entryH - Kit.textHeight("micro") - math.floor(8 * s),
-      state == "ready" and PAL.green or PAL.muted)
+    twoLines(desc.name, line, cx + math.floor(12 * s), cy, entryH, textW, PAL.text,
+      state == "ready" and PAL.green or PAL.muted, s)
     if Kit.button(cx + cw - bw - math.floor(8 * s), cy + (entryH - smallH) / 2, bw, smallH,
         state == "ready" and "Redo" or "Import",
         { id = "importer-run-" .. desc.id, font = "small",
@@ -1918,8 +1924,6 @@ function Launcher:drawCarts(x, y, w, h, s)
       "cart-" .. tostring(row.id or "original"))
     local tx = cx + math.floor(12 * s)
     local textW = rw - bw - math.floor(36 * s)
-    Kit.text("button", Kit.ellipsize("button", tostring(row.title or row.id), textW),
-      tx, ry + math.floor(6 * s), ink or PAL.text)
     local detail = row.detail
     if not detail then
       local parts = {}
@@ -1928,9 +1932,8 @@ function Launcher:drawCarts(x, y, w, h, s)
       if row.seal and row.seal ~= "open" then parts[#parts + 1] = "sealed" end
       detail = table.concat(parts, "  -  ")
     end
-    Kit.text("micro", Kit.ellipsize("micro", detail, textW), tx,
-      ry + rowH - Kit.textHeight("micro") - math.floor(8 * s),
-      chosen and (ink or PAL.text) or PAL.muted)
+    twoLines(row.title or row.id, detail, tx, ry, rowH, textW, ink or PAL.text,
+      chosen and (ink or PAL.text) or PAL.muted, s)
     local rbx, rby = cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2
     -- a press on Remove is not also a press on its row
     if clicked and (row.original or not Kit.hit(rbx, rby, bw, bh)) then
@@ -2249,14 +2252,15 @@ function Launcher:drawGame(x, y, w, h, s)
   elseif self.renaming == chosen and has then
     local okW = math.floor(90 * s)
     local fw = cw - 2 * (okW + Theme.space("s", s))
-    self.renameText = Kit.textfield("rename-field", cx, ay, fw, smallH, self.renameText, "Save name")
+    local ended
+    self.renameText, ended = Kit.textfield("rename-field", cx, ay, fw, smallH, self.renameText, "Save name")
     if Kit.button(cx + fw + Theme.space("s", s), ay, okW, smallH, "Save",
-        { id = "rename-ok", kind = "primary", font = "small" }) then
+        { id = "rename-ok", kind = "primary", font = "small" }) or ended == "submit" then
       local text = self.renameText
       self:queue(function() self:renameSave(text) end)
     end
     if Kit.button(cx + cw - okW, ay, okW, smallH, "Cancel",
-        { id = "rename-cancel", font = "small" }) then
+        { id = "rename-cancel", font = "small" }) or ended == "cancel" then
       self:queue(function() self.renaming = nil end)
     end
   end
@@ -2318,7 +2322,8 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
     local iy = my + Theme.space("xs", s) + (i - 1) * itemH
     if Kit.button(mx + Theme.space("xs", s), iy, mw - 2 * Theme.space("xs", s), itemH, it.label,
         { id = it.id, face = "nav", icon = it.icon, fullLabel = true, align = "left",
-          enabled = it.enabled ~= false, color = it.danger and PAL.red or nil }) then
+          enabled = it.enabled ~= false,
+          ink = it.danger and Theme.readable(PAL.red, PAL.raised) or PAL.text }) then
       self:queue(function()
         if not it.keep then self.saveMenu = nil end
         it.run()

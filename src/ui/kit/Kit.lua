@@ -662,8 +662,10 @@ function Kit.keypressed(key)
   end
   if Kit.focus then
     if key == "backspace" then edits[#edits + 1] = "\b" return true
-    elseif key == "return" or key == "kpenter" or key == "escape" then
+    elseif key == "return" or key == "kpenter" then
       edits[#edits + 1] = "\r" return true
+    elseif key == "escape" then
+      edits[#edits + 1] = "\27" return true
     elseif key == "tab" or key == "up" or key == "down" then
       Kit.blur()
       Kit.navigate(key == "up" and "up" or "down")
@@ -1033,15 +1035,18 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
   if Kit.press(x, y, w, h) then Kit._fieldHit = true end
   if Kit.press(x, y, w, h) or (Kit._activateId == id) then Kit.focus = id end
   local focused = (Kit.focus == id)
+  local ended
   if focused then
     syncSoftKeyboard(id, x, y, w, h)
     for _, e in ipairs(edits) do
       if e == "\b" then
         -- one whole character: a UTF-8 lead byte and its continuation bytes
         value = value:gsub("[^\128-\191][\128-\191]*$", "", 1)
-      elseif e == "\r" then
+      elseif e == "\r" or e == "\27" then
         Kit.blur()
         focused = false
+        ended = e == "\r" and "submit" or "cancel"
+        break
       else
         value = value .. e
       end
@@ -1066,7 +1071,8 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
       end
     end
   end
-  return value
+  -- "submit" on Enter, "cancel" on Escape, the frame the field lets go
+  return value, ended
 end
 
 -- -------------------------------------------------------------------- pager

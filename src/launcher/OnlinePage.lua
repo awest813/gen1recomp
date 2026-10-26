@@ -399,11 +399,17 @@ function OnlinePage:draw(x, y, w, h, s)
   local connW = btnW(online and "Disconnect" or "Connect")
   local renW = btnW("Rename")
   local fieldW = cw - connW - renW - 2 * gap
-  self.nameDraft = Kit.textfield("online-name", cx, cy, fieldW, rowH, self.nameDraft, "Your online name")
-  if Kit.button(cx + fieldW + gap, cy, renW, rowH, "Rename", { id = "online-rename", font = "small" }) then
+  -- too narrow for all three: the name and Rename share a line, Connect gets its own
+  local stacked = fieldW < 200 * s
+  if stacked then fieldW = cw - renW - gap end
+  local nameEnd
+  self.nameDraft, nameEnd = Kit.textfield("online-name", cx, cy, fieldW, rowH, self.nameDraft, "Your online name")
+  if Kit.button(cx + fieldW + gap, cy, renW, rowH, "Rename", { id = "online-rename", font = "small" })
+      or nameEnd == "submit" then
     local text = self.nameDraft
     l:queue(function() self:rename(text) end)
   end
+  if stacked then cy, connW = cy + rowH + gap, cw end
   if Kit.button(cx + cw - connW, cy, connW, rowH, online and "Disconnect" or "Connect",
       { id = "online-connect", font = "small", kind = online and nil or "primary",
         enabled = online or (game ~= nil and not Connect().busy()) }) then
@@ -412,11 +418,18 @@ function OnlinePage:draw(x, y, w, h, s)
   cy = cy + rowH + gap
 
   local err = Connect().error()
-  local message = self.notice or (err and { text = err, kind = "error" })
+  local message = self.notice
+    or (err and { text = tostring(err):gsub("^%l", string.upper), kind = "error", hint = not online })
     or (not game and { text = gameWhy, kind = "error" })
   if message then
     Kit.textWrapped("small", message.text, cx, cy, cw, message.kind == "error" and PAL.red or PAL.text)
-    cy = cy + Kit.wrapHeight("small", message.text, cw) + gap
+    cy = cy + Kit.wrapHeight("small", message.text, cw) + math.floor(4 * s)
+    if message.hint then
+      local hint = "Check your internet connection, or set another relay in Settings."
+      Kit.textWrapped("micro", hint, cx, cy, cw, PAL.muted)
+      cy = cy + Kit.wrapHeight("micro", hint, cw)
+    end
+    cy = cy + gap
   end
   if game then
     local line = ("Playing %s with %s"):format(GameVersion.info(game.version).displayName,
@@ -449,10 +462,12 @@ function OnlinePage:drawLobby(game, cx, cy, cw, s, rowH, smallH, gap)
   end
   cy = cy + rowH + gap
   local joinW = math.max(Kit.tapMin(), Kit.textWidth("small", "Join") + math.floor(28 * s))
-  self.joinText = Kit.textfield("online-join", cx, cy, cw - joinW - gap, rowH, self.joinText,
+  local joinEnd
+  self.joinText, joinEnd = Kit.textfield("online-join", cx, cy, cw - joinW - gap, rowH, self.joinText,
     "Room or invite code")
   if Kit.button(cx + cw - joinW, cy, joinW, rowH, "Join",
-      { id = "online-join-go", font = "small", enabled = game ~= nil and not busy }) then
+      { id = "online-join-go", font = "small", enabled = game ~= nil and not busy })
+      or (joinEnd == "submit" and game ~= nil and not busy) then
     local text = self.joinText
     l:queue(function() self:join(text) end)
   end

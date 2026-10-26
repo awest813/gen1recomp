@@ -199,6 +199,26 @@ eq(renamed[1].name, "Nuzlocke run", "with the name trimmed")
 l:renameSave("   ")
 eq(renamed[2].name, nil, "a blank name clears the label")
 
+-- Enter in the rename field saves it, Escape backs out
+window(1280, 720)
+l = fresh()
+l.selectedSlot.gold, l.renaming, l.renameText = "slot2", "slot2", "Run"
+drawText(l)
+Kit.focus = "rename-field"
+Kit.textinput("2")
+l:keypressed("return")
+drawText(l)
+l:update(0)
+eq(renamed[3] and renamed[3].name, "Run2", "Enter in the rename field saves the name")
+l.renaming, l.renameText = "slot2", "Nope"
+drawText(l)
+Kit.focus = "rename-field"
+l:keypressed("escape")
+drawText(l)
+l:update(0)
+eq(l.renaming, nil, "Escape in the rename field cancels it")
+eq(#renamed, 3, "without saving")
+
 l = fresh()
 l.selectedSlot.gold = "slot2"
 l:exportSave()

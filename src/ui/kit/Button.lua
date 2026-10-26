@@ -118,7 +118,7 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     elseif hot or focused then
       fill = PAL.rowBg
     end
-    ink = active and PAL.heading or (hot and PAL.text or PAL.muted)
+    ink = active and PAL.heading or opts.ink or (hot and PAL.text or PAL.muted)
     if focused then
       stroke, strokeA, strokeWidth = PAL.ink, Theme.A.focus, 2
     end

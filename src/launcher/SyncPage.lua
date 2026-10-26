@@ -186,9 +186,10 @@ function SyncPage:draw(x, y, w, h, s)
   local linkW = math.max(Kit.tapMin(), Kit.textWidth("small", "Link") + math.floor(32 * s))
   local fieldW = math.floor((cw - linkW - 2 * gap) / 2)
   self.code1 = Kit.textfield("sync-code1", cx, cy, fieldW, rowH, self.code1, "First code")
-  self.code2 = Kit.textfield("sync-code2", cx + fieldW + gap, cy, fieldW, rowH, self.code2, "Second code")
+  local codeEnd
+  self.code2, codeEnd = Kit.textfield("sync-code2", cx + fieldW + gap, cy, fieldW, rowH, self.code2, "Second code")
   if Kit.button(cx + cw - linkW, cy, linkW, rowH, "Link", { id = "sync-link", font = "small",
-      enabled = not busy }) then
+      enabled = not busy }) or (codeEnd == "submit" and not busy) then
     local a, b = self.code1, self.code2
     l:queue(function() self:link(a, b) end)
   end
