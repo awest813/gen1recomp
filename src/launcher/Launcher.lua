@@ -88,6 +88,11 @@ function Launcher.new(onLaunch, opts)
     local okC, Check = pcall(require, "src.update.Check")
     if okC then pcall(Check.start) end
   end
+  -- keyboard and pad focus start on the chosen game, ring hidden until used
+  if self.selected then
+    Kit.focusId = "game-" .. self.selected
+    Kit._ringShown = false
+  end
   -- Dev harness: import a ROM from a path at startup, so a scripted run can
   -- exercise the whole import flow without a picker or a drag and drop.
   if opts.importPath then self:startPath(opts.importPath) end
@@ -757,7 +762,14 @@ local function showcase(self, method, ...)
   return ok and took and true or false
 end
 
+-- Escape / B: leave the current page (Mods and Carts lead back to the game).
+function Launcher:back()
+  if self.page == "box" then return self:closeBox() end
+  self.page = nil
+end
+
 function Launcher:mousepressed(x, y, button)
+  Kit.pointerUsed()
   if button == 1 and showcase(self, "pointerPressed", "mouse", x, y) then return end
   if button == 1 or button == nil then self.pressAt = { x = x, y = y } end
 end
@@ -807,7 +819,17 @@ function Launcher:keypressed(key)
     self:queue(function() self:closeBox() end)
     return true
   end
+  if key == "tab" and not Kit.focus then
+    local shift = love.keyboard and love.keyboard.isDown
+      and (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift"))
+    Kit.navigate(shift and "up" or "down")
+    return true
+  end
   if Kit.keypressed(key) then return true end
+  if key == "escape" and self.page and not self.renaming then
+    self:queue(function() self:back() end)
+    return true
+  end
   if key == "escape" and self.renaming then
     self:queue(function() self.renaming = nil end)
     return true
@@ -816,6 +838,9 @@ function Launcher:keypressed(key)
 end
 
 function Launcher:gamepadpressed(_, button)
+  if button == "b" and not Kit.focus then
+    if self._boxPopup or self._boxPrompt or self.page then return self:keypressed("escape") end
+  end
   if Kit.gamepadpressed(button) then return true end
   if button == "start" then Kit.activateFocused() return true end
   return false
@@ -1003,6 +1028,25 @@ function Launcher:drawSettings(x, y, w, h, s)
     end)
   end
   cy = cy + rowH + math.floor(10 * s)
+  -- a narrow window drops Box / What's new from the header; reach them here
+  local hidden = self.headerHidden or {}
+  if hidden.box or hidden.notes then
+    local n = (hidden.box and 1 or 0) + (hidden.notes and 1 or 0)
+    local bw2 = math.floor((cw - (n - 1) * math.floor(10 * s)) / n)
+    local bx = cx
+    if hidden.box then
+      if Kit.button(bx, cy, bw2, rowH, "Pokemon Box", { id = "settings-box" }) then
+        self:queue(function() self.page = nil; self:openBox() end)
+      end
+      bx = bx + bw2 + math.floor(10 * s)
+    end
+    if hidden.notes then
+      if Kit.button(bx, cy, bw2, rowH, "What's new", { id = "settings-notes" }) then
+        self:queue(function() self.page = "notes"; self.notesScroll = 0 end)
+      end
+    end
+    cy = cy + rowH + math.floor(10 * s)
+  end
   Kit.textWrapped("micro", "More options (colors, zoom, speed, controls) are in "
     .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
 end
@@ -1214,6 +1258,25 @@ function Launcher:drawCarts(x, y, w, h, s)
   Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
 end
 
+-- The height the game panel needs to show one save row with its tools.
+function Launcher:detailNeed(w, s)
+  local cw = w - 2 * math.floor(18 * s)
+  local tg = math.floor(8 * s)
+  local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
+  local needW = Kit.textWidth("small", "Confirm delete") + math.floor(24 * s)
+  local toolRows = (cw - 3 * tg) / 4 >= needW and 1 or 2
+  local h = 2 * math.floor(18 * s) + Kit.textHeight("title") + math.floor(6 * s)
+    + Kit.textHeight("small") + math.floor(16 * s)
+    + Kit.textHeight("caption") + math.floor(8 * s)
+    + math.max(Kit.tapMin(), math.floor(44 * s))
+    + toolRows * smallH + (toolRows - 1) * tg
+    + math.max(Kit.tapMin(), math.floor(40 * s)) + math.floor(22 * s)
+  if self.selected and self:activeCart(self.selected) then
+    h = h + Kit.textHeight("small") + math.floor(4 * s)
+  end
+  return h
+end
+
 function Launcher:drawDetail(x, y, w, h, s)
   if self.page == "settings" then return self:drawSettings(x, y, w, h, s) end
   if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
@@ -1230,7 +1293,14 @@ function Launcher:drawDetail(x, y, w, h, s)
   Kit.card(x, y, w, h)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
-  Kit.textBold("title", info.displayName, cx, cy, PAL.heading)
+  -- the Carts / Mods buttons share the title's line on an imported game
+  local titleW = cw
+  if self.ready[v] and not (self.job and self.job.version == v) then
+    titleW = cw - Kit.textWidth("small", "Carts") - Kit.textWidth("small", "Mods")
+      - math.floor(84 * s)
+  end
+  Kit.textBold("title", Kit.ellipsize("title", info.displayName, math.max(0, titleW)),
+    cx, cy, PAL.heading)
   cy = cy + Kit.textHeight("title") + math.floor(6 * s)
   local status, color = statusText(self, v)
   Kit.text("small", status, cx, cy, color)
@@ -1295,8 +1365,20 @@ function Launcher:drawDetail(x, y, w, h, s)
   local toolRows = 4 / toolCols
   local toolsH = toolRows * smallH + (toolRows - 1) * tg
   local footH = btnH + toolsH + math.floor(22 * s)
-  local viewH = math.max(rowH, y + h - pad - footH - cy)
-  if #slots == 0 then
+  local viewH = y + h - pad - footH - cy
+  if viewH < rowH then
+    -- a window too short for even one save row: Continue still plays the
+    -- chosen save, so the list just steps aside rather than overlap the tools
+    local line = "No saves yet - New game starts one"
+    for _, sl in ipairs(slots) do
+      if sl.id == self.selectedSlot[scope] then
+        line = "Save: " .. tostring(sl.label or sl.name or sl.id)
+      end
+    end
+    if viewH >= Kit.textHeight("small") then
+      Kit.text("small", Kit.ellipsize("small", line, cw), cx, cy, PAL.muted)
+    end
+  elseif #slots == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No saves yet")
   else
     local contentH = #slots * (rowH + gap)
@@ -1508,6 +1590,8 @@ function Launcher:draw()
   end
   local titleRight = x + Kit.textWidth("headline", Version.NAME or "PK:GB") + hgap
   local boxW = math.max(Kit.tapMin(), Kit.textWidth("button", "Close Box") + math.floor(28 * s))
+  -- what the header has no room for, Settings offers instead
+  self.headerHidden = { box = rx - hgap - boxW < titleRight }
   if rx - hgap - boxW >= titleRight then
     rx = rx - hgap - boxW
     if Kit.button(rx, by, boxW, bh, self.page == "box" and "Close Box" or "Box",
@@ -1518,6 +1602,7 @@ function Launcher:draw()
     end
   end
   local nw = math.max(Kit.tapMin(), Kit.textWidth("small", "What's new") + math.floor(28 * s))
+  self.headerHidden.notes = rx - hgap - nw < titleRight
   if rx - hgap - nw >= titleRight then
     rx = rx - hgap - nw
     if Kit.button(rx, by, nw, bh, self.page == "notes" and "Close" or "What's new",
@@ -1549,12 +1634,19 @@ function Launcher:draw()
   local wide = w >= 700 * s
   if self.page == "box" then
     self:drawBox(x, y, w, bodyH, s)
+  elseif self.page and not wide then
+    -- stacked, a page (settings, mods, carts, notes) takes the whole body;
+    -- its Back / Close goes back to the game list
+    self:drawDetail(x, y, w, bodyH, s)
   elseif wide then
     local listW = math.floor(math.min(320 * s, w * 0.34))
     self:drawGameList(x, y, listW, bodyH, s)
     self:drawDetail(x + listW + math.floor(16 * s), y, w - listW - math.floor(16 * s), bodyH, s)
   else
-    local listH = math.floor(bodyH * 0.42)
+    -- the game list yields height to the detail panel down to two rows
+    local listMin = Kit.textHeight("caption") + math.floor(110 * s)
+    local listH = math.floor(math.max(listMin,
+      math.min(bodyH * 0.42, bodyH - math.floor(10 * s) - self:detailNeed(w, s))))
     self:drawGameList(x, y, w, listH, s)
     self:drawDetail(x, y + listH + math.floor(10 * s), w, bodyH - listH - math.floor(10 * s), s)
   end

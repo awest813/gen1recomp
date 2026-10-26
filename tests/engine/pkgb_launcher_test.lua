@@ -634,4 +634,26 @@ eq(l.page, nil, "Escape leaves the Box")
 eq(l.tab, nil, "and the Box UI knows it is hidden")
 package.loaded["src.core.SaveData"] = stubSaveData
 
+-- ------------------------------------------------------ keys and pad
+window(1280, 720)
+l = fresh()
+eq(Kit.focusId, "game-gold", "keyboard focus starts on the chosen game")
+l.page = "mods"
+l:keypressed("escape")
+l:update(0)
+eq(l.page, nil, "Escape leaves a page")
+l.page = "settings"
+l:gamepadpressed(nil, "b")
+l:update(0)
+eq(l.page, nil, "and so does B")
+l:keypressed("tab")
+check(Kit._navQueue ~= nil or Kit._ringShown, "Tab moves the focus ring")
+for _, size in ipairs({ { 360, 640 }, { 800, 600 }, { 1024, 768 } }) do
+  window(size[1], size[2])
+  for _, page in ipairs({ false, "settings", "notes" }) do
+    l.page = page or nil
+    drawText(l)
+  end
+end
+
 T.finish("pkgb launcher")
