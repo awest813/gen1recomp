@@ -407,4 +407,19 @@ window(390, 844)
 l.page = "mods"
 drawText(l)
 
+-- ---------------------------------------------------- launcher choice
+local LaunchOptions = require("src.core.LaunchOptions")
+local choice, remember = LaunchOptions.launcherUi({ "--ui=new" })
+check(choice == "new" and remember, "--ui=new picks this launcher and is remembered")
+choice, remember = LaunchOptions.launcherUi({}, { "--ui", "classic" })
+check(choice == "classic" and remember, "--ui classic goes back")
+check(LaunchOptions.launcherUi({ "--ui=bogus" }) == nil, "an unknown value asks for nothing")
+window(1280, 720)
+l = fresh()
+l.page = "settings"
+check(drawText(l):find("Use classic", 1, true) ~= nil, "Settings offers the classic launcher")
+l:setOption("launcherUi", "classic")
+eq(savedOptions.launcherUi, "classic", "and remembers the switch")
+check(drawText(l):find("Keep this one", 1, true) ~= nil, "which can be undone")
+
 T.finish("pkgb launcher")

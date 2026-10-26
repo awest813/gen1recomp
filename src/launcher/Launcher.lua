@@ -650,6 +650,19 @@ function Launcher:drawSettings(x, y, w, h, s)
   cy = cy + rowH + math.floor(10 * s)
   stepper("sfxVol", "Sound volume", 0, 7, cy)
   cy = cy + rowH + math.floor(10 * s)
+  -- this launcher is opt-in for now (--ui=new); offer the way back
+  label("Launcher", cy)
+  local classic = opts.launcherUi == "classic"
+  local lw = math.floor(math.min(cw * 0.5, 300 * s))
+  if Kit.button(cx + cw - lw, cy, lw, rowH, classic and "Keep this one" or "Use classic",
+      { id = "launcher-ui", font = "small" }) then
+    self:queue(function()
+      self:setOption("launcherUi", classic and "new" or "classic")
+      self:say(classic and "This launcher stays." or
+        "The classic launcher opens the next time PK:GB starts.", "info")
+    end)
+  end
+  cy = cy + rowH + math.floor(10 * s)
   Kit.textWrapped("micro", "More options (colors, zoom, speed, controls) are in "
     .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
 end

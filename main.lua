@@ -527,10 +527,15 @@ function closeSkinStudio()
   end
 end
 
--- The PK:GB launcher (src/launcher/), opt in with POKEPORT_LAUNCHER=new
--- while it reaches parity with the original one.
+-- The PK:GB launcher (src/launcher/), opt in while it reaches parity with
+-- the original one: --ui=new (?ui=new on the web build) once, remembered in
+-- options.launcherUi; or POKEPORT_LAUNCHER=new for one run.  love.load
+-- resolves the command line into launcherUiChoice.
+local launcherUiChoice
 local function useNewLauncher()
-  return os.getenv("POKEPORT_LAUNCHER") == "new"
+  if launcherUiChoice then return launcherUiChoice == "new" end
+  local ok, opts = pcall(require("src.core.SaveData").loadOptions)
+  return ok and type(opts) == "table" and opts.launcherUi == "new"
 end
 
 local function makeLauncher(launcherOpts)
@@ -930,6 +935,18 @@ function love.load(args)
 
   local RomImporter = require("src.import.RomImporter")
   local resolvedLaunch = LaunchOptions.resolveRequest(arg, args)
+  do
+    local choice, remember = LaunchOptions.launcherUi(arg, args)
+    launcherUiChoice = choice
+    if choice and remember then
+      local SaveData = require("src.core.SaveData")
+      local opts = SaveData.loadOptions()
+      if opts.launcherUi ~= choice then
+        opts.launcherUi = choice
+        SaveData.saveOptions(opts)
+      end
+    end
+  end
   local forceImport = os.getenv("POKEPORT_FORCE_IMPORT") == "1"
   local importPath = os.getenv("POKEPORT_IMPORT_ROM")
   -- Scripted / headless runs pick their game from POKEPORT_VERSION, then
