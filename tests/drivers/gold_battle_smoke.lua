@@ -82,7 +82,10 @@ return function(game)
   U.shot(game, out .. "/01-battle-open.png")
 
   -- Page through the intro messages, then attack until the battle resolves.
-  for _ = 1, 120 do
+  -- One attack turn alone is ~57 presses of text and animation, so the budget
+  -- covers several turns: a miss or a survived hit is ordinary battle RNG,
+  -- not a failure (120 covered exactly one turn and failed on a second).
+  for _ = 1, 400 do
     if battle.battle.over then break end
     if battle.phase == "menu" then
       U.shot(game, out .. "/02-battle-menu.png")
@@ -96,7 +99,7 @@ return function(game)
   end
 
   assert(battle.battle.over,
-    "battle did not resolve in 120 presses (phase " .. tostring(battle.phase) .. ")")
+    "battle did not resolve in 400 presses (phase " .. tostring(battle.phase) .. ")")
   print("[driver] outcome " .. tostring(battle.battle.outcome))
   assert(battle.battle.outcome == "win",
     "expected the L12 starter to win, got " .. tostring(battle.battle.outcome))
