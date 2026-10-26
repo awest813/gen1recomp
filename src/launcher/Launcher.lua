@@ -1991,9 +1991,9 @@ end
 
 -- The height the game panel needs: banner, the saves caption, one save
 -- card and the Continue / New game row.
-function Launcher:detailNeed(w, s)
+function Launcher:detailNeed(w, s, compact)
   local pad = Theme.space("l", s) + Theme.space("xxs", s)
-  return self:gameBannerHeight(s) + Theme.space("l", s)
+  return self:gameBannerHeight(s, compact) + Theme.space("l", s)
     + math.max(Kit.tapMin(), math.floor(30 * s)) + Theme.space("s", s)
     + math.max(Kit.tapMin() + Theme.space("m", s), math.floor(62 * s)) + Theme.space("l", s)
     + math.max(Kit.tapMin(), math.floor(44 * s)) + pad
@@ -2019,6 +2019,9 @@ end
 
 function Launcher:drawDetail(x, y, w, h, s)
   if not self.page then
+    -- a short window (a phone on its side) gets the slim banner, so Continue
+    -- stays on screen without scrolling
+    self.compactBanner = h < self:detailNeed(w, s)
     return self:drawFitted("detail:" .. tostring(self.selected), x, y, w, h, s, self.drawGame)
   end
   return self:drawPage(x, y, w, h, s)
@@ -2097,7 +2100,11 @@ end
 
 -- The banner atop the game panel: colour wash, cartridge, title, status.
 -- Returns its height.
-function Launcher:gameBannerHeight(s)
+function Launcher:gameBannerHeight(s, compact)
+  if compact then
+    return math.max(Kit.tapMin() + Theme.space("m", s) * 2, Kit.textHeight("button") + Kit.textHeight("small")
+      + Theme.space("m", s) * 2)
+  end
   return math.max(math.floor(92 * s), Kit.textHeight("title") + Kit.textHeight("small")
     + Theme.space("xl", s) * 2)
 end
@@ -2117,7 +2124,9 @@ function Launcher:drawGame(x, y, w, h, s)
   if r then Kit.occlude(r[1], r[2], r[3], r[4]) else self.saveMenuRect = nil end
 
   -- banner
-  local bannerH = self:gameBannerHeight(s)
+  local compact = self.compactBanner
+  local bannerH = self:gameBannerHeight(s, compact)
+  local titleFont = compact and "button" or "title"
   Theme.fillRounded(x + 1, y + 1, w - 2, bannerH, color, ready and 0.16 or 0.08, Theme.cardRadius())
   Theme.fill(x + 1, y + bannerH - 1, w - 2, 1, color, 0.35)
   local cartH = bannerH - Theme.space("xl", s)
@@ -2138,7 +2147,7 @@ function Launcher:drawGame(x, y, w, h, s)
     local mh = math.max(Kit.tapMin(), math.floor(32 * s))
     local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + Theme.space("xl", s) + Theme.space("s", s))
     local kw = math.max(Kit.tapMin(), Kit.textWidth("small", "Carts") + Theme.space("xl", s) + Theme.space("s", s))
-    local by = y + Theme.space("m", s)
+    local by = compact and y + (bannerH - mh) / 2 or y + Theme.space("m", s)
     if Kit.button(x + w - pad - mw, by, mw, mh, "Mods", { id = "mods", font = "small" }) then
       self:queue(function() self.page = "mods"; self.modScroll = 0 end)
     end
@@ -2149,18 +2158,19 @@ function Launcher:drawGame(x, y, w, h, s)
     rightW = mw + kw + Theme.space("s", s) + Theme.space("m", s)
   end
   local titleW = x + w - pad - rightW - tx
-  local ty = y + (bannerH - Kit.textHeight("title") - Kit.textHeight("small") - Theme.space("xs", s)) / 2
+  local ty = y + (bannerH - Kit.textHeight(titleFont) - Kit.textHeight("small") - Theme.space("xs", s)) / 2
   local title = info.displayName
-  if Kit.textWidth("title", title) > titleW then title = info.label or title end
-  Kit.textBold("title", Kit.ellipsize("title", title, math.max(0, titleW)), tx, ty, PAL.heading)
+  if Kit.textWidth(titleFont, title) > titleW then title = info.label or title end
+  Kit.textBold(titleFont, Kit.ellipsize(titleFont, title, math.max(0, titleW)), tx, ty, PAL.heading)
   local status, scolor = statusText(self, v)
   if cartRow then
     status = "Playing as " .. tostring(cartRow.title or cartId)
       .. (problem and (" - " .. problem) or "")
     scolor = problem and PAL.red or PAL.blue
   end
-  Kit.text("small", Kit.ellipsize("small", status, math.max(0, x + w - pad - tx)),
-    tx, ty + Kit.textHeight("title") + Theme.space("xs", s), scolor)
+  -- beside Carts / Mods when the banner is slim, under them otherwise
+  Kit.text("small", Kit.ellipsize("small", status, math.max(0, (compact and titleW or x + w - pad - tx))),
+    tx, ty + Kit.textHeight(titleFont) + Theme.space("xs", s), scolor)
 
   local cy = y + bannerH + Theme.space("l", s)
   local btnH = math.max(Kit.tapMin(), math.floor(44 * s))
@@ -2321,7 +2331,7 @@ function Launcher:drawGame(x, y, w, h, s)
 
   if menuAt then self:drawSaveMenu(menuAt, x, y, w, h, s, cartId, scope)
   else self.saveMenuRect = nil end
-  return self:detailNeed(w, s)
+  return self:detailNeed(w, s, compact)
 end
 
 -- The "..." menu of one save: the actions used less often than Continue.
