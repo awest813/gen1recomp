@@ -341,8 +341,13 @@ function Launcher:updateChip()
   elseif status == "downloading" or status == "full_downloading" then
     return ("Downloading %d%%"):format(math.floor((st.progress or 0) * 100)), nil, false
   elseif status == "ready" then
-    -- Boot.lua mounts the downloaded payload on the next start
-    return "Restart to update", function() love.event.quit("restart") end, true
+    -- Boot.lua mounts the downloaded payload on the next start; HostShell
+    -- owns restarting (the browser and some Android hosts cannot)
+    return "Restart to update", function()
+      local HostShell = require("src.core.HostShell")
+      if HostShell.canRestart() then return HostShell.restart() end
+      self:say("Close and reopen the game to finish updating.", "info")
+    end, true
   elseif status == "needs_full" or status == "full_ready" then
     local okA, action = pcall(Check.fullUpdateAction)
     if okA and action then
