@@ -28,7 +28,6 @@
 --   * Layout is explicit pixels off Layout.metrics.  No percentages.
 
 local Kit = require("src.ui.kit.Kit")
-local Icons = require("src.ui.kit.Icons")
 local CartShape = require("src.import.CartShape")
 local Theme = require("src.ui.kit.Theme")
 local Layout = require("src.ui.kit.Layout")
@@ -36,7 +35,6 @@ local Loader = require("src.ui.kit.Loader")
 local Transition = require("src.ui.kit.Transition")
 local GameVersion = require("src.core.GameVersion")
 local SecretGames = require("src.import.SecretGames")
-local Version = require("src.core.Version")
 local Strings = require("src.core.Strings")
 local WebClip = require("src.core.WebClip")
 
@@ -173,6 +171,13 @@ local function noDragAt(imp, x, y)
   return false
 end
 
+-- A drag that starts on the nav rail scrolls the rail's library, never the
+-- page beside it.
+function LauncherView.onRail(imp, x)
+  local L = imp._navL
+  return L ~= nil and L.mode == "rail" and L.railRight ~= nil and x < L.railRight
+end
+
 local function armMouse(imp, x, y)
   if noDragAt(imp, x, y) then
     imp._clickPt = { x = x, y = y }
@@ -183,7 +188,8 @@ local function armMouse(imp, x, y)
     x = x, y = y,
     region = not shielded and tabScrollMax(imp) > 0
       and inRect(imp._tabRegionRect, x, y) or false,
-    page = not shielded and (imp._pageScrollMax or 0) > 0 or false,
+    page = not shielded and (imp._pageScrollMax or 0) > 0
+      and not LauncherView.onRail(imp, x) or false,
   }
   Kit.dragBegin(x, y)
 end
@@ -376,7 +382,7 @@ function LauncherView.touchpressed(imp, id, x, y)
   imp._touchAt[tostring(id)] = {
     x = x, y = y, started = love.timer.getTime(),
     region = not shielded and tabScrollMax(imp) > 0 and inRect(imp._tabRegionRect, x, y),
-    page = not shielded,
+    page = not shielded and not LauncherView.onRail(imp, x),
     picker = picker and inRect(picker.rect, x, y) and picker or nil,
     inner = not noDragAt(imp, x, y),
   }
@@ -1559,18 +1565,12 @@ local function drawCheck(x, y, size, color)
   love.graphics.pop()
 end
 
--- ------------------------------------------------------------- header
--- Rail, logo row (settings and quit on the right), tab bar.
--- Returns the y at which content may start.  Its vertical arithmetic is
--- mirrored by headerHeight() at the bottom of this file (the short-window
--- scroll decision needs the height before anything draws) -- keep in sync.
--- Header chrome is fixed: the same six tabs, the same gear and Quit, every
--- frame.  Their tab rows, opts tables and action closures are built once
--- instead of 60 times a second -- only `active`, `image` and the queued
--- action are written per frame.
--- The four cartridges used to be four tabs of their own.  They are one
--- dropdown now: the tab row was seven controls wide and wrapped to two rows on
--- anything narrow, and only ever one game is being looked at.
+-- ------------------------------------------------------------ navigation
+-- The destinations: every cartridge, then the tools.  The chrome that shows
+-- them -- a sidebar rail on wide windows, top and bottom bars on narrow ones
+-- -- lives in src/import/LauncherNav.lua; this file keeps the tables and the
+-- action closures (built once per launcher, never per frame) that both
+-- shapes and the game picker share.
 local GAME_TABS = {
   { id = "red",    key = "tab-red",    letter = "R", color = PAL.railRed,
     label = "Red" },
@@ -1609,45 +1609,6 @@ local BETA_TAG_OPTS = { fill = true, bold = true, ink = PAL.inverse }
 
 local function drawBetaTag(x, y, w, h)
   Kit.tag(x, y, w, h, "BETA", PAL.yellow, BETA_TAG_OPTS)
-end
-
-local function overlayBeta(tx, ty, w, tabH, m)
-  local bh = math.floor(11 * m.s)
-  local bw = math.min(w, Kit.textWidth("micro", "BETA") + math.floor(10 * m.s))
-  drawBetaTag(tx + (w - bw) / 2, ty + tabH - bh - math.floor(2 * m.s), bw, bh)
-end
-
-local TAB_ICONS = { box = "package", mods = "puzzle", online = "globe",
-  skins = "paintbrush" }
-local TAB_LABELS = { box = "BOX", mods = "MODS", online = "ONLINE",
-  skins = "SKINS" }
-for _, t in ipairs(HEADER_TABS) do
-  t.opts = { face = "tab", font = "tab", icon = TAB_ICONS[t.id], iconScale = t.id == "box" and 1.15 or nil }
-end
-
-local function headerTabMetrics(m)
-  local gap = math.floor(6 * m.s)
-  local width = m.chip
-  for _, label in pairs(TAB_LABELS) do
-    width = math.max(width, Kit.textWidth("micro", Strings(label)) + 4)
-  end
-  -- The game control names the cartridge. A single initial collides
-  -- (Red/Ruby, Silver/Sapphire) and the full-bleed cartridge fill fails
-  -- contrast on the darker shells.
-  local nameW = 0
-  for _, g in ipairs(GAME_TABS) do
-    nameW = math.max(nameW, Kit.textWidth("tab", Strings(g.label)))
-  end
-  local pip = math.floor(m.chip * 0.42)
-  local dropW = math.max(width + math.floor(24 * m.s),
-    math.floor(10 * m.s) + pip + math.floor(8 * m.s) + nameW + math.floor(22 * m.s))
-  local used, rows = dropW, 1
-  for _ = 1, #HEADER_TABS do
-    if used + gap + width > m.contentW then rows, used = rows + 1, width
-    else used = used + gap + width end
-  end
-  local labelH = Kit.textHeight("micro") + math.floor(5 * m.s)
-  return width, dropW, labelH, rows
 end
 
 -- Which cartridge the dropdown is showing: the open game tab, else the last
@@ -1729,166 +1690,7 @@ local function headerChrome(imp)
   imp._headerChrome = c
   return c
 end
-
-local function buildHeader(imp, m)
-  local y = m.top
-  local _, railColors = gameTabs(imp)
-  Theme.versionRail(m.x, y, m.w, m.railH, railColors)
-  y = y + m.railH
-
-  -- logo row
-  local rowH = m.logoH + math.floor(12 * m.s)
-  local gear = m.chip
-
-  -- The wordmark is centred in the row MINUS the right cluster, mirrored on
-  -- the left so it still reads as centred in the window.  Centring it in the
-  -- FULL row (what this used to do) let a phone-width wordmark run straight
-  -- under the gear and the quit X -- "the settings is covering the logo".
-  -- Reserving the space on both sides costs a little width and cannot
-  -- overlap at any window size.
-  -- No quit button on iOS/PS4 (the OS owns app exit), so the cluster is the
-  -- gear alone and the wordmark gets that width back
-  local clusterN = LauncherView.hasQuitButton(imp) and 3 or 2
-  local clusterW = clusterN * gear + (clusterN - 1) * math.floor(6 * m.s) + m.pad
-  local mobile = not imp.isNX or not m.twoCol
-  local boxX = mobile and (m.x + m.pad) or (m.x + clusterW)
-  local boxW = mobile and math.max(0, m.w - clusterW - m.pad)
-    or math.max(0, m.w - 2 * clusterW)
-  if imp.logo and boxW > 0 then
-    local lw, lh = imp.logo:getDimensions()
-    local maxW = math.min(320 * m.s, boxW)
-    local scale = math.min(maxW / lw, m.logoH / lh)
-    local dw, dh = lw * scale, lh * scale
-    local lx = mobile and boxX or (boxX + (boxW - dw) / 2)
-    local ly = y + (rowH - dh) / 2
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(imp.logo, Theme.snap(lx), Theme.snap(ly), 0, scale, scale)
-    local r = imp._logoRect or {}
-    r.x, r.y, r.w, r.h = lx, ly, dw, dh
-    imp._logoRect = r
-    if Kit.press(lx, ly, dw, dh) and imp._logoTap then
-      queueAction(imp, "logo-tap-" .. tostring(imp._logoTaps or 0),
-        function() imp:_logoTap() end)
-    end
-  end
-
-  local rx = m.x + m.w - m.pad
-  local by = y + (rowH - gear) / 2
-
-  -- Switch-only: show the running app version opposite the settings gear so
-  -- players can confirm which build is on the microSD (OTA / zip updates).
-  if imp.isNX then
-    local label = "v" .. tostring(Version.engine or "?")
-    local tw = Kit.textWidth("small", label)
-    local padX = math.floor(12 * m.s)
-    local chipW = math.max(tw + 2 * padX, gear)
-    local lx = m.x + m.pad
-    Kit.card(lx, by, chipW, gear, "badge")
-    local th = Kit.textHeight("small")
-    Kit.text("small", label, lx + math.floor((chipW - tw) / 2),
-      by + math.floor((gear - th) / 2), PAL.yellow)
-  end
-
-  -- The right cluster is laid out right to left -- Quit outermost, the gear
-  -- inboard of it -- but the two are REGISTERED gear first, because the first
-  -- focusable of the first frame adopts the keyboard ring and that must not be
-  -- the button that exits the app.
-  local quitX = LauncherView.hasQuitButton(imp) and rx - gear or nil
-  if quitX then rx = quitX - math.floor(6 * m.s) end
-
-  -- Settings gear.  It now also owns the CONTROL settings (touch overlay
-  -- editor, reset rebinds), which used to be buttons stacked in the game
-  -- panel -- see LauncherSettings.coreRows.
-  rx = rx - gear
-  local chrome = headerChrome(imp)
-  btn(imp, rx, by, gear, gear, "gear", "", chrome.gear)
-
-  rx = rx - math.floor(6 * m.s) - gear
-  btn(imp, rx, by, gear, gear, "tab-sync", "", chrome.sync)
-  do
-    local eng = imp._sync
-    if eng and eng.busy and eng:busy() then
-      Kit.spinner(rx + gear - math.floor(8 * m.s), by + math.floor(8 * m.s),
-        math.max(2, math.floor(4 * m.s)))
-    end
-  end
-
-  if quitX then btn(imp, quitX, by, gear, gear, "quit", "", chrome.quit) end
-
-  -- The self-update control lives in the FOOTER next to the BCG mark (small,
-  -- out of the wordmark's way -- it used to overlap the logo on a phone).  It
-  -- still GLOWS through Kit.button when there is something to act on.
-  y = y + rowH
-
-  local tabs = HEADER_TABS
-  local tabW, dropW, labelH = headerTabMetrics(m)
-  local tabH = m.chip
-  local tx = m.x + m.pad
-  local ty = y + math.floor(6 * m.s)
-  local tabLeft = tx
-  local tabRight = m.x + m.w - m.pad
-  local tabGap = math.floor(6 * m.s)
-  local tabRowGap = math.floor(4 * m.s)
-
-  -- the cartridge dropdown: just the game's initial and the caret; the
-  -- popup list carries the full names
-  local chrome0 = headerChrome(imp)
-  local game = currentGame(imp)
-  dropW = math.min(tabRight - tabLeft, dropW)
-  chrome0.game.color = nil
-  chrome0.game.letter = nil
-  chrome0.game.active = imp.tab == game.id
-  chrome0.game.drawFn = function(x, y, w, h, invert)
-    local g = currentGame(imp)
-    local pip = math.floor(h * 0.42)
-    local px = x + math.floor(10 * m.s)
-    local py = y + (h - pip) / 2
-    Theme.fillRounded(px, py, pip, pip, g.color, 1, math.floor(pip / 2))
-    local ink = invert and PAL.inverse or PAL.text
-    local lx = px + pip + math.floor(8 * m.s)
-    local maxW = math.max(0, w - (lx - x) - math.floor(22 * m.s))
-    local name = Kit.ellipsize("tab", Strings(g.label), maxW)
-    Kit.textBold("tab", name, lx, y + (h - Kit.textHeight("tab")) / 2, ink)
-  end
-  local gameHot = Kit.hover(tx, ty, dropW, tabH)
-  local gameDown = gameHot and Kit.mouseDown
-  local gameInvert = chrome0.game.active
-  chrome0.game.ring = nil
-  btn(imp, tx, ty, dropW, tabH, "tab-game", "", chrome0.game)
-  do
-    local size = math.floor(18 * m.s)
-    local ccx = tx + dropW - math.floor(14 * m.s)
-    local ccy = ty + tabH / 2 + (gameDown and math.floor(1 * m.s) or 0)
-    Icons.draw("chevron-down", ccx - size / 2, ccy - size / 2, size,
-      gameInvert and PAL.inverse or PAL.ink, gameDown and 1 or 0.9)
-    love.graphics.setColor(1, 1, 1, 1)
-  end
-  Kit.textCenter("micro", Strings("GAMES"), tx, ty + tabH + 3 * m.s, dropW, PAL.muted)
-  tx = tx + dropW + tabGap
-
-  local function headerTab(t)
-    local w = tabW
-    if tx > tabLeft and tx + w > tabRight then
-      tx = tabLeft
-      ty = ty + tabH + labelH + tabRowGap
-    end
-    local o = t.opts
-    o.active = imp.tab == t.id or t.id == "mods" and imp.tab == "find"
-    o.image = t.icon
-    o.action = chrome.tab[t.id]
-    btn(imp, tx, ty, w, tabH, t.key, "", o)
-    if t.beta then overlayBeta(tx, ty, w, tabH, m) end
-    Kit.textCenter("micro", Strings(TAB_LABELS[t.id]), tx, ty + tabH + 3 * m.s, w,
-      o.active and PAL.text or PAL.muted)
-    tx = tx + w + tabGap
-  end
-  for _, t in ipairs(tabs) do headerTab(t) end
-
-  -- `ty` has walked down with the wraps, so this stays correct at one row too.
-  y = ty + tabH + labelH + math.floor(8 * m.s)
-  Theme.fill(m.x, y, m.w, 1, PAL.line, Theme.A.hairline)
-  return y + 1
-end
+LauncherView.headerChrome = headerChrome
 
 LauncherView.textField = textField
 
@@ -6958,16 +6760,6 @@ end
 
 -- ------------------------------------------------------------ frame assembly
 
--- Mirror of buildHeader's vertical arithmetic, so the frame can decide
--- whether the window is tall enough BEFORE anything draws.  Keep in sync
--- with buildHeader (rail, logo row, tab row, hairline).
-local function headerHeight(m)
-  local _, _, labelH, rows = headerTabMetrics(m)
-  return m.railH + m.logoH + math.floor(12 * m.s) + math.floor(6 * m.s)
-    + rows * (m.chip + labelH) + (rows - 1) * math.floor(4 * m.s)
-    + math.floor(8 * m.s) + 1
-end
-
 -- The panel space a tab needs to lay out without crushing itself.  Below
 -- this the page SCROLLS (wheel / touch drag) instead of compressing: the
 -- pinned Play block used to walk up over the cards on a short window, which
@@ -7044,7 +6836,10 @@ end
 
 function LauncherView.draw(imp)
   ensureState(imp)
-  local m = Layout.metrics(1200)
+  -- Uncapped: the nav rail pins to the left edge of the safe area and caps
+  -- the page column itself (LauncherNav.frame).
+  local m = Layout.metrics(1e6)
+  local Nav = require("src.import.LauncherNav")
 
   -- The pointer is the pad cursor while it is active, so the ring, hover and
   -- clicks all agree on where "the pointer" is.
@@ -7063,8 +6858,13 @@ function LauncherView.draw(imp)
   -- rects and drawing all agree with the real pointer and no transform is
   -- involved.  Modals and the loader keep the REAL metrics and stay
   -- centred in the window.
+  -- From here until the nav chrome draws, m describes the PAGE column (beside
+  -- the rail on a wide window), not the window.
+  local fullM = m
+  local nav = Nav.frame(LauncherView, imp, m)
+  m = nav.page
   local footH = footerHeight(imp, m)
-  local naturalAvail = m.h - headerHeight(m) - footH
+  local naturalAvail = m.h - nav.topH - footH - nav.navH
   local scrollMax = math.max(0, minPanelHeight(m) - naturalAvail)
 
   Kit.beginFrame(mx, my, click ~= nil, imp._wheelY or 0)
@@ -7145,14 +6945,14 @@ function LauncherView.draw(imp)
   -- every m.* read for the rest of the frame.
   local baseTop = m.top
   if scroll > 0 then m.top = baseTop - scroll end
-  local contentY = buildHeader(imp, m)
+  local contentY = Nav.drawTop(LauncherView, imp, m, nav)
   m.top = baseTop
   local footY, availH
   if scrollMax > 0 then
     availH = minPanelHeight(m)
     footY = contentY + availH
   else
-    footY = m.top + m.h - footH
+    footY = m.top + m.h - footH - nav.navH
     availH = footY - contentY
   end
 
@@ -7162,7 +6962,7 @@ function LauncherView.draw(imp)
   -- window bottom while the footer is still below the fold, then the footer
   -- once page scroll brings it up.  Clipping to availH parked the fade and
   -- the scrollbar past the window.
-  local screenBottom = m.top + m.h
+  local screenBottom = m.top + m.h - nav.navH
   local visibleBottom = math.min(screenBottom, footY)
   local viewH = math.max(0, math.min(availH, visibleBottom - contentY))
   local rect = imp._tabRegionRect
@@ -7183,6 +6983,8 @@ function LauncherView.draw(imp)
 
   if imp.tab == "box" then require("src.import.BoxOrganizer").drawSticky(imp, m) end
   buildFooter(imp, m, footY)
+  m = fullM
+  Nav.drawChrome(LauncherView, imp, m, nav)
   Kit.blockClicks = Transition.active()
   local held = imp._modalHeld
   if held then imp[held.key] = held.value end

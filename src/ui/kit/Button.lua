@@ -109,6 +109,20 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
         or (opts.color and Theme.A.hover or Theme.A.hairline)
     end
     doRing = focused or hot
+  elseif face == "nav" then
+    -- A navigation destination (launcher rail and bottom bar): flat on the
+    -- bar at rest, a quiet fill under the pointer, and a solid raised fill
+    -- plus an accent mark for the page that is open.
+    if active then
+      fill = PAL.raised
+    elseif hot or focused then
+      fill = PAL.rowBg
+    end
+    ink = active and PAL.heading or (hot and PAL.text or PAL.muted)
+    if focused then
+      stroke, strokeA, strokeWidth = PAL.ink, Theme.A.focus, 2
+    end
+    doRing = false
   elseif face == "chip" then
     local c = opts.color or PAL.line
     invert = active and true or false
@@ -146,8 +160,18 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     doRing = opts.ring
   end
   if G then
-    if face ~= "bare" then
+    if face ~= "bare" and fill then
       Theme.fillRounded(x, y, w, h, fill, enabled and 1 or B.disabledA, radius, segments)
+    end
+    if face == "nav" and active and opts.accent ~= false then
+      local tint = opts.color or PAL.blue
+      if opts.accent == "top" then
+        local bw = math.floor(w * 0.36)
+        Theme.fillRounded(x + (w - bw) / 2, y, bw, math.max(2, 3 * Kit.scale), tint, 1, 2)
+      else
+        local bh = math.floor(h * 0.5)
+        Theme.fillRounded(x, y + (h - bh) / 2, math.max(2, 3 * Kit.scale), bh, tint, 1, 2)
+      end
     end
     if doEmboss then
       local es = enabled and ((hot or focused) and B.embossHot or B.embossRest) or B.embossDisabled
@@ -201,7 +225,7 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     local hasLabel = label and label ~= ""
     local bold = opts.bold
     if bold == nil then
-      bold = face ~= "tab" and face ~= "selection"
+      bold = face ~= "tab" and face ~= "selection" and face ~= "nav"
     end
     if opts.fullLabel and hasLabel then
       local layout = opts.labelLayout or Button.labelLayout(Kit, w, h, label, opts)

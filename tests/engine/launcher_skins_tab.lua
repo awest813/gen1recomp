@@ -52,7 +52,7 @@ check(view:find('id = "skins"', 1, true) ~= nil,
       "LauncherView registers a skins tab")
 check(view:find('id = "bug"', 1, true) == nil,
       "the bug tab has left the header")
-check(view:find('skins = "paintbrush"', 1, true) ~= nil,
+check(read("src/import/LauncherNav.lua"):find('skins = "paintbrush"', 1, true) ~= nil,
       "the skins tab uses the shared Lucide paintbrush icon")
 check(read("assets/launcher/lucide/icons.png"):sub(1, 4) == "\137PNG",
       "the shared icon atlas is packaged with the launcher")

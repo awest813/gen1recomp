@@ -7,11 +7,12 @@ local Theme = {}
 
 local PAL = {
   -- Solid graphite surfaces; raised controls use a lighter value.
-  field       = { 20, 24, 29 },     -- the page BEHIND the cards
-  bg          = { 20, 24, 29 },       -- light black
-  surface     = { 29, 34, 41 },    -- card interiors
-  rowBg       = { 24, 29, 35 },    -- rows inside a card, one step below it
-  raised      = { 42, 49, 59 },    -- hover feedback
+  field       = { 15, 17, 21 },     -- the page BEHIND the cards
+  bg          = { 15, 17, 21 },       -- near black
+  sidebar     = { 21, 24, 30 },    -- launcher navigation rail / bars
+  surface     = { 26, 30, 37 },    -- card interiors
+  rowBg       = { 20, 23, 29 },    -- rows inside a card, one step below it
+  raised      = { 40, 46, 57 },    -- hover feedback / selected nav row
   ink         = { 240, 244, 249 }, -- the selected/focused fill
   -- outlines.  Two weights only: a hairline for structure, solid for focus.
   line        = { 139, 157, 180 }, -- hairline, drawn at alpha 0.35
@@ -81,12 +82,12 @@ Theme.BUTTON = {
 }
 
 Theme.CARD = {
-  radius = 9,
+  radius = 12,
   shadow = false,
   fill = PAL.surface,
   fillA = 1,
   stroke = PAL.line,
-  strokeA = Theme.A.hairline,
+  strokeA = 0.2,
 }
 
 Theme.CARD_VARIANT = {

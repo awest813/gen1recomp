@@ -47,7 +47,7 @@ Every **web** workflow run also uploads `gen1recomp-web`, and releases ship `gen
 1. Download the build for your platform from the [latest release](https://github.com/bryanthaboi/gen1recomp/releases/latest).
 2. Launch it. The package contains no ROM, so the launcher asks for one.
 3. Choose a legally obtained `.gb`, `.gbc`, or `.gba` file, a `.zip` / `.7z` that holds one (where that build supports archives), or drop the file onto the window. Import takes a few seconds and the game starts.
-4. Repeat for any other game you own. Each one gets its own launcher tab.
+4. Repeat for any other game you own. Each one gets its own entry in the launcher library (the sidebar on a wide window, the game button in the bottom bar on a phone).
 
 Your ROM is checked, used during import, and released from memory. It is never copied into the cache. Later launches load the generated cache. Music, sound effects, and cries are synthesized while the game runs. All eleven games can be imported side by side. Gen 2 support is still under construction. FireRed, LeafGreen, Ruby, Sapphire, and Emerald are in beta.
 

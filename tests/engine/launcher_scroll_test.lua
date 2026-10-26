@@ -250,7 +250,9 @@ check((touchImp._pageScroll or 0) > 0, "and spills into the page from there")
 LauncherView.touchreleased(touchImp, 1, treg.x + 20, treg.y - 400)
 end
 
-window(360, 780)
+-- Short enough that the page overflows under the nav bars, so the drag has
+-- somewhere to spill once the region saturates.
+window(360, 620)
 local dragMods = RomImporter.new(function() end, { launcher = true })
 dragMods.tab = "mods"
 dragMods.mods = mods

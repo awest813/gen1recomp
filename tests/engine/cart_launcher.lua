@@ -1104,10 +1104,19 @@ for _, size in ipairs(SIZES) do
         ("%dx%d tab scroller stays inside the window"):format(W, H))
       -- Phone, ready cart: the slot card sits under the cart, so "+ New save
       -- slot" starts below the fold.  A drag scrolls the tab first.  The
-      -- scroller's clip has to end on the glass (the fade lives on that edge).
+      -- scroller's clip has to end on the glass (the fade lives on that edge):
+      -- the top of the pinned footer when the page fits, the top of the
+      -- bottom nav bar once the page scrolls the footer away.
       if W == 360 and H == 780 and cart then
-        check(region.y + region.h >= H - 2,
-          "360x780 tab scroller reaches the window edge")
+        local glass = H - ((page._navL and page._navL.navH) or 0)
+        if (page._pageScrollMax or 0) > 0 then
+          check(region.y + region.h >= glass - 2,
+            "360x780 tab scroller reaches the bottom nav bar")
+        else
+          check(region.y + region.h <= glass
+              and region.y + region.h >= glass - math.floor(160 * Kit.scale),
+            "360x780 tab scroller ends on the pinned footer above the nav bar")
+        end
         local function slotOnScreen()
           for _, r in ipairs(Kit.audit or {}) do
             if tostring(r.label) == "+ New save slot" then

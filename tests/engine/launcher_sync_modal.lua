@@ -378,8 +378,9 @@ end
 local view = read("src/import/LauncherView.lua")
 local impSrc = read("src/import/RomImporter.lua")
 
-check(view:find('"tab-sync"', 1, true) ~= nil,
-      "the header carries a Save Sync button")
+local nav = read("src/import/LauncherNav.lua")
+check(nav:find('"tab-sync"', 1, true) ~= nil,
+      "the nav chrome carries a Save Sync button")
 local header = view:match("local HEADER_TABS = %{(.-)%}\n")
 check(header and header:find('id = "skins"', 1, true) ~= nil,
       "the skins tab is still in the tab row")
@@ -387,7 +388,7 @@ check(header and header:find("beta = true", 1, true) ~= nil,
       "the skins tab carries a BETA badge too")
 check(header and not header:find("tab-sync", 1, true),
       "Save Sync is not one of the per-tab chips")
-check(view:find('btn(imp, rx, by, gear, gear, "tab-sync", "", chrome.sync)',
+check(nav:find('V.btn(imp, bx, by, gear, gear, "tab-sync", "", head.sync)',
       1, true) ~= nil,
       "it rides the top-level cluster beside the settings gear")
 check(view:find("overlayBeta(rx", 1, true) == nil,
