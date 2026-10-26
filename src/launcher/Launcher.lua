@@ -14,6 +14,7 @@
 
 local Kit = require("src.ui.kit.Kit")
 local Theme = require("src.ui.kit.Theme")
+local Icons = require("src.ui.kit.Icons")
 local GameVersion = require("src.core.GameVersion")
 local Version = require("src.core.Version")
 local ImportJob = require("src.import.ImportJob")
@@ -336,8 +337,46 @@ end
 
 -- ---------------------------------------------------------------- actions
 
+-- The one message line, shown as a toast: info fades after a few seconds,
+-- an error stays longer; a press on it dismisses it.
+Launcher.TOAST_INFO, Launcher.TOAST_ERROR = 4, 8
+Launcher.SLIDE_TIME = 0.15
+
+local function now()
+  return love.timer and love.timer.getTime and love.timer.getTime() or os.clock()
+end
+
 function Launcher:say(text, kind)
-  self.message = text and { text = text, kind = kind or "info" } or nil
+  self.message = text and { text = text, kind = kind or "info", at = now() } or nil
+end
+
+function Launcher:drawToast(x, y, w, s)
+  local m = self.message
+  if not m then return end
+  local life = m.kind == "error" and Launcher.TOAST_ERROR or Launcher.TOAST_INFO
+  local age = now() - (m.at or now())
+  if age > life then
+    self.message = nil
+    return
+  end
+  local alpha = math.min(1, (life - age) / 0.4, age / 0.12 + 0.2)
+  local pad = Theme.space("m", s)
+  local icon = math.floor(18 * s)
+  local tw = math.min(w - 2 * pad, math.floor(560 * s))
+  local textW = tw - 3 * pad - icon
+  local th = Kit.wrapHeight("small", m.text, textW)
+  local lines = math.min(3, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
+  local h = lines * Kit.textHeight("small") + 2 * pad
+  local bx = x + (w - tw) / 2
+  local color = m.kind == "error" and PAL.red or PAL.green
+  Theme.shadow(bx, y, tw, h, Theme.radius())
+  Theme.fillRounded(bx, y, tw, h, PAL.raised, alpha, Theme.radius())
+  Theme.fillRounded(bx, y, math.max(3, math.floor(4 * s)), h, color, alpha, 2)
+  Icons.draw(m.kind == "error" and "triangle-alert" or "check", bx + pad, y + pad, icon, color, alpha)
+  Kit.textWrapped("small", m.text, bx + 2 * pad + icon, y + pad, textW, PAL.text, lines)
+  if Kit.press(bx, y, tw, h) then
+    self:queue(function() self.message = nil end, true)
+  end
 end
 
 -- Verify bytes from a picker or a drop and start importing them.
@@ -2532,8 +2571,28 @@ function Launcher:draw()
   end
 
   local footH = self:footerHeight(w) + Theme.space("m", s)
-  if self.message then footH = footH + Kit.textHeight("small") * 2 + Theme.space("s", s) end
   local bodyH = bottom - y - footH
+
+  -- a page change slides the content in from a little to the right; clicks
+  -- wait for it to settle so none lands where the content used to be
+  local pageKey = tostring(self.page)
+  if pageKey ~= self.lastPageKey then
+    if self.lastPageKey ~= nil then self.pageAt, self.pageFrames = now(), 0 end
+    self.lastPageKey = pageKey
+  end
+  local slide = 0
+  local t = 1
+  if self.pageAt then
+    -- by time, or by frames when the clock stalls (a hitch, a headless run)
+    self.pageFrames = (self.pageFrames or 0) + 1
+    t = math.max((now() - self.pageAt) / Launcher.SLIDE_TIME, self.pageFrames / 9)
+  end
+  if t < 1 then
+    slide = math.floor((1 - t) * (1 - t) * Theme.space("xl", s))
+    love.graphics.push()
+    love.graphics.translate(slide, 0)
+    Kit.blockClicks = true
+  end
 
   -- side by side when the content area is wide enough, else stacked
   local wide = w >= 600 * s or (railMode and w >= 480)
@@ -2559,12 +2618,12 @@ function Launcher:draw()
   end
 
   local fy = bottom - self:footerHeight(w)
-  if self.message then
-    local color = self.message.kind == "error" and PAL.red or PAL.text
-    Kit.textWrapped("small", self.message.text, x, fy - Kit.textHeight("small") * 2
-      - math.floor(8 * s), w, color, 2)
-  end
   self:drawFooter(x, fy, w, s)
+  if slide ~= 0 then
+    love.graphics.pop()
+    Kit.blockClicks = boxModal
+  end
+  self:drawToast(x, y + Theme.space("xs", s), w, s)
   if self.page == "box" then
     Kit.blockClicks = false
     self:drawBoxOverlays(s)

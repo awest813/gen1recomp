@@ -1004,4 +1004,33 @@ do
   window(1280, 720)
 end
 
+-- ----------------------------------------------------- toasts and motion
+do
+  window(1280, 720)
+  local clock = 100
+  local realTimer = love.timer.getTime
+  love.timer.getTime = function() return clock end
+  local m = fresh()
+  m:say("Saved.", "info")
+  check(drawText(m):find("Saved.", 1, true) ~= nil, "a message shows as a toast")
+  clock = clock + Launcher.TOAST_INFO + 0.1
+  drawText(m)
+  eq(m.message, nil, "an info toast goes away by itself")
+  m:say("Broken.", "error")
+  clock = clock + Launcher.TOAST_INFO + 0.1
+  drawText(m)
+  check(m.message ~= nil, "an error stays longer")
+  clock = clock + Launcher.TOAST_ERROR
+  drawText(m)
+  eq(m.message, nil, "but not forever")
+  -- a page change holds clicks until the slide settles
+  m:goSection("settings")
+  drawText(m)
+  check(Kit.blockClicks == false, "the frame ends with clicks released")
+  local frames = 0
+  repeat frames = frames + 1; drawText(m) until frames > 12
+  eq(m.pageFrames >= 9, true, "the slide settles within a few frames even when the clock stalls")
+  love.timer.getTime = realTimer
+end
+
 T.finish("pkgb launcher")
