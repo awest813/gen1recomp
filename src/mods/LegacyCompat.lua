@@ -890,6 +890,27 @@ local REFUSED = {
 
 -- ------- assembly
 
+-- The newest compat context per mod id, so the engine can find a file a mod
+-- wrote through its overlay when the mod hands that path back to be drawn.
+local contexts = {}
+
+-- The real save-directory path of a file some mod wrote at `path` through
+-- its compat filesystem, or nil.  Asked by src/render/Assets.lua only after
+-- `path` was not found on the real filesystem.
+function LegacyCompat.resolveWritten(path)
+  if type(path) ~= "string" then return nil end
+  for _, ctx in pairs(contexts) do
+    local at = classify(ctx, path)
+    if at and at.key and not at.dir then
+      local info = overlayInfo(ctx, at.key)
+      if info and info.type ~= "directory" then
+        return overlayPath(ctx, at.key)
+      end
+    end
+  end
+  return nil
+end
+
 function LegacyCompat.new(opts)
   opts = opts or {}
   local ctx = {
@@ -900,6 +921,7 @@ function LegacyCompat.new(opts)
     compile = nil,
   }
   ctx.virtualRoot = "/pokeport/" .. ctx.modId
+  contexts[ctx.modId] = ctx
 
   local filesystem = filesystemShim(ctx)
   local io_ = ioShim(ctx)

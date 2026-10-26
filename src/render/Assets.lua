@@ -54,6 +54,22 @@ function Assets.resolve(path)
   return path
 end
 
+-- A legacy mod writes through its compat filesystem (src/mods/LegacyCompat
+-- .lua), so a file it "saved" at roamers/x.png really lives in its overlay
+-- under mod_compat/<id>/.  Terrarium then hands that same path to the engine
+-- to draw, which looked on the real filesystem and found nothing: its
+-- roamer and town-life sprites failed to load (docs/web-voxel-audit-
+-- 2026-10-08.md).  Only a path missing from the real filesystem asks, and
+-- only when a compat layer was ever built, so a boot without legacy mods
+-- pays nothing.
+local function viaCompat(path)
+  if type(path) ~= "string" then return path end
+  local compat = package.loaded["src.mods.LegacyCompat"]
+  if type(compat) ~= "table" or not compat.resolveWritten then return path end
+  if exists(path) then return path end
+  return compat.resolveWritten(path) or path
+end
+
 local composed = {}
 
 function Assets.compose(path, build)
@@ -66,7 +82,7 @@ function Assets.image(path)
   local resolved = build and path or Assets.resolve(path)
   local image = cache[resolved]
   if not image then
-    image = love.graphics.newImage(build and build() or resolved)
+    image = love.graphics.newImage(build and build() or viaCompat(resolved))
     cache[resolved] = image
   end
   return image
@@ -77,7 +93,7 @@ end
 function Assets.imageData(path)
   local build = composed[path]
   if build then return build() end
-  return love.image.newImageData(Assets.resolve(path))
+  return love.image.newImageData(viaCompat(Assets.resolve(path)))
 end
 
 -- Register a cache invalidator, or { invalidate = fn, release = fn } when a
