@@ -933,6 +933,34 @@ local function requestMainEffect(data, header, options)
   return true
 end
 
+-- newEffectJob gathers an effect's samples in a Lua array (job.values, a
+-- double per sample) because the length is only known at the end.  Grown
+-- from empty, a 1 s effect at the web's 22050 Hz rehashes it ~15 times and
+-- leaves ~500 KB of dead arrays behind on PUC Lua -- GC churn at every
+-- battle-cry prewarm.  A job only reads back indices it wrote itself, so a
+-- finished job's table serves the next one as-is: stepJob lends the spare
+-- to a job that has not started and takes a finished job's table back.  A
+-- table is never shared (lent means no longer spare, and only done jobs
+-- return theirs), and one is only kept up to JOB_VALUES_KEEP samples (~3 s
+-- at 22050 Hz, a 1 MB array) so a long jingle does not pin megabytes.
+local JOB_VALUES_KEEP = 65536
+local spareValues
+
+local function stepJob(job, n)
+  local values = job.values
+  if spareValues and job.count == 0 and type(values) == "table"
+      and next(values) == nil then
+    values, spareValues = spareValues, nil
+    job.values = values
+  end
+  local done = job:step(n)
+  if done and type(values) == "table" and not spareValues
+      and type(job.count) == "number" and job.count <= JOB_VALUES_KEEP then
+    spareValues = values
+  end
+  return done
+end
+
 local function finishMainEffect(entry)
   for i = 1, #mainJobs do
     if mainJobs[i] == entry then table.remove(mainJobs, i) break end
@@ -946,7 +974,7 @@ function pumpMainEffects(budget)
   local deadline = clock and clock() + (budget or MAIN_PREWARM_BUDGET)
   while #mainJobs > 0 do
     local entry = mainJobs[1]
-    local ok, done = pcall(entry.job.step, entry.job, MAIN_PREWARM_SLICE)
+    local ok, done = pcall(stepJob, entry.job, MAIN_PREWARM_SLICE)
     if not ok or done then
       finishMainEffect(entry)
       if ok and entry.epoch == fxEpoch and fxReady[entry.key] == nil
@@ -1038,7 +1066,7 @@ local function takeEffect(data, header, options)
     -- finish the main-thread prewarm now instead of rendering from scratch
     finishMainEffect(entry)
     local ok = pcall(function()
-      while not entry.job:step(4096) do end
+      while not stepJob(entry.job, 4096) do end
     end)
     if ok then return entry.job.result or false end
   end

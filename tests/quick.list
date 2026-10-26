@@ -66,6 +66,7 @@ tests/engine/celadon_girl_drink_bug1955.lua
 tests/engine/champion_entrance_walk_bug2666.lua
 tests/engine/chip_analog_path.lua
 tests/engine/chip_audio_preroll_test.lua
+tests/engine/chip_audio_web_feed_test.lua
 tests/engine/chip_mono_fastpath_test.lua
 tests/engine/chip_sample_rate_test.lua
 tests/engine/chip_synth_golden_test.lua

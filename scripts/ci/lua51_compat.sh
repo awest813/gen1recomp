@@ -76,6 +76,7 @@ echo "-- suites under lua5.1"
 "$LUA" tests/engine/web_profile_test.lua || fail=1
 "$LUA" tests/engine/web_launcher_return_test.lua || fail=1
 "$LUA" tests/engine/chip_audio_web_test.lua || fail=1
+"$LUA" tests/engine/chip_audio_web_feed_test.lua || fail=1
 "$LUA" tests/engine/touch_web_activation_test.lua || fail=1
 "$LUA" tests/engine/gen3_sequential_version_pin_test.lua || fail=1
 "$LUA" tests/engine/gen3_bg_affine_f32_test.lua || fail=1
