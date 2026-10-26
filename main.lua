@@ -547,7 +547,9 @@ local function makeLauncher(launcherOpts)
       if onBoot and onBoot(version, cartId, opts) then return end
       bootGame(version, cartId, opts)
     end, { initialGame = launcherOpts and launcherOpts.initialTab or nil,
-           importPath = os.getenv("POKEPORT_LAUNCHER_IMPORT") })
+           importPath = os.getenv("POKEPORT_LAUNCHER_IMPORT"),
+           onOpenSkinStudio = require("src.ui.SkinStudio").available_desktop()
+             and openSkinStudio or nil })
   end
   local RomImporter = require("src.import.RomImporter")
   local forceImport = os.getenv("POKEPORT_FORCE_IMPORT") == "1"

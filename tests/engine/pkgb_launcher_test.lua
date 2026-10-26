@@ -546,6 +546,49 @@ drawText(l)
 l.page = nil
 drawText(l)
 
+-- ------------------------------------------------------------------ skins
+window(1280, 720)
+local studioOpened
+l = Launcher.new(function() end, { onOpenSkinStudio = function(version, id)
+  studioOpened = { version = version, id = id } end })
+l.page = "settings"
+check(drawText(l):find("Built-in pad", 1, true) ~= nil, "Settings shows the built-in pad in use")
+savedOptions.touchControls = { enabled = true, skin = "gba_purple" }
+check(drawText(l):find("gba_purple", 1, true) ~= nil, "or the skin in use")
+savedOptions.touchControls = { enabled = false, skin = "gba_purple" }
+eq(l:activeSkin(), nil, "a switched-off pad has no skin in use")
+savedOptions.touchControls = { enabled = true, skin = "gba_purple" }
+l:openStudio(l:activeSkin())
+check(studioOpened and studioOpened.id == "gba_purple" and studioOpened.version == l.selected,
+  "the skin button opens the Skin Studio on the skin in use")
+savedOptions.touchControls = nil
+local noStudio = Launcher.new(function() end)
+noStudio.page = "settings"
+check(not drawText(noStudio):find("Built-in pad", 1, true), "no skin button where the host has no Studio")
+
+-- a press on a row's own button is not also a press on the row
+installedCarts = { { id = "hard", title = "Hard Mode", base = "gold" } }
+l = fresh()
+l.selected, l.page = "gold", "carts"
+l.cartRows = nil
+local rect
+local realKitButton = Kit.button
+Kit.button = function(x, y, w, h, label, opts)
+  if opts and opts.id == "cart-remove-hard" then rect = { x = x, y = y, w = w, h = h } end
+  return realKitButton(x, y, w, h, label, opts)
+end
+drawText(l)
+check(rect ~= nil, "the cart row has a Remove button")
+local realGetPosition = love.mouse.getPosition
+love.mouse.getPosition = function() return rect.x + rect.w / 2, rect.y + rect.h / 2 end
+l.click = { x = rect.x + rect.w / 2, y = rect.y + rect.h / 2 }
+drawText(l)
+l:update(0)
+Kit.button = realKitButton
+love.mouse.getPosition = realGetPosition
+eq(l.armedDelete, "cart:hard", "pressing Remove arms it")
+eq(l:activeCart("gold"), nil, "without also choosing the cart")
+
 -- -------------------------------------------------------------------- box
 -- the Box reads real save files, so it runs on the real SaveData (over the
 -- stubbed love.filesystem) rather than the stub the sections above use

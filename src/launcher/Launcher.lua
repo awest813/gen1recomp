@@ -475,6 +475,25 @@ function Launcher:pickMod()
   self:installMod(data, FilePicker.basename(path))
 end
 
+-- ------------------------------------------------------------------ skins
+
+-- The on-screen controller skin in use (src/core/TouchSkin.lua), or nil for
+-- the built-in pad.
+function Launcher:activeSkin()
+  local tc = self:options().touchControls
+  if type(tc) ~= "table" or tc.enabled == false then return nil end
+  return tc.skin
+end
+
+-- Skins are chosen, imported, exported and drawn in the Skin Studio, a
+-- screen of its own: main.lua hands it the window and calls
+-- resumeAfterOverlay when it closes.
+function Launcher:openStudio(skinId)
+  local open = self.opts.onOpenSkinStudio
+  if not open then return self:say("The Skin Studio is not available here.", "error") end
+  open(self.selected, skinId)
+end
+
 -- -------------------------------------------------------------------- box
 
 -- The Pokemon Box (src/import/BoxPanel.lua and src/box/) runs as a page of
@@ -963,6 +982,14 @@ function Launcher:drawSettings(x, y, w, h, s)
   cy = cy + rowH + math.floor(10 * s)
   stepper("sfxVol", "Sound volume", 0, 7, cy)
   cy = cy + rowH + math.floor(10 * s)
+  label("Controller skin", cy)
+  local sw = math.floor(math.min(cw * 0.5, 300 * s))
+  if self.opts.onOpenSkinStudio and Kit.button(cx + cw - sw, cy, sw, rowH,
+      Kit.ellipsize("small", tostring(self:activeSkin() or "Built-in pad"), sw - math.floor(24 * s)),
+      { id = "skins", font = "small" }) then
+    self:queue(function() self:openStudio(self:activeSkin()) end)
+  end
+  cy = cy + rowH + math.floor(10 * s)
   -- this launcher is opt-in for now (--ui=new); offer the way back
   label("Launcher", cy)
   local classic = opts.launcherUi == "classic"
@@ -1163,12 +1190,14 @@ function Launcher:drawCarts(x, y, w, h, s)
     Kit.text("micro", Kit.ellipsize("micro", detail, textW), tx,
       ry + rowH - Kit.textHeight("micro") - math.floor(8 * s),
       chosen and (ink or PAL.text) or PAL.muted)
-    if clicked then
+    local rbx, rby = cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2
+    -- a press on Remove is not also a press on its row
+    if clicked and (row.original or not Kit.hit(rbx, rby, bw, bh)) then
       self:queue(function() self:selectCart(v, row.id) end)
     end
     if not row.original then
       local armed = self.armedDelete == "cart:" .. tostring(row.id)
-      if Kit.button(cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2, bw, bh,
+      if Kit.button(rbx, rby, bw, bh,
           armed and "Confirm" or "Remove",
           { id = "cart-remove-" .. tostring(row.id), font = "small", kind = "danger" }) then
         self:queue(function() self:removeCart(v, row) end, true)
