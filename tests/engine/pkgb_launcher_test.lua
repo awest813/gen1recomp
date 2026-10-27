@@ -1319,6 +1319,24 @@ do
   eq(Kit.focusId, "mods-back", "and the ring lands on its Back button, not the rail")
 end
 
+-- ------------------------------------- page slides leave no transform behind
+do
+  window(1280, 720)
+  local m = fresh()
+  local depth, worst = 0, 0
+  local realPush, realPop = love.graphics.push, love.graphics.pop
+  love.graphics.push = function(...) depth = depth + 1 worst = math.max(worst, depth) return realPush(...) end
+  love.graphics.pop = function(...) depth = depth - 1 return realPop(...) end
+  local pages = { "settings", nil, "mods", "carts", "notes", nil }
+  for i = 1, 60 do
+    m.page = pages[i % #pages + 1]
+    for _ = 1, 12 do drawText(m) end
+  end
+  love.graphics.push, love.graphics.pop = realPush, realPop
+  eq(depth, 0, "every page slide pops what it pushed (LOVE's stack overflowed after ~128)")
+  check(worst <= 4, "and the stack never grows: " .. worst)
+end
+
 -- ------------------------------------------------ text field select-all
 do
   window(1280, 720)

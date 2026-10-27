@@ -2647,8 +2647,13 @@ function Launcher:draw()
     self.pageFrames = (self.pageFrames or 0) + 1
     t = math.max((now() - self.pageAt) / Launcher.SLIDE_TIME, self.pageFrames / 9)
   end
+  -- `pushed`, not `slide ~= 0`, decides the pop: the last frames of a slide
+  -- round to 0 and used to leave one push behind each page change, until
+  -- LOVE's transform stack overflowed (~128 changes)
+  local pushed = false
   if t < 1 then
     slide = math.floor((1 - t) * (1 - t) * Theme.space("xl", s))
+    pushed = true
     love.graphics.push()
     love.graphics.translate(slide, 0)
     Kit.blockClicks = true
@@ -2679,7 +2684,7 @@ function Launcher:draw()
 
   local fy = bottom - self:footerHeight(w)
   self:drawFooter(x, fy, w, s)
-  if slide ~= 0 then
+  if pushed then
     love.graphics.pop()
     Kit.blockClicks = boxModal
   end
