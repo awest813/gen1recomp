@@ -1,13 +1,17 @@
 return {
   id = "frlg",
 
+  -- Longest first, so the last worker to finish is not the one that started
+  -- a 2 s task late (RomExtractorGen3:runParallel hands tasks out in this
+  -- order); weights are each task's share of the import time, measured on
+  -- FireRed 1.0, so the progress bar moves at an even pace.
   tasks = {
-    { id = "gba", run = "gba", weight = 0.20 },
+    { id = "gba", run = "gba", weight = 0.26 },
+    { id = "aux", run = "aux", weight = 0.22 },
     { id = "scripts_ow", run = "scripts_ow", weight = 0.20 },
     { id = "pokemon", run = "pokemon", weight = 0.20 },
-    { id = "pokemon_gfx", run = "pokemon_gfx", weight = 0.15 },
-    { id = "aux", run = "aux", weight = 0.15 },
-    { id = "intro_audio", run = "intro_audio", weight = 0.10 },
+    { id = "intro_audio", run = "intro_audio", weight = 0.08 },
+    { id = "pokemon_gfx", run = "pokemon_gfx", weight = 0.04 },
   },
 
   speciesSplit = 200,
