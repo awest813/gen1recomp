@@ -164,6 +164,11 @@ function Launcher:refresh(recheck)
     if recheck or self.ready[v] == nil then
       self.ready[v] = cacheReady(v)
       self.stale[v] = not self.ready[v] and cacheStale(v)
+      -- an import that quit part way reads like one an update left behind
+      if not self.ready[v] and not self.stale[v] then
+        local okI, interrupted = pcall(ImportJob.interrupted, v)
+        self.stale[v] = okI and interrupted and "interrupted" or self.stale[v]
+      end
     end
   end
   self.slots = {}
@@ -404,6 +409,8 @@ function Launcher:importData(data, name)
   self:selectGame(rom.version)
   self:say(nil)
   self.job = ImportJob.start(rom)
+  -- an accepted quirk of the dump (a copier header, an overdump) is said
+  if rom.note and self.job.state ~= "error" then self:say("Importing: " .. tostring(rom.note) .. ".", "info") end
   if self.job.state == "error" then
     self:say(self.job.error, "error")
     self.job = nil
@@ -1110,6 +1117,11 @@ function Launcher:update(dt)
       if self.opts.onImported then return self.opts.onImported(version) end
     elseif state == "error" then
       self:say("Import failed: " .. tostring(self.job.error), "error")
+      -- a headless import (POKEPORT_IMPORT_ONLY) has no one to read that
+      if os.getenv("POKEPORT_IMPORT_ONLY") == "1" then
+        print("import failed: " .. tostring(self.job.error) .. " (" .. tostring(self.job.detail) .. ")")
+        love.event.quit(1)
+      end
       self.job = nil
       self:refresh(true)
     end
@@ -1470,8 +1482,11 @@ end
 -- An import started from a command line path.
 function Launcher:startPath(path)
   local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  local data = ok and FilePicker.read(path)
-  if not data then return self:say("Could not read " .. tostring(path), "error") end
+  local data, why
+  if ok then data, why = FilePicker.read(path) end
+  if not data then
+    return self:say(why and tostring(why) or ("Could not read " .. tostring(path)), "error")
+  end
   self:importData(data, ok and FilePicker.basename(path) or path)
 end
 
@@ -2134,8 +2149,9 @@ function Launcher:drawGame(x, y, w, h, s)
 
   if not ready then
     local stale = self.stale and self.stale[v]
-    local help = stale
-      and ("This game was imported by an older version of PK:GB and has to be imported again. "
+    local help = stale == "interrupted"
+      and "The last import of this game did not finish. Import it again; your saves are kept."
+      or stale and ("This game was imported by an older version of PK:GB and has to be imported again. "
         .. "Your saves are kept.")
       or ("Import your own " .. info.displayName .. " ROM to play. "
         .. "It is checked against the original release before anything is "
