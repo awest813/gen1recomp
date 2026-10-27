@@ -213,8 +213,9 @@ function FaithfulRes.apply(v)
     flags.resizable = true
     flags.minwidth = (prev and prev.minwidth) or FaithfulRes.MIN_W
     flags.minheight = (prev and prev.minheight) or FaithfulRes.MIN_H
-    love.window.setMode((prev and prev.w) or curW, (prev and prev.h) or curH,
-                        flags)
+    local pw, ph = (prev and prev.w) or curW, (prev and prev.h) or curH
+    require("src.core.WindowFit").clamp(pw, ph, flags)
+    love.window.setMode(pw, ph, flags)
     FaithfulRes.modeSerial = FaithfulRes.modeSerial + 1
     FaithfulRes.prevSize = nil
     FaithfulRes.locked = false
@@ -236,6 +237,7 @@ function FaithfulRes.apply(v)
   -- frame), so the window is fixed while locked rather than left draggable.
   flags.resizable = false
   flags.minwidth, flags.minheight = w, h
+  require("src.core.WindowFit").clamp(w, h, flags)
   love.window.setMode(w, h, flags)
   FaithfulRes.modeSerial = FaithfulRes.modeSerial + 1
   FaithfulRes.locked = true

@@ -17,6 +17,7 @@ local opts = {}
 package.loaded["src.core.SaveData"] = {
   listSlots = function() return {} end, activeSlot = function() return nil end,
   loadOptions = function() return opts end,
+  defaultOptions = function() return { musicVol = 7, sfxVol = 7 } end,
   saveOptions = function(o) if o ~= opts then for k, v in pairs(o) do opts[k] = v end end return true end,
 }
 package.loaded["src.import.CacheContract"] = setmetatable({
@@ -115,6 +116,39 @@ do
   o.musicVol = 5
   Gen2Save.saveOptions(o)
   eq(opts.musicVol, 5, "a change in Gold's OPTION reaches the other games")
+end
+
+-- ---- Reset settings takes two presses and leaves saves and mods alone
+do
+  local l = Launcher.new(function() end, { noUpdateCheck = true })
+  l:setOption("musicVol", 2)
+  l:setOption("unionRoom", false)
+  l:setOption("autoReimport", true)
+  opts.mods = { "keep_me" }
+  l:resetSettings()
+  eq(opts.musicVol, 2, "the first press only asks")
+  check(l.message and l.message.text:find("Press Reset again", 1, true), "and says how to go on")
+  l:resetSettings()
+  eq(opts.musicVol, 7, "the second puts the volume back")
+  eq(opts.unionRoom, nil, "Union Room back on")
+  eq(opts.autoReimport, nil, "re-import back off")
+  eq(opts.mods and opts.mods[1], "keep_me", "mods are not touched")
+end
+
+-- ---- a resized window is kept on its display
+do
+  local WindowFit = require("src.core.WindowFit")
+  love.window = love.window or {}
+  local real = love.window.getDesktopDimensions
+  love.window.getDesktopDimensions = function() return 1280, 720 end
+  local f = WindowFit.clamp(1203, 633, { x = 128, y = -20 })
+  eq(f.x, 77, "a window grown where a smaller one sat moves in from the right edge")
+  eq(f.y, 32, "and down from the top, leaving its title bar on screen")
+  f = WindowFit.clamp(800, 600, { x = 100, y = 60 })
+  check(f.x == 100 and f.y == 60, "a window that fits stays where it was")
+  f = WindowFit.clamp(1400, 800, { x = 50, y = 50 })
+  check(f.x == 0 and f.y == 0, "one bigger than the display starts at its corner")
+  love.window.getDesktopDimensions = real
 end
 
 T.finish("launcher import audit")

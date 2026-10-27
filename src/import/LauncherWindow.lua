@@ -80,6 +80,7 @@ function Window.apply(mode)
   flags.resizable = true
   flags.minwidth = math.min(flags.minwidth or 0, w)
   flags.minheight = math.min(flags.minheight or 0, h)
+  require("src.core.WindowFit").clamp(w, h, flags)
   local ok = love.window.setMode(w, h, flags)
   if ok == false then return false end
   st.mode = mode

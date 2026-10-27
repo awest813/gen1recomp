@@ -1093,6 +1093,30 @@ function Launcher:setRelay(text)
   self:say("Online play will connect to " .. address .. ".", "info")
 end
 
+-- Settings > Reset settings: every row on the Settings page back to its
+-- default, after a second press.  Saves, imported games, mods, remembered
+-- ROM files, controls and the touch layout are not settings this page
+-- holds, and are left alone.
+Launcher.RESET_KEYS = { "musicVol", "sfxVol", "reduceMotion", "autoReimport", "relayAddress", "unionRoom" }
+function Launcher:resetSettings()
+  if self.armedDelete ~= "reset-settings" then
+    self.armedDelete = "reset-settings"
+    return self:say("Press Reset again to put every setting on this page back to its default. "
+      .. "Saves, games and mods are not touched.", "notice")
+  end
+  self.armedDelete = nil
+  local okS, SaveData = pcall(require, "src.core.SaveData")
+  local defaults = okS and SaveData.defaultOptions and SaveData.defaultOptions() or {}
+  for _, key in ipairs(Launcher.RESET_KEYS) do
+    self:setOption(key, defaults[key])
+  end
+  self:applyMotion(defaults.reduceMotion)
+  self.relayDraft = nil
+  local okW, Window = pcall(require, "src.import.LauncherWindow")
+  if okW and Window.supported() and Window.mode() == "fullscreen" then pcall(Window.apply, "windowed") end
+  self:say("Settings are back to their defaults.", "info")
+end
+
 -- ---------------------------------------------------------------- updates
 
 -- What the update chip says and does right now, or nil when there is nothing
@@ -2194,6 +2218,13 @@ function Launcher:drawSettings(x, y, w, h, s)
     self:queue(function() self:reportProblem() end)
   end
   cy = cy + rowH + math.floor(10 * s)
+  label("Start over", cy)
+  local armed = self.armedDelete == "reset-settings"
+  if Kit.button(cx + cw - rw, cy, rw, rowH, armed and "Reset? Press again" or "Reset settings",
+      { id = "reset-settings", font = "small", kind = armed and "danger" or nil }) then
+    self:queue(function() self:resetSettings() end, true)
+  end
+  cy = cy + rowH + math.floor(10 * s)
   -- the tab bar has room for four sections only: the rest live here
   if not self.railMode then
     local extras = { { id = "settings-notes", label = "What's new", icon = "sparkles",
@@ -2521,6 +2552,14 @@ function Launcher:drawGame(x, y, w, h, s)
   Kit.text("small", Kit.ellipsize("small", status, math.max(0, (compact and titleW or x + w - pad - tx))),
     tx, ty + Kit.textHeight(titleFont) + Theme.space("xs", s), scolor)
 
+  -- where the banner ends on screen: notices sit there, under the game's
+  -- name rather than over it (drawn after any scroll or slide is undone)
+  do
+    local G = love.graphics
+    local ax, ay = x, y + bannerH
+    if G and G.transformPoint then ax, ay = G.transformPoint(x, y + bannerH) end
+    self.toastAnchor = { x = ax, y = ay, w = w }
+  end
   local cy = y + bannerH + Theme.space("l", s)
   local btnH = math.max(Kit.tapMin(), math.floor(44 * s))
 
@@ -3233,7 +3272,16 @@ function Launcher:draw()
     love.graphics.pop()
     Kit.blockClicks = baseBlock or boxModal
   end
-  self:drawToast(x, y + Theme.space("xs", s), w, s)
+  -- on a game's page, under its banner (the title stays readable); else at
+  -- the top.  A banner scrolled out of view, or too near the bottom to
+  -- leave room, falls back to the top as well.
+  local a = not self.page and self.toastAnchor
+  if a and a.y > y and a.y < bottom - 120 * s then
+    self:drawToast(a.x, a.y + Theme.space("xs", s), a.w, s)
+  else
+    self:drawToast(x, y + Theme.space("xs", s), w, s)
+  end
+  self.toastAnchor = nil
   if browsing then
     local W, H = love.graphics.getDimensions()
     Kit.FileBrowser.draw({ s = s, W = W, H = H })
