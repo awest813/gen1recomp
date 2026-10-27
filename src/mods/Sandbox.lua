@@ -215,6 +215,17 @@ local function sandboxedGetmetatable(env)
   end
 end
 
+-- The collector is the engine's, not the mod's: collectgarbage("stop") or a
+-- huge setpause from one mod would let the whole game's heap grow without
+-- bound.  Reading the heap and asking for a collection stay available.
+local GC_ALLOWED = { collect = true, count = true, step = true, isrunning = true }
+
+local function sandboxedCollectgarbage(opt, ...)
+  opt = opt or "collect"
+  if not GC_ALLOWED[opt] then return 0 end
+  return collectgarbage(opt, ...)
+end
+
 local function baseGlobals()
   local safeOs = {}
   for key in pairs(SAFE_OS) do safeOs[key] = os[key] end
@@ -224,7 +235,7 @@ local function baseGlobals()
     tonumber = tonumber, tostring = tostring, type = type, unpack = unpack,
     rawequal = rawequal, rawget = rawget, rawset = rawset, rawlen = rawlen,
     setmetatable = setmetatable, getmetatable = getmetatable, print = print,
-    collectgarbage = collectgarbage, _VERSION = _VERSION,
+    collectgarbage = sandboxedCollectgarbage, _VERSION = _VERSION,
     coroutine = copy(coroutine), math = copy(math), string = safeString(),
     table = copy(table), bit = copy(bit), jit = safeJit(), os = safeOs,
   }

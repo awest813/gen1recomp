@@ -421,6 +421,9 @@ do
   T.eq(env.require("_G"), env, "require(\"_G\") answers with the sandbox itself")
   T.check(Sandbox.moduleDenial("_G", {}) ~= nil,
     "and the loader's require shim backstop refuses the real _G to a mod")
+  T.eq(env.collectgarbage("stop"), 0, "a mod cannot stop the engine's collector")
+  T.check(select(2, pcall(collectgarbage, "isrunning")) ~= false, "which keeps running")
+  T.eq(type(env.collectgarbage("count")), "number", "but can read the heap size")
 end
 
 T.finish("sandbox")
