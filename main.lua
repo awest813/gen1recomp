@@ -1709,7 +1709,13 @@ end
 -- Shane #1830 idle render governor (POKEPORT_IDLE_*): drop presentation rate
 -- on static in-game screens; game logic and audio stay at full speed.
 local function idlePresentationCap(idleFor)
-  if Importer then return 30 end
+  -- the launcher steps down to 15fps after 5s untouched while nothing on it
+  -- moves (an import, a toast, a slide, online play, a text cursor keep 30);
+  -- love.run's own rule holds it at 15 after 30s
+  if Importer then
+    local busy = Importer.isAnimating and Importer:isAnimating()
+    return (not busy and idleFor > 5) and 15 or 30
+  end
   local after = tonumber(os.getenv("POKEPORT_IDLE_AFTER"))
   local fps = tonumber(os.getenv("POKEPORT_IDLE_FPS"))
   if not after or after <= 0 or not fps or fps <= 0 then return nil end
@@ -1844,18 +1850,8 @@ function love.run()
     local cap = FrameCap.current
     if not visible then
       cap = 10
-    elseif Importer then
-      -- the launcher steps down while nothing moves on it: 15fps after 5s
-      -- untouched, 6fps after 30s; anything animating (an import, a toast, a
-      -- slide, online play, a text cursor) keeps the normal rate
-      local busy = Importer.isAnimating and Importer:isAnimating()
-      if not focused then
-        cap = 15
-      elseif not busy and idleFor > 30 then
-        cap = 6
-      elseif not busy and idleFor > 5 then
-        cap = 15
-      end
+    elseif Importer and (not focused or idleFor > 30) then
+      cap = 15
     else
       local idleCap = idlePresentationCap(idleFor)
       if idleCap then cap = idleCap end

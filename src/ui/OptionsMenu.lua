@@ -125,13 +125,18 @@ local function rulesetIndex(game, ids)
   return 1
 end
 
+local RULESET_LABELS = { gen1_faithful = "FAITHFUL", modern_clean = "MODERN" }
+
 local function rulesetName(game)
   local rulesets = game.data and game.data.rulesets or Rulesets
   local ids = rulesetIds(game)
   local id = ids[rulesetIndex(game, ids)] or game.save.options.ruleset
   local record = id and rulesets[id]
-  -- a record's own label, else its id made readable ("my_rules" -> "MY RULES")
-  if record and record.label then return Strings(record.label) end
+  -- the built-ins' names here, not on their records: a record field is part
+  -- of the link fingerprint, and two builds that differ there cannot link.
+  -- Any other ruleset shows its id made readable ("my_rules" -> "MY RULES").
+  local label = record and RULESET_LABELS[record.name]
+  if label then return Strings(label) end
   local raw = record and record.name or id
   return raw and Strings((tostring(raw):gsub("_", " "):upper())) or "----"
 end
