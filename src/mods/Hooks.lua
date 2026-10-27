@@ -15,25 +15,46 @@ function Hooks.new()
   return setmetatable({ chains = {} }, Hooks)
 end
 
+-- Chains are copy-on-write, as Events' listener lists are: wrap, unwrap and
+-- removeOwner swap in a new list and never edit one in place, so a call in
+-- progress keeps walking the chain it started with even when a link unwraps
+-- itself or a sibling mid-call (an in-place table.remove used to shift the
+-- links the call had not reached yet, skipping one).
+
+local function byPriority(a, b)
+  if a.priority ~= b.priority then return a.priority > b.priority end
+  return a.seq < b.seq
+end
+local seq = 0
+
+local function keepOnly(chain, keep)
+  local out = {}
+  for i = 1, #chain do
+    if keep(chain[i]) then out[#out + 1] = chain[i] end
+  end
+  -- an empty chain is dropped so Runtime.wantsHook goes back to false
+  if #out == 0 then return nil end
+  return out
+end
+
 -- owner is the wrapping mod id; failures are attributed to it
 function Hooks:wrap(name, callback, priority, owner)
   assert(type(name) == "string" and name ~= "", "hook name is required")
   assert(type(callback) == "function", "hook callback must be a function")
-  local chain = self.chains[name] or {}
-  self.chains[name] = chain
-  local entry = { callback = callback, priority = priority or 0, owner = owner }
+  seq = seq + 1
+  local entry = { callback = callback, priority = tonumber(priority) or 0,
+                  owner = owner, seq = seq }
+  local old = self.chains[name]
+  local chain = {}
+  if old then for i = 1, #old do chain[i] = old[i] end end
   chain[#chain + 1] = entry
-  table.sort(chain, function(a, b) return a.priority > b.priority end)
+  -- table.sort is not stable; seq keeps equal priorities in wrap order
+  table.sort(chain, byPriority)
+  self.chains[name] = chain
   return function()
-    for i, candidate in ipairs(chain) do
-      if candidate == entry then table.remove(chain, i) break end
-    end
-    -- an empty chain is dropped, as removeOwner does, so Runtime.wantsHook
-    -- goes back to false; only if it is still the live chain for the name
-    -- (a later wrap after removeOwner may have started a new one)
-    if #chain == 0 and self.chains[name] == chain then
-      self.chains[name] = nil
-    end
+    local live = self.chains[name]
+    if not live then return end
+    self.chains[name] = keepOnly(live, function(e) return e ~= entry end)
   end
 end
 
@@ -106,11 +127,11 @@ end
 -- drops every wrap a mod made; used by entry-chunk rollback
 function Hooks:removeOwner(owner)
   if owner == nil then return end
-  for name, chain in pairs(self.chains) do
-    for i = #chain, 1, -1 do
-      if chain[i].owner == owner then table.remove(chain, i) end
-    end
-    if #chain == 0 then self.chains[name] = nil end
+  local names = {}
+  for name in pairs(self.chains) do names[#names + 1] = name end
+  for _, name in ipairs(names) do
+    self.chains[name] = keepOnly(self.chains[name],
+      function(e) return e.owner ~= owner end)
   end
 end
 
