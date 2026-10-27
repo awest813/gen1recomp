@@ -186,9 +186,13 @@ end
 
 -- ------- lifecycle
 
-function ManagerState.new(game)
+-- opts.onExit runs once the manager closes: the Gen 1 START menu closes
+-- itself before opening an entry and passes its reopen here, so leaving MODS
+-- lands back on the menu as leaving OPTION does.
+function ManagerState.new(game, opts)
   return setmetatable({
     game = game,
+    onExit = opts and opts.onExit,
     screen = "list",
     tab = 1,
     cursor = 1,
@@ -287,6 +291,20 @@ function ManagerState:targetGame()
   local version = GameVersion.get()
   if gen and GameVersion.generation(version) ~= gen then return nil, gen end
   return version, GameVersion.generation(version)
+end
+
+-- Why a mod is skipped, in the player's words.  The loader's own note names
+-- the manifest field an author must add ("not marked gen2compat"); the
+-- player gets the launcher's line instead ("For Gen 1, not Gold").
+function ManagerState:skipText(m)
+  if m.state == "wrong_generation" and not m.gen2Forced then
+    local version = self:targetGame()
+    if version then
+      local ok, text = pcall(ModTargets.detail, m, version)
+      if ok and text then return text end
+    end
+  end
+  return m.note
 end
 
 -- will this mod run on this game at all (src/mods/ModTargets.lua, the same
@@ -458,10 +476,12 @@ function ManagerState:orderRows(m)
   local at = LoadOrder.position(shown, m.id)
   if not at then return rows end
   if #shown < 2 then
-    rows[#rows + 1] = { inert = true, label = "LOAD #" .. at .. " OF " .. #shown }
+    -- no '#': in the Game Boy charmap it is the POKé macro, so "LOAD #1"
+    -- printed "LOAD POKé1"; nor the < > arrows, which only the GBA font has
+    rows[#rows + 1] = { inert = true, label = "LOAD " .. at .. " OF " .. #shown }
     return rows
   end
-  rows[#rows + 1] = { label = "< LOAD #" .. at .. "/" .. #shown .. " >",
+  rows[#rows + 1] = { label = "LOAD " .. at .. "/" .. #shown,
     adjust = function(dir) self:moveOrder(m, dir) end,
     action = function() self:notify("LEFT/RIGHT: MOVE") end }
   return rows
@@ -496,7 +516,7 @@ function ManagerState:moveOrder(m, delta)
   local now = self:loadOrderList()
   self.orderPending = not sameList(now, self.bootOrderShown)
   self:refresh()
-  self:notify("LOAD #" .. (LoadOrder.position(now, m.id) or "?") .. " ON RESTART")
+  self:notify("LOAD " .. (LoadOrder.position(now, m.id) or "?") .. " ON RESTART")
   return true
 end
 
@@ -564,6 +584,7 @@ function ManagerState:goBack()
     self:refresh()
   else
     self.game.stack:pop()
+    if self.onExit then self.onExit() end
   end
 end
 
@@ -1417,7 +1438,7 @@ function ManagerState:drawDetail()
                 16, 4 * 8, 17)
   drawTruncated("FOR " .. ModTargets.chip(m), 16, 5 * 8, 17)
   local lines = wrap(m.error and ("FAILED: " .. m.error)
-    or (m.note and ("SKIPPED: " .. m.note)) or m.description, 16)
+    or (m.note and ("SKIPPED: " .. self:skipText(m))) or m.description, 16)
   local visible = 5
   for i = 1, visible do
     local line = lines[self.descScroll + i - 1]

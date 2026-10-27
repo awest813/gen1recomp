@@ -153,7 +153,7 @@ function StartMenu.new(game)
   local status = game.modStatus
   if status and #(status.available or {}) > 0 then
     table.insert(items, { label = Strings("MODS"), onSelect = function()
-      Screens.push(game, "ManagerState")
+      Screens.push(game, "ManagerState", { onExit = reopen })
     end })
   end
 

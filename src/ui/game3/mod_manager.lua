@@ -316,7 +316,7 @@ local function drawDetailBody(m)
     .. (m:isStaged(mod) and " (STAGED)" or ""))
   push((mod.category or "OTHER") .. "/" .. (mod.profile or "content"))
   local body = mod.error and ("FAILED: " .. mod.error)
-    or mod.note and ("SKIPPED: " .. mod.note)
+    or mod.note and ("SKIPPED: " .. m:skipText(mod))
     or mod.description or ""
   for paragraph in tostring(body):gmatch("[^\n]+") do
     push(paragraph)
