@@ -1495,7 +1495,10 @@ function love.wheelmoved(x, y)
   end
   if TouchEditor then return end
   if Studio then return Studio.wheelmoved(x, y) end
-  if Importer then return end
+  if Importer then
+    if Importer.wheelmoved then Importer:wheelmoved(x, y) end
+    return
+  end
   if not Game then return end
   Game:wheelmoved(x, y)
 end

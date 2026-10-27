@@ -1906,6 +1906,27 @@ function Launcher:drawSettings(x, y, w, h, s)
     end
   end
 
+  -- on/off rows: the button names the state, a press flips it
+  local function toggle(id, text, on, flip, note)
+    label(text, cy)
+    local tw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - tw, cy, tw, rowH, on and "On" or "Off",
+        { id = id, font = "small", kind = on and "primary" or nil }) then
+      self:queue(flip)
+    end
+    cy = cy + rowH + math.floor(note and 4 or 10) * s
+    if note then
+      Kit.textWrapped("micro", note, cx, cy, cw, PAL.faint)
+      cy = cy + Kit.wrapHeight("micro", note, cw) + math.floor(10 * s)
+    end
+  end
+  -- groups, each under a caption
+  local function section(text)
+    if cy > y + pad + 60 * s then cy = cy + Theme.space("s", s) end
+    Kit.caption(cx, cy, text, PAL.caption)
+    cy = cy + Kit.textHeight("caption") + Theme.space("s", s)
+  end
+  section("DISPLAY AND SOUND")
   local okV, VideoMode = pcall(require, "src.core.VideoMode")
   if okV and not VideoMode.fixedDisplay() then
     -- the launcher's own window (src/import/LauncherWindow.lua); each game
@@ -1929,14 +1950,29 @@ function Launcher:drawSettings(x, y, w, h, s)
   cy = cy + rowH + math.floor(10 * s)
   stepper("sfxVol", "Sound volume", 0, 7, cy)
   cy = cy + rowH + math.floor(10 * s)
-  label("Controller skin", cy)
-  local sw = math.floor(math.min(cw * 0.5, 300 * s))
-  if self.opts.onOpenSkinStudio and Kit.button(cx + cw - sw, cy, sw, rowH,
-      Kit.ellipsize("small", tostring(self:activeSkin() or "Built-in pad"), sw - math.floor(24 * s)),
-      { id = "skins", font = "small" }) then
-    self:queue(function() self:openStudio(self:activeSkin()) end)
+  toggle("reduce-motion", "Reduce motion", opts.reduceMotion == true, function()
+    self:setOption("reduceMotion", self:options().reduceMotion ~= true)
+  end)
+  section("CONTROLS")
+  if self.opts.onOpenSkinStudio then
+    label("Controller skin", cy)
+    local sw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - sw, cy, sw, rowH,
+        Kit.ellipsize("small", tostring(self:activeSkin() or "Built-in pad"), sw - math.floor(24 * s)),
+        { id = "skins", font = "small" }) then
+      self:queue(function() self:openStudio(self:activeSkin()) end)
+    end
+    cy = cy + rowH + math.floor(10 * s)
   end
-  cy = cy + rowH + math.floor(10 * s)
+  if self.opts.onEditTouchControls then
+    label("Touch controls", cy)
+    local tw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - tw, cy, tw, rowH, "Arrange", { id = "touch-controls", font = "small" }) then
+      self:queue(function() self.opts.onEditTouchControls(self.selected) end)
+    end
+    cy = cy + rowH + math.floor(10 * s)
+  end
+  section("ONLINE")
   -- the online relay (src/link/Net.lua): typed here, saved on Save
   label("Online relay", cy)
   local Net = require("src.link.Net")
@@ -1965,14 +2001,26 @@ function Launcher:drawSettings(x, y, w, h, s)
   Kit.text("micro", Kit.ellipsize("micro", "Connecting to " .. tostring(current) .. why, cw),
     cx, cy, PAL.faint)
   cy = cy + Kit.textHeight("micro") + math.floor(10 * s)
-  if self.opts.onEditTouchControls then
-    label("Touch controls", cy)
-    local tw = math.floor(math.min(cw * 0.5, 300 * s))
-    if Kit.button(cx + cw - tw, cy, tw, rowH, "Arrange", { id = "touch-controls", font = "small" }) then
-      self:queue(function() self.opts.onEditTouchControls(self.selected) end)
-    end
-    cy = cy + rowH + math.floor(10 * s)
+  local okU, Union = pcall(require, "src.online.union.Setting")
+  if okU then
+    toggle("union-room", "Union Room", Union.enabledIn(opts), function()
+      self:setOption(Union.KEY, not Union.enabledIn(self:options()))
+    end, "Red, Blue, Yellow, Gold, Silver and Crystal: the Pokemon Center's upstairs "
+      .. "room for online trades and battles.")
   end
+  label("Save sync", cy)
+  local syncW = math.floor(math.min(cw * 0.5, 300 * s))
+  local SyncEngine = package.loaded["src.sync.SyncEngine"]
+  local linked = SyncEngine and type(SyncEngine._shared) == "table" and SyncEngine._shared:linked()
+  if Kit.button(cx + cw - syncW, cy, syncW, rowH, linked and "Linked - manage" or "Set up",
+      { id = "sync", font = "small" }) then
+    self:queue(function()
+      self.sync = self.sync or require("src.launcher.SyncPage").new(self)
+      self.page = "sync"
+    end)
+  end
+  cy = cy + rowH + math.floor(10 * s)
+  section("GAMES AND FILES")
   local Inbox = require("src.launcher.Inbox")
   if Inbox.enabled() then
     label("Imports folder", cy)
@@ -1989,43 +2037,6 @@ function Launcher:drawSettings(x, y, w, h, s)
     Kit.text("micro", Kit.ellipsize("micro", "Copy files into " .. Inbox.location(), cw), cx, cy, PAL.faint)
     cy = cy + Kit.textHeight("micro") + math.floor(10 * s)
   end
-  label("Save sync", cy)
-  local syncW = math.floor(math.min(cw * 0.5, 300 * s))
-  local SyncEngine = package.loaded["src.sync.SyncEngine"]
-  local linked = SyncEngine and type(SyncEngine._shared) == "table" and SyncEngine._shared:linked()
-  if Kit.button(cx + cw - syncW, cy, syncW, rowH, linked and "Linked - manage" or "Set up",
-      { id = "sync", font = "small" }) then
-    self:queue(function()
-      self.sync = self.sync or require("src.launcher.SyncPage").new(self)
-      self.page = "sync"
-    end)
-  end
-  cy = cy + rowH + math.floor(10 * s)
-
-  -- on/off rows: the button names the state, a press flips it
-  local function toggle(id, text, on, flip, note)
-    label(text, cy)
-    local tw = math.floor(math.min(cw * 0.5, 300 * s))
-    if Kit.button(cx + cw - tw, cy, tw, rowH, on and "On" or "Off",
-        { id = id, font = "small", kind = on and "primary" or nil }) then
-      self:queue(flip)
-    end
-    cy = cy + rowH + math.floor(note and 4 or 10) * s
-    if note then
-      Kit.textWrapped("micro", note, cx, cy, cw, PAL.faint)
-      cy = cy + Kit.wrapHeight("micro", note, cw) + math.floor(10 * s)
-    end
-  end
-  toggle("reduce-motion", "Reduce motion", opts.reduceMotion == true, function()
-    self:setOption("reduceMotion", self:options().reduceMotion ~= true)
-  end)
-  local okU, Union = pcall(require, "src.online.union.Setting")
-  if okU then
-    toggle("union-room", "Union Room", Union.enabledIn(opts), function()
-      self:setOption(Union.KEY, not Union.enabledIn(self:options()))
-    end, "Red, Blue, Yellow, Gold, Silver and Crystal: the Pokemon Center's upstairs "
-      .. "room for online trades and battles.")
-  end
   local okPl, Platform = pcall(require, "src.core.Platform")
   if okPl and Platform.canSpawnProcess() then
     toggle("auto-reimport", "Import again after updates", opts.autoReimport == true, function()
@@ -2041,6 +2052,7 @@ function Launcher:drawSettings(x, y, w, h, s)
       cy = cy + rowH + math.floor(10 * s)
     end
   end
+  section("HELP")
   label("Something wrong?", cy)
   local rw = math.floor(math.min(cw * 0.5, 300 * s))
   if Kit.button(cx + cw - rw, cy, rw, rowH, "Report a problem", { id = "report", font = "small" }) then
