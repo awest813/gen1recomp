@@ -332,8 +332,14 @@ function CacheFs.write(rel, data)
     ensureParents(root, rel)
     local f, err = SaveData.openNative(realPath(root, rel), "wb")
     if not f then return false, err end
-    f:write(data)
-    f:close()
+    -- a full disk shows up here or at close, not at open: report it instead
+    -- of leaving a short file behind that the marker then vouches for
+    local wrote, writeErr = f:write(data)
+    local closed, closeErr = f:close()
+    if not wrote then return false, writeErr or "write failed" end
+    if closed == false or (closed == nil and closeErr) then
+      return false, closeErr or "close failed"
+    end
     return true
   end
   local parent = rel:match("^(.*)/[^/]+$")
@@ -363,7 +369,13 @@ function CacheFs.openWrite(rel)
         if not ok then return nil, writeErr end
         return true
       end,
-      close = function() f:close() end,
+      close = function()
+        local closed, closeErr = f:close()
+        if closed == false or (closed == nil and closeErr) then
+          return nil, closeErr or "close failed"
+        end
+        return true
+      end,
     }
   end
   if not (love and love.filesystem and love.filesystem.newFile) then
@@ -526,6 +538,39 @@ function CacheFs.removeTree(rel)
     else
       SaveData.removeNative(realPath(root, r))
     end
+  end
+  walk(rel)
+end
+
+-- Remove a cache subtree wherever this install keeps it, ahead of a fresh
+-- import: the portable game folder (removeTree) or the save directory.
+-- removeTree alone left a save-directory cache in place, and the Gen 3
+-- extractors skip any step whose outputs already exist -- so "Import again"
+-- after an update kept the old files instead of rebuilding them.  Only files
+-- that really live in the save directory are touched; a developer checkout's
+-- source tree on the same read path is never deleted.
+function CacheFs.clearTree(rel)
+  CacheFs.removeTree(rel)
+  forgetDirs()
+  rel = withPrefix(rel)
+  if unsafe_rel(rel) or rel == "" then return end
+  if CacheFs.root() then return end
+  local lfs = love and love.filesystem
+  if not (lfs and lfs.getInfo and lfs.getDirectoryItems and lfs.remove) then return end
+  local saveDir = lfs.getSaveDirectory and lfs.getSaveDirectory()
+  local function ours(path)
+    if not (lfs.getRealDirectory and saveDir) then return true end
+    return lfs.getRealDirectory(path) == saveDir
+  end
+  local function walk(path)
+    local info = lfs.getInfo(path)
+    if not info or not ours(path) then return end
+    if info.type == "directory" then
+      for _, child in ipairs(lfs.getDirectoryItems(path) or {}) do
+        walk(path .. "/" .. child)
+      end
+    end
+    lfs.remove(path)
   end
   walk(rel)
 end

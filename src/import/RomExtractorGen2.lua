@@ -263,13 +263,30 @@ end
 -- Pokemon".
 local TRACE = os.getenv("POKEPORT_IMPORT_TRACE") == "1"
 
+-- Each stage's share of an import, in milliseconds of a desktop Gold import
+-- (POKEPORT_IMPORT_TIMING=1), so the progress bar moves at an even pace
+-- instead of one twenty-seventh per stage.
+local STAGE_WEIGHTS = {
+  ["Game constants"] = 10, ["Fonts"] = 11, ["Color palettes"] = 18,
+  ["World tiles"] = 122, ["Maps"] = 120, ["Overworld sprites"] = 30,
+  ["Pokemon"] = 666, ["Title screen"] = 26, ["Credits"] = 2, ["Diploma"] = 2,
+  ["Trade animation"] = 2, ["Sound programs"] = 28, ["Scripts & text"] = 286,
+  ["Dialogue"] = 11, ["Items"] = 16, ["Marts"] = 2, ["Moves"] = 2,
+  ["Wild encounters"] = 2, ["Trainers"] = 9, ["Std scripts"] = 2,
+  ["Pokedex"] = 9, ["Landmarks"] = 9, ["Menu icons"] = 2, ["Intro movie"] = 25,
+  ["Menu graphics"] = 106, ["Battle animations"] = 28,
+  ["Remaining data (stubs)"] = 2,
+}
+
 function RomExtractorGen2:beginStage(name)
   self.stage = self.stage + 1
   if TRACE then
     io.write(("[gold import] %d/%d %s\n"):format(self.stage, STAGE_COUNT, name))
     io.flush()
   end
-  if self.progress then self.progress(self.stage - 1, STAGE_COUNT, name, 0, 1) end
+  self.weights = self.weights or require("src.import.StageWeights").new(STAGE_WEIGHTS, 5)
+  local done, all = self.weights:begin(name)
+  if self.progress then self.progress(done, all, name, 0, 1) end
 end
 
 -- Sub-stage trace: the same POKEPORT_IMPORT_TRACE switch, for the places
@@ -283,8 +300,12 @@ end
 
 function RomExtractorGen2:tick(name, current, total)
   if self.progress then
-    self.progress(self.stage - 1 + current / total, STAGE_COUNT,
-      name, current, total)
+    if not self.weights then
+      return self.progress(self.stage - 1 + current / total, STAGE_COUNT,
+        name, current, total)
+    end
+    local done, all = self.weights:at(current / total)
+    self.progress(done, all, name, current, total)
   end
 end
 

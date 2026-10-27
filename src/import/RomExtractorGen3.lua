@@ -71,8 +71,15 @@ end
 
 local function makeCache()
   return {
+    -- Most extract steps ignore what write returns; a failed write (a full
+    -- disk, a read-only folder) has to stop the import here, or the cache
+    -- publishes with files missing or cut short.
     write = function(_, rel, bytes)
-      return CacheFs.write(rel, bytes)
+      local ok, err = CacheFs.write(rel, bytes)
+      if not ok then
+        error("could not write " .. tostring(rel) .. ": " .. tostring(err), 0)
+      end
+      return ok
     end,
     read = function(_, rel)
       return CacheFs.read(rel)
@@ -782,7 +789,12 @@ function runBody(self, sha1)
     }
   end
 
-  print("[RomExtractorGen3] Parallel extraction fell back to sequential: " .. tostring(parErr or parRes))
+  -- The sequential path is for hosts whose threads failed, not for a disk
+  -- that is full or read-only: running every stage again would only fail
+  -- the same way, minutes later on a slow device.
+  local parText = tostring(parErr or parRes)
+  if okPar and parText:find("could not write", 1, true) then error(parText, 0) end
+  print("[RomExtractorGen3] Parallel extraction fell back to sequential: " .. parText)
 
   local ok, detail, okPoke, okAux = true, nil, true, true
   for _, stage in ipairs(self.plan.sequential or {}) do

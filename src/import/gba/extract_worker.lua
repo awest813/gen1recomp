@@ -23,6 +23,24 @@ end)
 
 local task_name, prefix, romData, sha1, ch_name = ...
 
+-- Phones and handhelds: collect sooner.  Each worker otherwise lets its heap
+-- grow to twice what is live before a cycle; on a desktop FireRed import a
+-- pause of 130 cut peak memory by about 15% (670 -> 580 MiB) for about 10%
+-- more CPU, a trade worth making only where memory is the scarce part.
+-- POKEPORT_GC_PAUSE overrides it anywhere.
+do
+  local pause = tonumber(os.getenv("POKEPORT_GC_PAUSE") or "")
+  if not pause then
+    local osName = love and love.system and love.system.getOS and love.system.getOS() or ""
+    if osName == "iOS" or osName == "Android" or osName == "NX"
+        or os.getenv("HANDHELD") == "1" or os.getenv("POKEPORT_HANDHELD") == "1"
+        or os.getenv("PORTMASTER") == "1" then
+      pause = 130
+    end
+  end
+  if pause then collectgarbage("setpause", pause) end
+end
+
 local ch = love and love.thread and love.thread.getChannel and love.thread.getChannel(ch_name)
 
 local ok, err = pcall(function()

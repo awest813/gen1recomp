@@ -172,7 +172,7 @@ eq(entry, "Y.gb", "prefer() picks the known-version cart over sort order")
 userEntries = { ["notes.txt"] = "text" }
 local noRom, noRomErr = RomArchive.unwrap(userArchive, "pack.zip", { fs = vfs })
 eq(noRom, nil, "an archive with no cart refuses")
-check(tostring(noRomErr):find("no .gb/.gbc/.gba", 1, true) ~= nil,
+check(tostring(noRomErr):find("no .gb, .gbc or .gba", 1, true) ~= nil,
   "the no-cart message says so: " .. tostring(noRomErr))
 
 userEntries = { ["Red.gb"] = string.rep("R", 2000) }
@@ -210,13 +210,13 @@ end
 userEntries = { ["Red.gb"] = string.rep("R", 2000) }
 local rom, why = ImportJob.verify(userArchive, "pack.zip")
 eq(rom, nil, "wrong-size cart in a zip is refused")
-check(tostring(why):find("2000 bytes", 1, true) ~= nil,
+check(tostring(why):find("2,000 bytes", 1, true) ~= nil,
   "the size filter runs before any read: " .. tostring(why))
 
 userEntries = { ["Red.gb"] = string.rep("X", 1048576) }
 rom, why = ImportJob.verify(userArchive, "pack.zip")
 eq(rom, nil, "unknown-sha cart in a zip is refused too")
-check(tostring(why):find("Unsupported ROM (SHA-1", 1, true) ~= nil,
+check(tostring(why):find("not a Game Boy", 1, true) ~= nil,
   "the SHA-1 gate runs on the unwrapped bytes: " .. tostring(why))
 
 local realMax = RomArchive.MAX_ARCHIVE_BYTES
