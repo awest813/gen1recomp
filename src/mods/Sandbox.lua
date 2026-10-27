@@ -25,6 +25,10 @@ local Sandbox = {}
 local DENIED = {
   io = "the filesystem", os = "the filesystem", debug = "the debug library",
   package = "the module loader", ffi = "arbitrary C calls",
+  -- package.loaded._G is the engine's real global table, io and all; the
+  -- sandboxed require answers it with the mod's own env before this runs,
+  -- so this is the backstop for the Loader's require shim
+  _G = "the engine's globals",
 }
 
 -- Same idea one level up: love.filesystem is reachable by name, and
@@ -174,6 +178,43 @@ local function copy(source)
   return out
 end
 
+-- The jit library minus jit.attach, which hands its callback every function
+-- prototype the VM compiles -- the engine's included -- and jit.util, should
+-- anything ever hang it on the table.  on/off/flush/status are what mods use.
+local SAFE_JIT = { on = true, off = true, flush = true, status = true,
+                   version = true, version_num = true, os = true, arch = true,
+                   opt = true }
+
+local function safeJit()
+  if type(jit) ~= "table" then return nil end
+  local out = {}
+  for key in pairs(SAFE_JIT) do out[key] = jit[key] end
+  return out
+end
+
+local function safeString()
+  local out = copy(string)
+  -- bytecode of whatever function the mod can reach; nothing loads it back
+  -- (compile refuses bytecode), so it only ever serves reading constants
+  out.dump = nil
+  return out
+end
+
+-- getmetatable("") is the one shared metatable every chunk can name:
+-- through it a mod could rewrite string methods for the engine and every
+-- other mod.  A mod sees a private stand-in whose __index is its own
+-- string copy instead; every other value reads through as before.
+local function sandboxedGetmetatable(env)
+  local stringMeta
+  return function(value)
+    if type(value) == "string" then
+      stringMeta = stringMeta or { __index = env.string }
+      return stringMeta
+    end
+    return getmetatable(value)
+  end
+end
+
 local function baseGlobals()
   local safeOs = {}
   for key in pairs(SAFE_OS) do safeOs[key] = os[key] end
@@ -184,8 +225,8 @@ local function baseGlobals()
     rawequal = rawequal, rawget = rawget, rawset = rawset, rawlen = rawlen,
     setmetatable = setmetatable, getmetatable = getmetatable, print = print,
     collectgarbage = collectgarbage, _VERSION = _VERSION,
-    coroutine = copy(coroutine), math = copy(math), string = copy(string),
-    table = copy(table), bit = copy(bit), jit = jit, os = safeOs,
+    coroutine = copy(coroutine), math = copy(math), string = safeString(),
+    table = copy(table), bit = copy(bit), jit = safeJit(), os = safeOs,
   }
 end
 
@@ -265,12 +306,20 @@ end
 -- Runtime.modRequire is how the loader's gate identifies the caller for the
 -- Gen 2 facade once Runtime.currentMod has gone back to nil (a mod requiring
 -- lazily from an event handler).
-local function sandboxedRequire(modId, permissionSet, compat)
+-- Standard-library names whose package.loaded entry is the engine's shared
+-- table.  The env holds per-mod copies of each, and require has to hand back
+-- the same copy: require("string").format = ... must not reach the engine,
+-- and require("_G") must not be the real globals.
+local OWN_LIBRARIES = { _G = true, string = true, table = true, math = true,
+                        coroutine = true, bit = true, jit = true }
+
+local function sandboxedRequire(modId, permissionSet, compat, env)
   return function(name, ...)
     -- the compat stand-in answers first, so a legacy require("io") gets the
     -- rerouted table instead of the denial below (src/mods/LegacyCompat.lua)
     local substitute = compat and compat.module(name)
     if substitute ~= nil then return substitute end
+    if OWN_LIBRARIES[name] and env and env[name] ~= nil then return env[name] end
     local denial = Sandbox.moduleDenial(name, permissionSet)
     if denial then error(("[%s] %s"):format(modId or "mod", denial), 2) end
     local previous = Runtime.modRequire
@@ -294,7 +343,8 @@ function Sandbox.envFor(opts)
     env.pcall, env.xpcall = LuaCompat.coPcall, LuaCompat.coXpcall
   end
   env.love = loveFacade(compat, opts.permissions)
-  env.require = sandboxedRequire(opts.modId, opts.permissions, compat)
+  env.require = sandboxedRequire(opts.modId, opts.permissions, compat, env)
+  env.getmetatable = sandboxedGetmetatable(env)
   local loader = sandboxedLoad(env)
   env.load = loader
   env.loadstring = loader
