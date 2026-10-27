@@ -70,3 +70,17 @@ local stub = setmetatable({
 }, { __index = Game2 })
 check(stub:hotkey("f1") == true, "F1 is still swallowed rather than leaking to Input")
 check(hotkeyed.refused == 0, "but nothing was written mid-cutscene")
+
+-- F1 mid-step saves when the step lands, rather than refusing
+do
+  local g = setmetatable(gen1(false, true), { __index = Game })
+  check(g:quickSaveAllowed(true) == true, "mid-step is fine once the step has landed")
+  local wrote = 0
+  g.writeSave = function() wrote = wrote + 1 return true end
+  g._quickSaveDue = love.timer.getTime() + 0.5
+  g:quickSaveTick()
+  check(wrote == 0 and g._quickSaveDue ~= nil, "the save waits while the player is between tiles")
+  g.overworld.player.moving = false
+  g:quickSaveTick()
+  check(wrote == 1 and g._quickSaveDue == nil, "and is written when the step lands")
+end

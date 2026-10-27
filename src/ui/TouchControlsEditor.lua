@@ -517,6 +517,7 @@ local function moveDrag(id, x, y)
   local d = Editor.drag
   if not d then return end
   if d.touchId ~= nil and id ~= nil and d.touchId ~= id then return end
+  if d.wasOver == nil then d.wasOver = overlapsAnother(d.name) end
   TouchControls:setControlCenter(d.name, x - d.offX, y - d.offY)
 end
 
@@ -525,7 +526,10 @@ local function endDrag(id)
   if not d then return end
   if d.touchId ~= nil and id ~= nil and d.touchId ~= id then return end
   Editor.drag = nil
-  if d.fromX and overlapsAnother(d.name) then
+  -- a control the editor's header already squeezed onto another (the
+  -- preview clamps everything below it) may still be moved or tapped:
+  -- only a drop that makes a new overlap goes back (a tap moves nothing)
+  if d.fromX and d.wasOver == false and overlapsAnother(d.name) then
     TouchControls:setControlCenter(d.name, d.fromX, d.fromY)
     Editor.exportMsg = "That would cover another button, so it went back. Drop it somewhere clear."
   end

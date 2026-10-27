@@ -105,6 +105,23 @@ do
   Editor.mousereleased(W * 0.5, H * 0.55, 1)
   L = TC:layout()
   check(math.abs(L.start.cx - W * 0.5) < 2, "a drop in open space stays")
+  -- a control that already sat on another (the editor's header squeezes
+  -- the preview) can still be tapped or moved without being sent back
+  L = TC:layout()
+  TC:setControlCenter("start", L.a.cx, L.a.cy)
+  L = TC:layout()
+  local px, py = L.start.cx, L.start.cy
+  Editor.exportMsg = nil
+  Editor.mousepressed(px, py, 1)
+  Editor.mousereleased(px, py, 1)
+  eq(Editor.exportMsg, nil, "a tap on it says nothing")
+  Editor.mousepressed(px, py, 1)
+  Editor.mousemoved(px + 3, py + 3)
+  Editor.mousereleased(px + 3, py + 3, 1)
+  L = TC:layout()
+  -- (the tap lands on whichever of the two is on top)
+  check(math.abs(L.start.cx - (px + 3)) < 1 or math.abs(L.a.cx - (px + 3)) < 1,
+    "and a nudge stays where it was put")
   Editor.keypressed("escape")
 end
 

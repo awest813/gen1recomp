@@ -740,9 +740,11 @@ function Game3:zoomGateOK()
   return true
 end
 
-function Game3:zoomStep(delta)
+-- `wheel`: a scroll in a battle or menu says nothing (a touchpad sends
+-- scrolls all the time); only a zoom key's refusal is worth a notice
+function Game3:zoomStep(delta, wheel)
   if not self:zoomGateOK() then
-    lazyReq("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
+    if not wheel then lazyReq("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING") end
     return
   end
   local Zoom = lazyReq("src.render.Zoom")
@@ -902,6 +904,8 @@ function Game3:_hotkey(key)
       pcall(function() lazyReq("src.core.game3.ghosts").clear() end)
       self:_handleBootAction({ action = "continue" })
       lazyReq("src.ui.HostToast").say("LOADED")
+    elseif self.phase == "field" then
+      lazyReq("src.ui.HostToast").say("NO SAVE TO LOAD")
     end
     return true
   elseif hk == "1" then
@@ -1120,9 +1124,9 @@ function Game3:wheelmoved(_, dy)
   if type(dy) ~= "number" then return end
   local function vanilla()
     if dy > 0 then
-      self:zoomStep(1)
+      self:zoomStep(1, true)
     elseif dy < 0 then
-      self:zoomStep(-1)
+      self:zoomStep(-1, true)
     end
   end
   if not ModRuntime.wantsHook("input.wheel") then return vanilla() end

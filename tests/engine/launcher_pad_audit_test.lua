@@ -274,6 +274,28 @@ do
   l:joystickChanged(xbox, true)
   eq(l.message, nil, "an accelerometer is not news")
   GM.isAccelerometer = real
+  -- a pad already plugged in when the launcher opened is reported as
+  -- "added" just after start: no toast for that
+  l.message = nil
+  local deck = { getName = function() return "Steam Deck Controller" end, getID = function() return 41 end }
+  l._padsAtStart = { [41] = true }
+  l:joystickChanged(deck, true)
+  eq(l.message, nil, "a pad present at start is not announced")
+  l:joystickChanged(deck, false)
+  l:joystickChanged(deck, true)
+  check(l.message and l.message.text == "Steam Deck Controller connected.", "but plugging it back in is")
+end
+
+-- ---- a game picked by code stays picked while the ring sits still
+do
+  l.page = nil; frame(12)
+  Kit.setFocus("game-gold"); frame(2)
+  local other
+  for v in pairs(require("src.core.GameVersion").VERSIONS) do
+    if v ~= "gold" and l.games and (l.ready[v] or true) then other = v break end
+  end
+  l:selectGame(other); frame(3)
+  eq(l.selected, other, "an import or inbox save's pick is not undone by the ring on Gold")
 end
 
 -- ---- Quit from the pad asks twice; leaving it disarms

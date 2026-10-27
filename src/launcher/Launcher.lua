@@ -70,7 +70,15 @@ function Launcher.new(onLaunch, opts)
     migrated = true
     pcall(function() require("src.import.CacheFs").migrateLegacyRedCache() end)
   end
+  local padsAtStart = {}
+  pcall(function()
+    for _, j in ipairs(love.joystick.getJoysticks()) do
+      local okI, id = pcall(function() return j:getID() end)
+      padsAtStart[okI and id or j] = true
+    end
+  end)
   local self = setmetatable({
+    _padsAtStart = padsAtStart,
     onLaunch = onLaunch,
     opts = opts,
     games = {},
@@ -1540,6 +1548,17 @@ function Launcher:joystickChanged(joystick, added)
   if okG and GamepadMap.isAccelerometer and GamepadMap.isAccelerometer(joystick) then return end
   local okP, Platform = pcall(require, "src.core.Platform")
   if okP and Platform.isNX and Platform.isNX() then return end
+  -- LÖVE reports every pad already plugged in as "added" just after start:
+  -- those were here when the launcher opened, so they are not news either
+  local known = self._padsAtStart
+  if known then
+    local okI, id = pcall(function() return joystick:getID() end)
+    local key = okI and id or joystick
+    if known[key] then
+      known[key] = nil
+      if added then return end
+    end
+  end
   local okN, name = pcall(function() return joystick:getName() end)
   name = okN and type(name) == "string" and name ~= "" and name or "Controller"
   if not added then
@@ -2965,10 +2984,15 @@ function Launcher:draw()
   end
   -- moving the ring through the game list picks the game, as a console's
   -- menu does: the panel beside it follows the highlight
-  if not self.page and Kit._ringShown then
-    local v = tostring(Kit.focusId or ""):match("^game%-(.+)$")
+  -- (only when the ring moved: a game picked by code, such as a finished
+  -- import or an inbox save waiting on a question, is not undone by a
+  -- ring left sitting on another game)
+  local ringNow = Kit._ringShown and Kit.focusId or nil
+  if not self.page and ringNow and ringNow ~= self._ringGamePrev then
+    local v = tostring(ringNow):match("^game%-(.+)$")
     if v and v ~= self.selected and GameVersion.VERSIONS[v] then self:selectGame(v) end
   end
+  self._ringGamePrev = ringNow
   -- which popups were up last frame, so one that just opened can take the ring
   self._popupPrev, self._popupNow = self._popupNow or {}, {}
   -- the toast is drawn last; last frame's rect keeps a press on it from

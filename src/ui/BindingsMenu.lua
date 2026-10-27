@@ -219,25 +219,42 @@ end
 local CORE = { a = true, b = true, start = true, select = true,
   up = true, down = true, left = true, right = true }
 
-function BindingsMenu:capturePad(button)
-  if self.pending then return self:endCapture() end
+-- Which row a pad button presses right now: the rows' bindings as edited
+-- in this visit (the live map only catches up when the menu closes), then
+-- the live map for anything no row shows.
+function BindingsMenu:padOwner(name, rawName)
+  local opts = self.game and self.game.save and self.game.save.options
+  local overlay = opts and opts.bindings
+  for _, it in ipairs(self.items or {}) do
+    local def = it.button
+    if not def.action and boundPad(overlay, def) == name then return def.id end
+  end
+  -- a raw stick's "joyN" no row names falls through to the button it
+  -- stands for (joy1 is A), as Input decodes it
+  if rawName and rawName ~= name then return self:padOwner(rawName) end
+  return Input.padBindings and Input.padBindings[name]
+end
+
+-- True when the press cancels the capture instead of being taken.
+function BindingsMenu:refuseCapture(name, rawName)
+  if not self.capture then return false end
+  local owner = self:padOwner(name, rawName)
   -- the pad's B backs out, as it does everywhere else on a console: a
   -- controller has no Escape, and binding B away from B by accident left
   -- the player with no way back (only the B row itself takes it)
-  local name = GamepadMap.normalizePad and GamepadMap.normalizePad(button) or button
-  if self.capture and self.capture.button.id ~= "b"
-      and Input.padBindings and Input.padBindings[name] == "b" then
-    return self:endCapture()
-  end
+  if self.capture.button.id ~= "b" and owner == "b" then return true end
   -- a speed shortcut takes only a spare button (a shoulder, a trigger, a
   -- stick click): taking A swapped A onto LB, and with bindings shared that
   -- left FireRed, where LB is L, without a working A
   -- (FireRed's L and R may still swap with it: L moving to a trigger loses
   -- nothing, while A moving to LB clashed with L once bindings are shared)
-  local owner = Input.padBindings and Input.padBindings[name]
-  if self.capture and self.capture.button.action and CORE[owner] then
-    return self:endCapture()
-  end
+  return self.capture.button.action and CORE[owner] or false
+end
+
+function BindingsMenu:capturePad(button)
+  if self.pending then return self:endCapture() end
+  local name = GamepadMap.normalizePad and GamepadMap.normalizePad(button) or button
+  if self:refuseCapture(name) then return self:endCapture() end
   self.pending = { slot = "pad", value = button }
 end
 
@@ -271,6 +288,8 @@ end
 -- recognized pad still records its readable SDL name.
 function BindingsMenu:captureJoy(button)
   if self.pending then return self:endCapture() end
+  local raw = GamepadMap.mapRawToGamepadButton and GamepadMap.mapRawToGamepadButton(button)
+  if self:refuseCapture("joy" .. button, raw) then return self:endCapture() end
   self.pending = { slot = "pad", value = "joy" .. button, raw = true }
 end
 
@@ -278,6 +297,16 @@ function BindingsMenu:captureJoyRelease(button)
   local p = self.pending
   if p and p.raw and p.value == "joy" .. button then
     self:storeBinding("pad", p.value)
+  end
+end
+
+-- Every row's right column again: the device just used decides which half
+-- leads, and one row in pad-first order beside another in key-first order
+-- read as two rows on the same key.
+function BindingsMenu:refreshRows()
+  local opts = self.game and self.game.save and self.game.save.options
+  for _, it in ipairs(self.items or {}) do
+    it.right = boundRight(opts and opts.bindings, it.button)
   end
 end
 
@@ -340,7 +369,7 @@ function BindingsMenu:storeBinding(slot, value)
   end
   b[slot] = value
   opts.bindings[item.button.id] = b
-  item.right = boundRight(opts.bindings, item.button)
+  self:refreshRows()
   if game.writeOptions then
     game:writeOptions()
   elseif game.persistOptions then
@@ -382,7 +411,7 @@ function BindingsMenu:clearBinding(item)
     end
     opts.bindings[def.id] = nil
   end
-  item.right = boundRight(opts.bindings, def)
+  self:refreshRows()
   if game.writeOptions then
     game:writeOptions()
   elseif game.persistOptions then

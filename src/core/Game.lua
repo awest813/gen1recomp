@@ -439,6 +439,7 @@ function Game:update(dt)
   -- Give the accumulator room for one full frame at the current speed,
   -- or the anti-spiral clamp quietly caps every level above ~15X.
   DeferredWrite.tick()
+  self:quickSaveTick()
   local speed = self:logicSpeed()
   self._frameSpeed = speed
   FixedStep.maxAccum = FixedStep.catchupLimit(speed, dt)
@@ -782,10 +783,12 @@ function Game:draw()
 end
 
 -- overworld survey zoom: wheel up / '=' zooms in, wheel down / '-' out
-function Game:zoomStep(delta)
+-- `wheel`: a scroll in a battle or menu says nothing (a touchpad sends
+-- scrolls all the time); only a zoom key's refusal is worth a notice
+function Game:zoomStep(delta, wheel)
   local Zoom = require("src.render.Zoom")
   if not Zoom.gateOK(self.stack:top(), self.overworld) then
-    require("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
+    if not wheel then require("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING") end
     return
   end
   local offset = Zoom.step(delta, Renderer:fitScale())
@@ -802,9 +805,9 @@ end
 function Game:wheelmoved(_, dy)
   local function vanilla()
     if dy > 0 then
-      self:zoomStep(1)
+      self:zoomStep(1, true)
     elseif dy < 0 then
-      self:zoomStep(-1)
+      self:zoomStep(-1, true)
     end
   end
   if not ModRuntime.wantsHook("input.wheel") then return vanilla() end
@@ -884,6 +887,10 @@ function Game:keypressed(key)
     end
     local hk = Input.hotkeyKey(key)
     if key == "f1" then
+      if not self:quickSaveAllowed() and self:quickSaveAllowed(true) then
+        self._quickSaveDue = love.timer.getTime() + 0.5
+        return
+      end
       if not self:quickSaveAllowed() then
         -- said, not silent: F1 during a cutscene or a menu looked broken
         require("src.ui.HostToast").say("CAN'T SAVE RIGHT NOW")
@@ -1413,7 +1420,9 @@ function Game:quickLoadAllowed()
   return self:quickSaveAllowed()
 end
 
-function Game:quickSaveAllowed()
+-- `midStepOK`: answer as if the player's current step had finished (F1
+-- pressed while walking saves when the step lands; see quickSaveTick).
+function Game:quickSaveAllowed(midStepOK)
   local ow = self.overworld
   -- before a game is running (title, Oak's intro) there is nothing to save
   if not (ow and ow.player) then return false end
@@ -1430,8 +1439,25 @@ function Game:quickSaveAllowed()
   if ow.runner and ow.runner.isRunning and ow.runner:isRunning() then return false end
   if ow.scriptMoves and #ow.scriptMoves > 0 then return false end
   if ow.engaging or ow.emote then return false end
-  if ow.player.moving then return false end
+  if ow.player.moving and not midStepOK then return false end
   return true
+end
+
+-- F1 pressed mid-step: a held arrow key keeps the player between tiles
+-- nearly all the time, so refusing there read as "saving is broken".  The
+-- save waits for the step to land instead (half a second at most).
+function Game:quickSaveTick()
+  local due = self._quickSaveDue
+  if not due then return end
+  local now = love.timer.getTime()
+  if self:quickSaveAllowed() then
+    self._quickSaveDue = nil
+    local wrote = self:writeSave()
+    require("src.ui.HostToast").say(wrote and "SAVED" or "COULD NOT SAVE")
+  elseif now > due or not self:quickSaveAllowed(true) then
+    self._quickSaveDue = nil
+    require("src.ui.HostToast").say("CAN'T SAVE RIGHT NOW")
+  end
 end
 
 function Game:syncEngine()

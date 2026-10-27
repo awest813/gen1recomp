@@ -235,4 +235,50 @@ do
   eq(b and b.speedDown and b.speedDown.pad, "leftstick", "a stick click is fine")
 end
 
+-- ---- a raw stick's buttons get the same two guards
+do
+  Input:init()
+  local game = newGame()
+  local bm = BindingsMenu.new(game)
+  game.stack:push(bm)
+  bm.index = 9 -- SLOWER
+  press(bm, "a")
+  bm:onJoystickPressed(1) -- joy1 is the stick's A
+  eq(bm.capture, nil, "a raw stick's A on SLOWER backs out")
+  eq(game.save.options.bindings, nil, "and leaves that stick its A")
+  bm.index = ROW_A
+  press(bm, "a")
+  bm:onJoystickPressed(2) -- its B
+  eq(bm.capture, nil, "and its B cancels a capture, as a mapped pad's does")
+end
+
+-- ---- the guard reads this visit's edits, not the map from before it
+do
+  Input:init()
+  local game = newGame()
+  local bm = BindingsMenu.new(game)
+  game.stack:push(bm)
+  capturePad(bm, ROW_A, "rightshoulder") -- A is now RB (live map not yet)
+  bm.index = 9
+  press(bm, "a")
+  bm:onGamepadPressed("rightshoulder")
+  eq(bm.capture, nil, "SLOWER refuses RB once A sits on it")
+  local b = game.save.options.bindings
+  eq(b.a and b.a.pad, "rightshoulder", "and A stays on RB")
+end
+
+-- ---- every row leads with the same device after a rebind
+do
+  Input:init()
+  Input.lastDevice = "key"
+  local game = newGame()
+  local bm = BindingsMenu.new(game)
+  game.stack:push(bm)
+  Input.lastDevice = "pad"
+  capturePad(bm, ROW_A, "x")
+  eq(bm.items[ROW_A].right, "X/Z", "the rebound row reads pad first")
+  eq(bm.items[ROW_B].right, "B/X", "and so does the row beside it")
+  Input.lastDevice = nil
+end
+
 T.finish("rebind controls audit")
