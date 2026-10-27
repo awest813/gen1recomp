@@ -3,6 +3,7 @@
 
 return {
   name = "modern_clean",
+  label = "MODERN", -- the OPTION menu's RULESET value
   -- pokered/engine/battle/effects.asm:508
   statCapRollbackBug = false,
   oneIn256Miss = false,

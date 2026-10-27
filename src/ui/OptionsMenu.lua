@@ -130,7 +130,10 @@ local function rulesetName(game)
   local ids = rulesetIds(game)
   local id = ids[rulesetIndex(game, ids)] or game.save.options.ruleset
   local record = id and rulesets[id]
-  return Strings(record and record.name or id or "----")
+  -- a record's own label, else its id made readable ("my_rules" -> "MY RULES")
+  if record and record.label then return Strings(record.label) end
+  local raw = record and record.name or id
+  return raw and Strings((tostring(raw):gsub("_", " "):upper())) or "----"
 end
 
 -- 0-7 volume level display (0 = OFF)

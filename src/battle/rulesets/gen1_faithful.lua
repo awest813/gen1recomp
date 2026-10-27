@@ -2,6 +2,7 @@
 
 return {
   name = "gen1_faithful",
+  label = "FAITHFUL", -- the OPTION menu's RULESET value
   -- pokered/engine/battle/effects.asm:508
   statCapRollbackBug = true,
   -- accuracy roll is rand(0..255) < floor(acc*255/100): a 100%-accurate
