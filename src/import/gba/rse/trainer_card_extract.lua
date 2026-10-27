@@ -63,7 +63,10 @@ function M.run(rom, cache, opts)
     local fem = {}
     for i = 0, 47 do fem[i] = pal[i] end
     c:pal("sHoennTrainerCardFemaleBg_Pal", 16, fem, 16)
-    for side, map in pairs(maps) do
+    -- a fixed order: pairs() wrote the manifest's file list in a different
+    -- order on every import
+    for _, side in ipairs({ "screen", "front", "back" }) do
+      local map = maps[side]
       local idx, W, H = K.bakeText(gfx, map, 30, 20, { linear = true, mapWidth = 30 })
       local key = string.format("%s_%d", side, stars)
       layers[key] = c:layer({ key = key, opaque = side == "screen", variants = {
