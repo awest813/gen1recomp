@@ -214,7 +214,10 @@ function CartsPage:exportCart(id)
   local rel = "exports/carts/" .. id .. ".g1rcart"
   pcall(lfs.createDirectory, "exports/carts")
   local okW, wrote = pcall(lfs.write, rel, text)
-  if not (okW and wrote) then return l:say("Could not write " .. rel .. ".", "error") end
+  if not (okW and wrote) then
+    return l:say("Could not write " .. rel .. ". Check that the device has free space, "
+      .. "then export again.", "error")
+  end
   local dir = lfs.getSaveDirectory and lfs.getSaveDirectory() or ""
   local path = (dir ~= "" and (dir .. "/") or "") .. rel
   if l.shareExport and l:shareExport(path) then return end

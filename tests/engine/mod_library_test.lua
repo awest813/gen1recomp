@@ -243,4 +243,93 @@ check(not okI and errI == "404", "a failed download says why")
 eq(table.concat(ModLibrary.missingDependencies({ dependencies = { "colorlib@^1.2.0#Acme/ColorLib", "zeta" } },
   ModLibrary.list()), ","), "colorlib", "a dependency written as id@range#repo is matched by its id")
 
+-- --------------------------------------------- uninstall stays one folder
+for _, bad in ipairs({ "mods/", "mods", "mods/cool/sprites", "mods/./", "mods/.." }) do
+  check(not ModLibrary.uninstall(bad), ("uninstall refuses %q"):format(bad))
+end
+check(files["mods/cool/sprites/a.png"] == nil and files["mods/cool/main.lua"] == "v2"
+  and files["mods/zeta/manifest.json"] ~= nil,
+  "and the library is untouched afterwards")
+
+-- ------------------------------ an install never lands on another mod's folder
+fs.write("mods/squatter/manifest.json", manifest("other"))
+fs.write("mods/squatter/main.lua", "other's code")
+local squat = "PK\3\4squat"
+archives[squat] = { ["manifest.json"] = manifest("squatter"), ["main.lua"] = "mine" }
+local okSq, whySq = ModLibrary.installZip(squat, "squatter.zip", { replace = true })
+check(not okSq and tostring(whySq):find("another mod", 1, true),
+  "mods/<id> holding a different mod refuses, even with replace: " .. tostring(whySq))
+eq(files["mods/squatter/main.lua"], "other's code", "the other mod's files are kept")
+
+fs.write("mods/Cased/readme.txt", "a folder, no manifest")
+local cased = "PK\3\4cased"
+archives[cased] = { ["manifest.json"] = manifest("cased"), ["main.lua"] = "x" }
+local okCa, whyCa = ModLibrary.installZip(cased, "cased.zip")
+check(not okCa and tostring(whyCa):find("letter case", 1, true),
+  "a folder differing only in case is refused (it would merge on Windows): " .. tostring(whyCa))
+eq(files["mods/cased/main.lua"], nil, "and nothing is written")
+
+-- a mod unzipped by hand under another folder name is upgraded in place
+fs.write("mods/handmade-main/manifest.json", manifest("handmade"))
+fs.write("mods/handmade-main/main.lua", "v1")
+local hand2 = "PK\3\4hand2"
+archives[hand2] = { ["manifest.json"] = manifest("handmade"):gsub('"1.0.0"', '"2.0.0"'),
+  ["main.lua"] = "v2" }
+check(ModLibrary.installZip(hand2, "handmade.zip", { upgrade = true }),
+  "an upgrade finds the installed copy by its manifest id")
+eq(files["mods/handmade-main/main.lua"], "v2", "and replaces it where it lives")
+eq(files["mods/handmade/main.lua"], nil, "instead of adding a duplicate id under mods/<id>")
+
+-- ------------------------------------------ a failed write leaves no wreck
+local realWrite = fs.write
+local function failWritesUnder(prefix)
+  fs.write = function(path, body)
+    if path:sub(1, #prefix) == prefix and path:find("big.bin", 1, true) then
+      return false, "disk full"
+    end
+    return realWrite(path, body)
+  end
+end
+local partial = "PK\3\4partial"
+archives[partial] = { ["manifest.json"] = manifest("partial"), ["a.lua"] = "a",
+  ["big.bin"] = "x" }
+failWritesUnder("mods/partial")
+local okP, whyP = ModLibrary.installZip(partial, "partial.zip")
+fs.write = realWrite
+check(not okP and tostring(whyP):find("disk full", 1, true), "a failed write fails the install")
+eq(fs.getInfo("mods/partial"), nil, "and no half-installed folder is left for the loader")
+
+local upFail = "PK\3\4upfail"
+archives[upFail] = { ["manifest.json"] = manifest("cool"):gsub('"1.0.0"', '"9.0.0"'),
+  ["main.lua"] = "v9", ["big.bin"] = "x" }
+failWritesUnder(ModLibrary.STAGING)
+local okU = ModLibrary.installZip(upFail, "cool.zip", { upgrade = true })
+fs.write = realWrite
+check(not okU, "an upgrade whose copy fails reports it")
+eq(files["mods/cool/main.lua"], "v2", "and the old version still works")
+eq(fs.getInfo(ModLibrary.STAGING .. "/cool"), nil, "with no staged copy left over")
+
+-- ------------------- an update keeps the files the player supplied
+fs.write("mods/romuser/manifest.json", manifest("romuser"))
+fs.write("mods/romuser/main.lua", "v1")
+fs.write("mods/romuser/baseroms/game.n64", "player's rom")
+fs.write("mods/romuser/baseroms/.required-import-game.validated", "receipt")
+fs.write("mods/romuser/baseroms/shipped.txt", "old shipped")
+local romV2 = "PK\3\4romv2"
+archives[romV2] = { ["manifest.json"] = manifest("romuser"):gsub('"1.0.0"', '"1.1.0"'),
+  ["main.lua"] = "v2", ["baseroms/shipped.txt"] = "new shipped" }
+check(ModLibrary.installZip(romV2, "romuser.zip", { upgrade = true }), "the update installs")
+eq(files["mods/romuser/main.lua"], "v2", "with the new code")
+eq(files["mods/romuser/baseroms/game.n64"], "player's rom",
+  "and the ROM the player supplied for required_imports survives")
+eq(files["mods/romuser/baseroms/.required-import-game.validated"], "receipt",
+  "with its validation receipt")
+eq(files["mods/romuser/baseroms/shipped.txt"], "new shipped", "but a file the update ships wins")
+
+-- ------------------------------------- translations are data, never bytecode
+fs.write("mods/zeta/lang/strings.lua", string.dump(function() return { Hello = "Bytecode" } end))
+ModLibrary.setEnabled("zeta", true, "gold")
+local bc = ModLibrary.translationStrings("gold")
+check(not (bc and bc.Hello == "Bytecode"), "a precompiled lang/strings.lua is refused")
+
 T.finish("mod library")

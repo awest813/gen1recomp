@@ -13,6 +13,7 @@ local DateTime = require("src.core.DateTime")
 local AssetTransform = require("src.mods.AssetTransform")
 local Manifest = require("src.mods.Manifest")
 local Merge = require("src.mods.Merge")
+local OptionValue = require("src.mods.OptionValue")
 local ModTargets = require("src.mods.ModTargets")
 local Registry = require("src.mods.Registry")
 local SafePath = require("src.mods.SafePath")
@@ -1639,13 +1640,18 @@ function Loader:_api(mod)
         loader.optionSchemas[modId] = schema
         return schema
       end,
+      -- checked against the row (src/mods/OptionValue.lua): a value saved
+      -- by an older version of the mod, or edited by hand, reads as the
+      -- default rather than reaching the mod as the wrong type
       get = function(_, key)
         local stored = loader.modOptions[modId]
-        if stored ~= nil and stored[key] ~= nil then return stored[key] end
+        local value = stored and stored[key]
         for _, row in ipairs(loader.optionSchemas[modId] or {}) do
-          if row.key == key then return row.default end
+          if type(row) == "table" and row.key == key then
+            return OptionValue.coerce(row, value)
+          end
         end
-        return nil
+        return value
       end,
     },
     commands = { register = function(_, verb, fn)

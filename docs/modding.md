@@ -84,6 +84,13 @@ Every mod contains a root `manifest.json` defining its metadata, supported games
 | `permissions` | `array` | Requested privileges (e.g. `["engine_internals"]`, `["network"]`, `["filesystem"]`). |
 | `log_url` | `string` | Optional https URL for `mod.postLog` log reporting (api 2; requires the `network` permission). |
 | `github` | `string` | GitHub repository (`"owner/repo"`) used for update checks and dependency download links. |
+| `experimental` | `boolean` | Marks the mod experimental: it starts **off** in every game until the player turns it on (see [Turning mods on and off](#turning-mods-on-and-off)). |
+| `options_schema` | `string` | Optional data-only Lua file returning option rows, for mods that do not call `mod.options:define` (see [Mod options](#mod-options)). |
+| `force_enable_env` | `string` | Name of an environment variable that, when set to `"1"`, turns the mod on regardless of a saved "off" (not in safe mode). For bridge mods a particular build cannot run without. |
+
+`category` and `description` are display text. A value of the wrong type
+(a number, an object) is ignored with a warning: the category falls back
+to `"OTHER"` and the description to empty, and the mod still loads.
 
 ### Declaring Dependencies & Scoping
 
@@ -171,6 +178,118 @@ temporary path. Switch/NX has no host picker, so the player copies a file to
 `imports/baseroms/` over MTP and chooses the import again. No platform grants
 the mod a host filesystem path or bypasses the manifest's size, format, and MD5
 checks.
+
+## Turning mods on and off
+
+Whether a mod runs is decided per game. The launcher's MODS tab and the
+in-game manager (START > MODS, or F10) both write the answer for one game
+only: turning a mod on for Gold leaves Red as it was. The answers live in
+`options.lua` as `modsByVersion[<game>][<id>]`, with the older shared
+`mods[<id>]` flag as the fallback for a game that has no answer of its own.
+
+- A mod with no saved answer is **on**, in every game its `games` list
+  covers.
+- An `experimental` mod with no saved answer is **off**, including on the
+  first boot after it is installed. The player opts in per game.
+- A change takes effect the next time the game starts. The in-game manager
+  stages toggles and applies them with one restart.
+- In the in-game manager, toggling a mod on pulls in its hard
+  dependencies, toggling one off also turns off the mods that depend on
+  it, and a conflict blocks the toggle and names the other mod. The
+  launcher flips just the one mod; the loader still refuses to start a mod
+  whose dependency is off or missing, and the mod shows why.
+
+**Safe mode** (launcher MODS tab) starts every game with every mod off
+without forgetting any of the answers above. While it is on, the in-game
+manager shows `SAFE MODE ACTIVE` and refuses toggles and option changes;
+turn it off to get the previous setup back.
+
+**Load order.** Mods load by `priority` (lower first) and then id, with
+dependencies always first. The player can move a mod in the launcher
+(Sort -> Load order) or the manager's detail screen; a cart's `load_order`
+wins over both.
+
+**Profiles.** A profile is a named snapshot of the whole setup: which mods
+are on (per game), each mod's options, the load order and the save slot each
+game plays. The manager's PROF tab and the launcher's Profiles page save,
+apply, rename and delete them; the first time the manager opens, the
+existing setup is saved as `PROFILE 1`. Export writes
+`profiles/<NAME>.g1rmodlist` in the save directory; import reads one back
+under a name that does not collide. A profile file is data only and is
+shape-checked on import; mods it names that are not installed are listed,
+not fetched.
+
+## Installing and updating mods
+
+A mod is a folder under `mods/` with a `manifest.json`; the folder name
+does not have to match the id (the loader goes by the manifest). Installing
+a `.zip` from the launcher (Import mod .zip, drag and drop, or a mod index):
+
+- finds `manifest.json` at the archive root or in its single top-level
+  folder, validates it, and copies that folder to `mods/<id>/`; nothing in
+  the archive runs during an install;
+- refuses an archive whose mod is already installed at the same or a newer
+  version (remove it first to downgrade), and refuses when `mods/<id>`
+  holds a different mod or a folder whose name differs from the id only in
+  letter case (they would merge on Windows and macOS);
+- replaces an older installed copy in place, wherever it lives, by staging
+  the new files first: a failed write leaves the old version working, and a
+  failed fresh install leaves no half-copied folder behind;
+- keeps the files the player supplied in `baseroms/` (required imports and
+  their validation receipts) unless the new archive ships the same file.
+
+**Updates.** A mod with a `github` field gets update checks from that
+repository's releases. The release list is cached for six hours, checks run
+off the frame (the launcher never waits on the network), and an offline
+check, a rate-limited one or an unreadable answer falls back to the cached
+list. The update downloads the release's `.zip` asset (preferring
+`<id>-<version>.zip`) and installs it as above.
+
+**Mod indexes** (the launcher's Get mods page) are JSON feeds the player
+adds by address. A feed is untrusted input: rows whose `id` could not name
+a mod are dropped, display text loses control characters and is cut to a
+sensible length, and a feed over 8 MB is refused.
+
+## Mod options
+
+A mod declares its settings with `mod.options:define(rows)` from its entry
+file (or, for older mods, an `options_schema` file that returns the rows).
+Row types are `toggle`, `choice` (`choices` as `[label, value]` pairs),
+`number` (`min`, `max`, `step`) and `text` (`maxLen`); each takes `key`,
+`label` and `default`, and may take `visible_if`. The full contract is
+[mod-option-schema.md](mod-option-schema.md).
+
+`mod.options:get(key)` returns the player's saved value, checked against
+the row: a value saved by an older version of the mod or edited by hand
+that no longer fits (a string where a toggle expects a boolean, a choice
+the mod removed) reads as the row's `default`; a number is clamped to
+`min`/`max` and text is cut to `maxLen`. The stored value is not rewritten.
+Changes made in the in-game manager apply without a restart and fire the
+`mod.options_changed` event (`{ mod, key, value }`).
+
+## What a mod's code can reach
+
+Every chunk a mod runs (its entry file, `options_schema`, anything it
+`load`s) runs in its own environment, not the engine's globals:
+
+- The standard library is there as per-mod copies: assigning
+  `string.format` or `table.insert` changes your view only.
+  `require("string")`, `require("table")` and `require("_G")` return those
+  same copies, and `getmetatable("")` returns a private stand-in, so a mod
+  cannot change string methods for the engine or other mods.
+- `io`, `os` (beyond `time`, `date`, `clock`, `difftime`), `debug`,
+  `package`, `ffi`, `jit.util`, `setfenv`/`getfenv`, `string.dump` and
+  `jit.attach` are absent; `love.filesystem`, `love.system`, `love.event`
+  and `love.thread` are blocked or replaced (see the compat section below).
+  Network modules need the `network` permission. `collectgarbage` only
+  answers `collect`, `count`, `step` and `isrunning`: the collector is the
+  engine's.
+- Mods ship Lua source. Precompiled bytecode is refused everywhere a mod
+  supplies code, including `lang/strings.lua` and `assets_transforms`.
+
+Inside the game this is defense in depth rather than a hard security
+boundary: engine modules a mod can `require` still act with the engine's
+rights. Install mods you trust.
 
 ## Mods and Gold (Gen 2)
 

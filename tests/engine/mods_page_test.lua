@@ -408,6 +408,26 @@ eq(installed.newmod and installed.newmod.version, "1.0.0", "Install downloads an
 check(l.message.text:find("Installed New Mod", 1, true), "and says so")
 eq(l:modsUi():entryState(feedBody.mods[1]), "installed", "the listing now reads as installed")
 
+-- importing a .zip that is already installed is a choice, not a failure
+do
+  local realInstall = ModLibrary.installZip
+  ModLibrary.installZip = function()
+    return nil, "old is already installed",
+      { exists = true, manifest = { id = "old", name = "Old Mod", version = "2.0.0" } }
+  end
+  l:modsUi():installMod("x", "old.zip")
+  check(l.message.kind == "info" and l.message.text:find("Old Mod 2.0.0 is already installed", 1, true)
+    and l.message.text:find("Remove it first", 1, true),
+    "an already-installed mod says which version and what to do: " .. tostring(l.message.text))
+  ModLibrary.installZip = function()
+    return { id = "exp", name = "Exp Mod", version = "0.1.0", experimental = true }
+  end
+  l:modsUi():installMod("x", "exp.zip")
+  check(l.message.text:find("experimental, so it starts off", 1, true),
+    "an experimental mod says it starts off: " .. tostring(l.message.text))
+  ModLibrary.installZip = realInstall
+end
+
 -- a cart from the catalog
 local cartStore = { carts = {}, installed = {}, exported = {} }
 package.loaded["src.carts.CartStore"] = {

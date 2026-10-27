@@ -207,15 +207,26 @@ end
 function ModsPage:installMod(data, name)
   local l = self.launcher
   local ModLibrary = require("src.mods.ModLibrary")
-  local ok, manifest, err = pcall(ModLibrary.installZip, data, name, { upgrade = true })
-  if not ok then manifest, err = nil, manifest end
+  local ok, manifest, err, info = pcall(ModLibrary.installZip, data, name, { upgrade = true })
+  if not ok then manifest, err, info = nil, manifest, nil end
   self:changed()
   if not manifest then
+    -- the same or an older version: not a failure, and the fix is a choice
+    if type(info) == "table" and info.exists and info.manifest then
+      return l:say(("%s %s is already installed with the same or a newer version. "
+        .. "Remove it first to install this copy instead."):format(
+          tostring(info.manifest.name or info.manifest.id),
+          tostring(info.manifest.version or "")), "info")
+    end
     return l:say("Could not install " .. tostring(name or "that mod") .. ": "
       .. tostring(err), "error")
   end
   local missing = ModLibrary.missingDependencies(manifest, ModLibrary.list())
   local text = ("Installed %s."):format(manifest.name or manifest.id)
+  if manifest.experimental then
+    -- experimental mods start off everywhere (ModLibrary.list, Loader)
+    text = text .. " It is experimental, so it starts off: turn it on for each game you want it in."
+  end
   if #missing > 0 then
     text = text .. " It also needs: " .. table.concat(missing, ", ") .. "."
   end
@@ -632,9 +643,8 @@ function ModsPage:optionValues(id)
 end
 
 function ModsPage:optionValue(id, row)
-  local v = self:optionValues(id)[row.key]
-  if v == nil then v = row.default end
-  return v
+  -- what the mod will read (src/mods/OptionValue.lua), not raw storage
+  return require("src.mods.OptionValue").coerce(row, self:optionValues(id)[row.key])
 end
 
 function ModsPage:setOption(id, key, value)

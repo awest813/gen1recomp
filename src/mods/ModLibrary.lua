@@ -171,6 +171,25 @@ local function copyTree(fs, out, from, to)
   end
 end
 
+-- Copy what `from`/<sub> has and `to`/<sub> does not, recursively: the new
+-- archive wins any file it ships, the player keeps the rest.
+local function carryOver(fs, out, from, to, sub)
+  local src, dst = from .. "/" .. sub, to .. "/" .. sub
+  local info = fs.getInfo(src)
+  if not info then return end
+  if info.type == "directory" then
+    out.mkdir(dst)
+    for _, name in ipairs(fs.getDirectoryItems(src) or {}) do
+      carryOver(fs, out, src, dst, name)
+    end
+  elseif not fs.getInfo(dst) then
+    local body = fs.read(src)
+    if type(body) ~= "string" then error("could not read " .. src, 0) end
+    local ok, err = out.write(dst, body)
+    if not ok then error("could not write " .. dst .. ": " .. tostring(err), 0) end
+  end
+end
+
 local function removeTree(fs, path, out)
   out = out or sink(fs, true)
   local info = fs.getInfo(path)
@@ -199,6 +218,43 @@ local function findModRoot(fs, mount)
   return nil
 end
 
+-- Outside mods/ on purpose: a staged copy has a manifest.json, and anything
+-- under mods/ with one is a mod to the loader and to list().
+local STAGING = "mod_staging"
+ModLibrary.STAGING = STAGING
+
+-- Where the mod with this id is installed now: the folder whose manifest
+-- names it (nil when none).  Second result: why the install must stop --
+-- mods/<id> holds a different mod, or a folder differing only in letter
+-- case would collide on a case-insensitive disk (Windows, macOS, Android
+-- shared storage) and silently merge two mods.
+local function findInstalled(fs, id)
+  local found
+  local wanted = ModLibrary.ROOT .. "/" .. id
+  for _, name in ipairs(fs.getDirectoryItems(ModLibrary.ROOT) or {}) do
+    local folder = ModLibrary.ROOT .. "/" .. name
+    local have = fs.getInfo(folder .. "/manifest.json") and readManifest(fs, folder)
+    if have and have.id == id then
+      found = found or folder
+    elseif name:lower() == id:lower() then
+      if have then
+        return nil, ("%s is taken by another mod (%s); uninstall it first")
+          :format(folder, tostring(have.id))
+      end
+      if name ~= id then
+        return nil, ("%s already exists and differs from %s only in letter case; "
+          .. "remove or rename it first"):format(folder, id)
+      end
+    end
+  end
+  if not found and fs.getInfo(wanted) then
+    -- a folder with a broken or missing manifest: replacing it is how a
+    -- player repairs it, which the old behaviour allowed too
+    return wanted
+  end
+  return found
+end
+
 -- Install a mod from .zip bytes.  Returns the manifest, or nil plus a reason.
 -- An installed mod with the same id is replaced when opts.replace, or when
 -- opts.upgrade and the archive's version is newer.
@@ -223,11 +279,19 @@ function ModLibrary.installZip(bytes, name, opts)
     if not tostring(manifest.id):match("^[%w_%-%.]+$") then
       err = "the mod id is not a safe folder name" return
     end
-    local target = ModLibrary.ROOT .. "/" .. manifest.id
-    if fs.getInfo(target) then
+    -- The loader finds a mod by the id in its manifest, not by its folder
+    -- name, so the copy already installed may live elsewhere (a hand-unzipped
+    -- "cool-mod-main"), and mods/<id> may hold some other mod entirely.
+    local installed, clash = findInstalled(fs, manifest.id)
+    if clash then
+      err = clash
+      return
+    end
+    local target = installed or (ModLibrary.ROOT .. "/" .. manifest.id)
+    if installed then
       local replace = opts.replace
       if not replace and opts.upgrade then
-        local have = readManifest(fs, target)
+        local have = readManifest(fs, installed)
         local order = have and Semver.compare(manifest.version, have.version)
         replace = have == nil or (order ~= nil and order > 0)
       end
@@ -236,10 +300,36 @@ function ModLibrary.installZip(bytes, name, opts)
         result = { exists = true, manifest = manifest }
         return
       end
+      -- Stage the new copy first: a failed write (a full disk, a file the
+      -- archive could not give back) must leave the old version working.
+      local staging = STAGING .. "/" .. manifest.id
+      removeTree(fs, staging, out)
+      local okS, stageErr = pcall(copyTree, fs, out, root, staging)
+      -- baseroms/ holds the files the player supplied for required_imports
+      -- (src/mods/RequiredImports.lua) and their validation receipts; an
+      -- update must carry them over or the mod asks for the ROM again
+      if okS then okS, stageErr = pcall(carryOver, fs, out, target, staging, "baseroms") end
+      if not okS then
+        removeTree(fs, staging, out)
+        error(stageErr, 0)
+      end
       removeTree(fs, target, out)
+      local okC, copyErr = pcall(copyTree, fs, out, staging, target)
+      removeTree(fs, staging, out)
+      if not okC then
+        removeTree(fs, target, out)
+        error(tostring(copyErr) .. " (the old version was removed; install it again)", 0)
+      end
+      result = manifest
+      return
     end
     out.mkdir(ModLibrary.ROOT)
-    copyTree(fs, out, root, target)
+    local okC, copyErr = pcall(copyTree, fs, out, root, target)
+    if not okC then
+      -- never leave half a mod behind for the loader to trip over
+      removeTree(fs, target, out)
+      error(copyErr, 0)
+    end
     result = manifest
   end)
   pcall(fs.unmount, data)
@@ -251,8 +341,11 @@ end
 function ModLibrary.uninstall(folder, fs)
   local custom = fs ~= nil
   fs = fsys(fs)
-  if type(folder) ~= "string" or folder:sub(1, #ModLibrary.ROOT + 1)
-      ~= ModLibrary.ROOT .. "/" or folder:find("..", 1, true) then
+  -- exactly one folder directly under mods/: "mods/", "mods/x/sub" and any
+  -- climb are refused, so a bad caller can never empty the whole library
+  local name = type(folder) == "string"
+    and folder:match("^" .. ModLibrary.ROOT .. "/([^/\\]+)$")
+  if not name or name == "." or name == ".." then
     return false, "not an installed mod folder"
   end
   removeTree(fs, folder, sink(fs, custom))
@@ -361,13 +454,10 @@ ModLibrary.STRINGS_FILE = "lang/strings.lua"
 local function readStrings(fs, folder)
   local text = fs.read(folder .. "/" .. ModLibrary.STRINGS_FILE)
   if type(text) ~= "string" then return nil end
-  local chunk
-  if setfenv and loadstring then
-    chunk = loadstring(text, "=" .. folder .. "/" .. ModLibrary.STRINGS_FILE)
-    if chunk then setfenv(chunk, {}) end
-  else
-    chunk = load(text, "=" .. folder .. "/" .. ModLibrary.STRINGS_FILE, "t", {})
-  end
+  -- through Sandbox.compile, which refuses precompiled bytecode: LuaJIT
+  -- runs it unverified, and an empty environment does not contain it
+  local chunk = require("src.mods.Sandbox").compile(text,
+    "=" .. folder .. "/" .. ModLibrary.STRINGS_FILE, {})
   if not chunk then return nil end
   local ok, map = pcall(chunk)
   if not ok or type(map) ~= "table" then return nil end

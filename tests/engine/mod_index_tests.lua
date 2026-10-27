@@ -724,4 +724,39 @@ do
     "a cartless feed offers no base games")
 end
 
+-- ------- hostile feeds
+
+do
+  local hostile = {}
+  for k, v in pairs(NUZLOCKE) do hostile[k] = v end
+  hostile.title = "Evil\27[2J\0Mod" .. ("x"):rep(5000)
+  hostile.summary = "line one\r\nline two\7" .. ("é"):rep(3000)
+  hostile.tags = {}
+  for i = 1, 500 do hostile.tags[i] = "tag" .. i end
+  local badId = { id = "../../etc", title = "climb" }
+  local hugeId = { id = ("a"):rep(500), title = "long" }
+  local nonString = { id = 42, title = "number" }
+  local index, err = ModIndex.parse(feed({ hostile, badId, hugeId, nonString }))
+  check(index ~= nil, "a feed with hostile rows still parses: " .. tostring(err))
+  eq(#index.mods, 1, "rows whose id could never name a mod are dropped")
+  local m = index.mods[1]
+  check(not m.title:find("[%z\1-\31]"), "control bytes are stripped from the title")
+  check(#m.title <= 120, "and it is cut to a row's length")
+  check(m.summary:find("line one\nline two", 1, true) and not m.summary:find("\7", 1, true),
+    "a summary keeps its line breaks but loses control bytes")
+  check(#m.summary <= 2000, "a summary is capped")
+  local last = m.summary:byte(#m.summary)
+  check(last < 0x80 or (m.summary:sub(-2) == "é"), "and never cut mid UTF-8 sequence")
+  check(#m.tags <= 32, "a list is capped")
+
+  local saved = ModIndex.MAX_FEED_BYTES
+  ModIndex.MAX_FEED_BYTES = 64
+  local big, bigErr = ModIndex.parse(feed({ NUZLOCKE }))
+  ModIndex.MAX_FEED_BYTES = saved
+  check(big == nil and tostring(bigErr):find("MB", 1, true),
+    "an oversized feed is refused before decoding: " .. tostring(bigErr))
+  local bad, badErr = ModIndex.parse('{"schema_version":1,"mods":[{"id":"x"')
+  check(bad == nil and badErr ~= nil, "a truncated feed is an error, not a throw")
+end
+
 T.finish("mod index")

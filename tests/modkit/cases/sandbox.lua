@@ -51,6 +51,19 @@ local PROBE = [[
   out.requireJitUtil = attempt(require, "jit.util")
   out.requireSocket = attempt(require, "socket")
   out.requireSemver = select(2, pcall(require, "src.mods.Semver"))
+  -- package.loaded._G is the engine's real global table; require("_G")
+  -- once handed it straight over, io and all
+  local okG, realG = pcall(require, "_G")
+  out.requireGIsOwn = okG and realG == _G
+  out.requireGIo = okG and type(realG) == "table" and rawget(realG, "io") == io
+  out.requireStringIsOwn = require("string") == string
+  out.requireTableIsOwn = require("table") == table
+  -- the string metatable is shared with the engine and every mod
+  local smt = getmetatable("")
+  out.stringMetaIndexIsOwn = smt and smt.__index == string
+  if smt and type(smt.__index) == "table" then smt.__index.sandboxMark = true end
+  out.stringDump = string.dump
+  out.jitAttach = jit and jit.attach
 
   out.loveThread = attempt(function() return love.thread end)
   out.loveGraphics = type(love.graphics)
@@ -202,6 +215,17 @@ T.check(out.requireSocket and out.requireSocket:find("network", 1, true),
   "a network module still names the permission it needs: " .. tostring(out.requireSocket))
 T.eq(type(out.requireSemver), "table",
   "the supported engine requires still resolve")
+T.check(out.requireGIsOwn, "require(\"_G\") is the mod's own globals table")
+T.check(out.requireGIo, "whose io is the compat stand-in, not the real library")
+T.check(out.requireStringIsOwn, "require(\"string\") is the mod's own copy")
+T.check(out.requireTableIsOwn, "and so is require(\"table\")")
+T.check(out.stringMetaIndexIsOwn,
+  "getmetatable(\"\").__index is the mod's own string table")
+T.eq(string.sandboxMark, nil,
+  "so writing through it never reaches the engine's string library")
+T.eq(out.stringDump, nil, "string.dump is gone: mods ship source")
+T.eq(out.jitAttach, nil,
+  "jit.attach is gone: it hands over every function the VM compiles")
 
 -- ------- the love facade
 
@@ -394,6 +418,12 @@ do
   T.eq(env.io, nil, "a bare Sandbox.envFor has no io")
   T.eq(env._G, env, "_G points at the sandbox, not the real globals")
   T.check(not pcall(env.require, "io"), "and its require refuses io")
+  T.eq(env.require("_G"), env, "require(\"_G\") answers with the sandbox itself")
+  T.check(Sandbox.moduleDenial("_G", {}) ~= nil,
+    "and the loader's require shim backstop refuses the real _G to a mod")
+  T.eq(env.collectgarbage("stop"), 0, "a mod cannot stop the engine's collector")
+  T.check(select(2, pcall(collectgarbage, "isrunning")) ~= false, "which keeps running")
+  T.eq(type(env.collectgarbage("count")), "number", "but can read the heap size")
 end
 
 T.finish("sandbox")
