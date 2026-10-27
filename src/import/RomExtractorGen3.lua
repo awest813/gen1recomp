@@ -71,8 +71,15 @@ end
 
 local function makeCache()
   return {
+    -- Most extract steps ignore what write returns; a failed write (a full
+    -- disk, a read-only folder) has to stop the import here, or the cache
+    -- publishes with files missing or cut short.
     write = function(_, rel, bytes)
-      return CacheFs.write(rel, bytes)
+      local ok, err = CacheFs.write(rel, bytes)
+      if not ok then
+        error("could not write " .. tostring(rel) .. ": " .. tostring(err), 0)
+      end
+      return ok
     end,
     read = function(_, rel)
       return CacheFs.read(rel)
