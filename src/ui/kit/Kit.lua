@@ -408,7 +408,9 @@ function Kit.endFrame()
   local n = Kit._navN or 0
   Kit._navPrevN = n
   -- If the focused id vanished or not set yet, park the ring on Layer 3 (Import ROM / Play)
-  if (not Kit.focusId or not Kit._navSeen[Kit.focusId]) and n > 0 then
+  -- a host mid-transition (the launcher's page slide registers nothing it
+  -- is sliding in) keeps the ring where it is until there is a page to land on
+  if (not Kit.focusId or not Kit._navSeen[Kit.focusId]) and n > 0 and not Kit.holdFocus then
     -- 0. A host with columns names where the ring belongs (the launcher:
     --    the chosen save, else the chosen game)
     local chosen = nil

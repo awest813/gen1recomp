@@ -1581,6 +1581,8 @@ function Launcher:pageHeader(cx, cy, cw, s, o)
   local backW = 0
   if o.back then
     backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + Theme.space("xl", s) + Theme.space("s", s))
+    -- the page's way in for the pad ring (Kit.navAnchor "content")
+    self.pageEntryId = o.backId or "page-back"
     if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)), "Back",
         { id = o.backId or "page-back", font = "small", icon = "arrow-left", fullLabel = true }) then
       self:queue(o.back)
@@ -1611,8 +1613,11 @@ function Launcher:drawSettings(x, y, w, h, s)
   local opts = self:options()
   local rowH = math.max(Kit.tapMin(), math.floor(40 * s))
   local stepW = math.max(Kit.tapMin(), math.floor(40 * s))
+  -- a label never runs under its control (which takes up to half the row)
   local function label(text, ry)
-    Kit.text("button", text, cx, ry + (rowH - Kit.textHeight("button")) / 2, PAL.text)
+    local room = cw - math.floor(math.min(cw * 0.5, 300 * s)) - Theme.space("s", s)
+    local font = Kit.textWidth("button", text) > room and "small" or "button"
+    Kit.text(font, Kit.ellipsize(font, text, room), cx, ry + (rowH - Kit.textHeight(font)) / 2, PAL.text)
   end
   local function stepper(key, text, lo, hi, ry)
     label(text, ry)
@@ -1763,7 +1768,7 @@ function Launcher:drawSettings(x, y, w, h, s)
   end
   local okPl, Platform = pcall(require, "src.core.Platform")
   if okPl and Platform.canSpawnProcess() then
-    toggle("auto-reimport", "Import again after updates", opts.autoReimport == true, function()
+    toggle("auto-reimport", "Re-import after updates", opts.autoReimport == true, function()
       self:setOption("autoReimport", self:options().autoReimport ~= true)
     end, "When an update needs a game imported again, read the same ROM file without asking.")
     local sources = type(opts.romSources) == "table" and next(opts.romSources) ~= nil
@@ -2454,14 +2459,22 @@ local NAV = {
 }
 Launcher.NAV = NAV
 
+-- A narrow landscape window (a handheld, a phone on its side) gets the rail
+-- as icons only, so the game list and its panel still fit side by side.
+Launcher.ICON_RAIL_BELOW = 760
+
 function Launcher:railWidth(W, s)
+  if W < Launcher.ICON_RAIL_BELOW * s then
+    return math.max(Kit.tapMin(), math.floor(36 * s)) + 2 * Theme.space("s", s)
+  end
   return math.floor(Theme.clamp(W * 0.18, 168 * s, 220 * s))
 end
 
 function Launcher:drawRail(x, y, w, h, s)
   Theme.fill(x, y, w, h, PAL.sidebar, 1)
   Theme.fill(x + w - 1, y, 1, h, PAL.line, Theme.A.hairline)
-  local inset = Theme.space("m", s)
+  local iconsOnly = w < 120 * s
+  local inset = Theme.space(iconsOnly and "s" or "m", s)
   local ix, iw = x + inset, w - 2 * inset
   local upLabel, upAction, upEnabled = self:updateChip()
   local quits = self:canQuit()
@@ -2474,7 +2487,7 @@ function Launcher:drawRail(x, y, w, h, s)
   if not fits() then
     itemH = math.max(Kit.tapMin(), math.floor((h - top - groupGap * 2) / count) - gap)
   end
-  local showName = fits()
+  local showName = fits() and not iconsOnly
   if not showName then top, groupGap = Theme.space("s", s), Theme.space("xs", s) end
   local cy = y + Theme.space(showName and "xl" or "s", s)
   if showName then
@@ -2484,8 +2497,9 @@ function Launcher:drawRail(x, y, w, h, s)
   local current = self:section()
   local function item(it, iy, opts)
     opts = opts or {}
-    if Kit.button(ix, iy, iw, itemH, it.label, { id = "nav-" .. it.id, face = "nav",
-        icon = it.icon, fullLabel = true, align = "left", active = current == it.id,
+    if Kit.button(ix, iy, iw, itemH, iconsOnly and "" or it.label, { id = "nav-" .. it.id, face = "nav",
+        icon = it.icon, fullLabel = not iconsOnly, align = not iconsOnly and "left" or nil,
+        active = current == it.id,
         color = opts.color, glow = opts.glow, enabled = opts.enabled }) then
       if opts.run then self:queue(opts.run) else self:queue(function() self:goSection(it.id) end) end
     end
@@ -2564,12 +2578,14 @@ function Launcher:draw()
   Kit.navAnchor = function(col)
     if col == "list" then return self.selected and ("game-" .. self.selected) end
     if col == "rail" then return "nav-" .. self:section() end
+    if col == "content" and self.page and self.pageEntryId then return self.pageEntryId end
     if col == "content" and not self.page and self.selected then
       local save = self:currentSave(self.selected)
       return save and ("slot-" .. save.id) or "continue"
     end
   end
   Kit.beginFrame(mx, my, click ~= nil, self.wheel or 0)
+  self.pageEntryId = nil
   -- the toast is drawn last; last frame's rect keeps a press on it from
   -- also landing on the control underneath
   local tr = self.message and self.toastRect
@@ -2676,8 +2692,9 @@ function Launcher:draw()
     Kit.blockClicks = false
     self:drawBoxOverlays(s)
   end
+  Kit.holdFocus = t < 1
   Kit.endFrame()
-  Kit.navColumn, Kit.navColumnOrder, Kit.navAnchor = nil, nil, nil
+  Kit.navColumn, Kit.navColumnOrder, Kit.navAnchor, Kit.holdFocus = nil, nil, nil, nil
 end
 
 Launcher.NAV_COLUMNS = { "rail", "list", "content" }

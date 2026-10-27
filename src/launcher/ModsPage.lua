@@ -1310,7 +1310,9 @@ function ModsPage:drawMods(x, y, w, h, s)
     l.modScroll = Kit.scrollInput(l.modScroll or 0, maxAt, cx, cy, cw, viewH)
     local py = Kit.scrollBegin(cx, cy, cw, viewH, l.modScroll, maxAt)
     local rw = cw - Kit.scrollGutter(s)
-    local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Add file") + math.floor(24 * s))
+    -- wide enough for the longest label with the button's own inset
+    local longest = math.max(Kit.textWidth("small", "Add file"), Kit.textWidth("small", "Get pack"))
+    local bw = math.max(Kit.tapMin(), longest + Theme.BUTTON.labelInset * s + math.floor(12 * s))
     local sbh = math.max(Kit.tapMin(), math.floor(32 * s))
     local bgap = math.floor(8 * s)
     for i, row in ipairs(rows) do
@@ -1318,7 +1320,10 @@ function ModsPage:drawMods(x, y, w, h, s)
       local clicked = Kit.row(cx, ry, rw, rowH, false, "mod-" .. tostring(row.folder))
       local tx = cx + math.floor(12 * s)
       local need = not row.broken and row.supported and self:modNeeds(row) or nil
-      local textW = rw - (need and 2 or 1) * (bw + bgap) - math.floor(20 * s)
+      -- a narrow row keeps its name readable: what the mod needs is on its
+      -- details page (a tap on the row), not a second button here
+      local needBtn = need and rw - 2 * (bw + bgap) - math.floor(20 * s) >= 150 * s
+      local textW = rw - (needBtn and 2 or 1) * (bw + bgap) - math.floor(20 * s)
       local detail
       local ink = PAL.muted
       local upd, updInk = self:updateLine(row)
@@ -1342,7 +1347,7 @@ function ModsPage:drawMods(x, y, w, h, s)
       local by = ry + (rowH - sbh) / 2
       local onX = cx + rw - bw - math.floor(8 * s)
       local needX = onX - bw - bgap
-      if need then
+      if needBtn then
         if Kit.button(needX, by, bw, sbh, need.file and "Add file" or "Get pack",
             { id = "mod-need-" .. tostring(row.folder), font = "small", kind = "accent" }) then
           l:queue(function()
@@ -1359,7 +1364,7 @@ function ModsPage:drawMods(x, y, w, h, s)
       end
       -- a press on a button is not also a press on its row
       if clicked and not Kit.hit(onX, by, bw, sbh)
-          and not (need and Kit.hit(needX, by, bw, sbh)) then
+          and not (needBtn and Kit.hit(needX, by, bw, sbh)) then
         local folder = row.folder
         l:queue(function() self.detailFolder, l.page = folder, "mod" end)
       end
@@ -1419,11 +1424,20 @@ function ModsPage:drawDetail(x, y, w, h, s)
   local usable = not row.broken and row.supported
   local r = self.releases[row.id]
   local armed = l.armedDelete == "mod:" .. tostring(row.folder)
+  -- what it still needs before it can load, and the way to supply it
+  local need = usable and self:modNeeds(row) or nil
+  if need then cy = para("small", need.text, cx, cy, cw, PAL.yellow, gap) end
   local items = {
     { label = row.enabled and usable and "Turn off" or "Turn on", id = "mod-detail-toggle",
       kind = (not row.enabled and usable) and "primary" or nil, enabled = usable,
       run = function() self:toggleMod(v, row) end },
   }
+  if need then
+    items[#items + 1] = { label = need.file and "Add file" or "Get pack", id = "mod-detail-need",
+      kind = "primary", run = function()
+        if need.file then self:addModFile(row, need.file) else l.page = "importers" end
+      end }
+  end
   if updatable(row) then
     if r and r.status == "available" and r.best then
       items[#items + 1] = { label = "Update to v" .. tostring(r.best.version), id = "mod-detail-update",

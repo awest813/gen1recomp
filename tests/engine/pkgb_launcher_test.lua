@@ -1305,6 +1305,20 @@ do
   CC.readMarker = realRead
 end
 
+-- ------------------------------------- a page opened by pad: ring follows
+do
+  window(1280, 720)
+  local m = fresh()
+  m.selected = "gold"
+  drawText(m)
+  Kit.setFocus("mods")
+  Kit.activateFocused()
+  for _ = 1, 3 do drawText(m) m:update(0) end
+  eq(m.page, "mods", "A on Mods opens the Mods page")
+  for _ = 1, 12 do drawText(m) end
+  eq(Kit.focusId, "mods-back", "and the ring lands on its Back button, not the rail")
+end
+
 -- ------------------------------------------------ text field select-all
 do
   window(1280, 720)

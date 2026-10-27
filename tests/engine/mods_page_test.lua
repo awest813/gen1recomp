@@ -548,4 +548,48 @@ for _, size in ipairs({ { 390, 844 }, { 1280, 720 }, { 360, 640 } }) do
 end
 Kit.button = realButton
 
+-- a phone row for a mod that needs a pack: no second button, and a tap on
+-- its name opens the mod, whose page says what it needs and offers it
+do
+  window(390, 844)
+  local p = fresh()
+  p.page = "mods"
+  local ui = p:modsUi()
+  local realNeeds = ui.modNeeds
+  ui.modNeeds = function(_, row) if row.id == "fancy" then return { text = "Needs the Dungeon import" } end end
+  local rects, seen = {}, {}
+  local realRow, realBtn = Kit.row, Kit.button
+  Kit.row = function(x, y, w, h, sel, id)
+    if id then rects[id] = { x = x, y = y, w = w, h = h } end
+    return realRow(x, y, w, h, sel, id)
+  end
+  Kit.button = function(x, y, w, h, label, o)
+    seen[tostring(label)] = true
+    return realBtn(x, y, w, h, label, o)
+  end
+  drawText(p)
+  Kit.row, Kit.button = realRow, realBtn
+  check(not seen["Get pack"], "a narrow row leaves Get pack to the mod's page")
+  local r = rects["mod-mods/fancy"]
+  check(r ~= nil, "the row is drawn")
+  if r then
+    local tx, ty = r.x + r.w * 0.4, r.y + r.h / 2
+    local realPos = love.mouse.getPosition
+    love.mouse.getPosition = function() return tx, ty end
+    p.click = { x = tx, y = ty }
+    drawText(p)
+    love.mouse.getPosition = realPos
+    p:update(0)
+  end
+  eq(p.page, "mod", "a tap on its name opens the mod")
+  seen = {}
+  Kit.button = function(x, y, w, h, label, o) seen[tostring(label)] = true return realBtn(x, y, w, h, label, o) end
+  local t = drawText(p)
+  Kit.button = realBtn
+  check(t:find("Needs the Dungeon import", 1, true) ~= nil, "which says what it needs")
+  check(seen["Get pack"], "and offers Get pack")
+  ui.modNeeds = realNeeds
+  window(1280, 720)
+end
+
 T.finish("mods page")

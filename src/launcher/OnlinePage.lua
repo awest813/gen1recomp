@@ -1151,7 +1151,15 @@ function OnlinePage:draw(x, y, w, h, s)
     Kit.text("micro", Kit.ellipsize("micro", line, cw), cx, cy, PAL.faint)
     cy = cy + Kit.textHeight("micro") + gap
   end
-  if not online then return cy - y + pad end
+  if not online then
+    -- what signing in opens up, so the empty page says why to
+    local what = "Connect to see open rooms, who else is online, live battles to watch "
+      .. "and tournaments. Battles and trades use the save you play here."
+    cy = cy + Theme.space("s", s)
+    Kit.textWrapped("small", what, cx, cy, cw, PAL.muted)
+    cy = cy + Kit.wrapHeight("small", what, cw)
+    return cy - y + pad
+  end
 
   cy = self:drawInvites(game, cx, cy, cw, m)
   local okT, tour = call("tournament")
