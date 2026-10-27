@@ -1,0 +1,17 @@
+-- Sharing metadata (25-community-and-ecosystem.md 3.2).  Read by tooling
+-- and the manager detail pane; never by the loader's merge.
+return {
+  summary = "Battles award 1.5x, 2x or 3x EXP in every game.",
+  author = "Pokemon Gen 1 Recompilation Project",
+  contact = "https://github.com/awest813/gen1recomp",
+  tags = { "balance", "exp", "every-game" },
+  differences = {
+    changed = { "every EXP award is scaled by EXP RATE (default 2X), capped at 65535" },
+    added = { "EXP RATE and TRAINERS ONLY mod options" },
+    known = { "the EXP message shows the scaled number, so it reads as if the foe were worth more" },
+  },
+  credits = {
+    { who = "pret/pokered, pokegold, pokefirered", for_ = "the EXP formulas the hook scales" },
+  },
+  compat = { engine = ">=1.0.0 <2.0.0", modApi = 2 },
+}

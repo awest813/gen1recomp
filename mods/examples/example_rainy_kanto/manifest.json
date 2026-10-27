@@ -1,0 +1,15 @@
+{
+  "id": "example_rainy_kanto",
+  "name": "Rainy Kanto Example",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "category": "GRAPHICS",
+  "game_version": ">=0.0.0-0 <2.0.0",
+  "priority": 100,
+  "games": ["firered", "leafgreen"],
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "description": "FireRed / LeafGreen gallery entry: rain (or a thunderstorm) over Pallet Town and the early routes, by patching each map's weather."
+}

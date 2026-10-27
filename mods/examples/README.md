@@ -1,6 +1,7 @@
 # Example mod gallery
 
-Eight reference mods, one per modder persona. Each is small enough to read
+Eight reference mods, one per modder persona, plus six that also run on
+Gold and FireRed. Each is small enough to read
 in one sitting, exercises a different slice of the mod API, and is a real,
 runnable, tested mod — not a snippet.
 
@@ -17,6 +18,21 @@ Copy the one closest to what you want to build.
 | 6 | [`example_dexnav`](example_dexnav) | Tool builder | `TOOL` | A START-menu dex overlay with an inter-mod API |
 | 7 | [`example_mini_conversion`](example_mini_conversion) | TC team | `TOTAL_CONVERSION` | Sable Cove: one town, three species, one badge |
 | 8 | [`example_silly_oak`](example_silly_oak) | Intro author | `UI` | Extra Oak questions, sprite swaps, answers in `mod.save` |
+
+### For every game, and for Gold and FireRed
+
+These six were written for the newer engines too. Each one's README shows it
+measured in a real Yellow, Gold or FireRed boot, and
+`tests/engine/gallery_every_game_test.lua` runs their suites ROM-free.
+
+| Mod | Games | Category | What it does |
+|---|---|---|---|
+| [`example_exp_boost`](example_exp_boost) | all | `BALANCE` | 1.5x / 2x / 3x EXP through `exp.gain` |
+| [`example_lucky_ball`](example_lucky_ball) | all | `BALANCE` | A failed ball rolls again through `catch.rate` |
+| [`example_safe_escape`](example_safe_escape) | all | `TWEAK` | RUN always works in wild battles through `battle.run` |
+| [`example_quiet_alarm`](example_quiet_alarm) | all | `AUDIO` | No low-HP beeping through `battle.low_health_alarm` |
+| [`example_kanto_visitors`](example_kanto_visitors) | Gold, Silver | `CONTENT` | Kanto Pokemon in the grass of Routes 29-31 |
+| [`example_rainy_kanto`](example_rainy_kanto) | FireRed, LeafGreen | `GRAPHICS` | Rain, a storm or fog from Pallet Town to Pewter City |
 
 ## None of these load by default
 

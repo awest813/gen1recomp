@@ -16,6 +16,10 @@
 
 local Runtime = require("src.mods.Runtime")
 local SafePath = require("src.mods.SafePath")
+-- required here rather than where it is used: envFor runs while a mod is
+-- being loaded, and a first require from inside it was attributed to that
+-- mod by the loader's require tripwire
+local LuaCompat = require("src.core.LuaCompat")
 
 local Sandbox = {}
 
@@ -271,7 +275,7 @@ end
 local function compile51(source, chunkname)
   local chunk, err = loadstring(source, chunkname)
   if chunk or rawget(_G, "jit") then return chunk, err end
-  local rewritten = require("src.core.LuaCompat").rewriteGoto(source)
+  local rewritten = LuaCompat.rewriteGoto(source)
   if not rewritten then return nil, err end
   local again = loadstring(rewritten, chunkname)
   if again then return again end
@@ -349,7 +353,6 @@ function Sandbox.envFor(opts)
   -- PUC Lua 5.1 (the browser build): mods are written against LuaJIT, where a
   -- coroutine may yield through pcall (mesh/tree builders that slice their
   -- work) and xpcall takes arguments
-  local LuaCompat = require("src.core.LuaCompat")
   if not LuaCompat.pcallYields() then
     env.pcall, env.xpcall = LuaCompat.coPcall, LuaCompat.coXpcall
   end

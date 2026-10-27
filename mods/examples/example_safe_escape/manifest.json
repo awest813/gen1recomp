@@ -1,0 +1,15 @@
+{
+  "id": "example_safe_escape",
+  "name": "Safe Escape Example",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "category": "TWEAK",
+  "game_version": ">=0.0.0-0 <2.0.0",
+  "priority": 100,
+  "games": ["gen1", "gen2", "gen3"],
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "description": "Every-game gallery entry: running from a wild battle always works, through the battle.run hook all three generations share."
+}
