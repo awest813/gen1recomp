@@ -16,8 +16,8 @@ check(Game2.quickSaveAllowed(gen2(false)) == true,
   "gen 2 quick save is allowed on a resting overworld")
 check(Game2.quickSaveAllowed(gen2(true)) == false,
   "and refused while the world is busy with a scene script")
-check(Game2.quickSaveAllowed({}) == true,
-  "with no world at all (title, intro) it stays allowed")
+check(Game2.quickSaveAllowed({}) == false,
+  "with no world at all (title, intro) there is nothing to save")
 
 local function gen1(running, moving, moves, extra)
   local ow = { player = { moving = moving },
@@ -50,8 +50,10 @@ check(Game.quickSaveAllowed(gen1(false, false, nil,
   "and refused while a battle or menu sits on top of the overworld")
 check(Game.quickSaveAllowed(gen1(false, false, nil, { title = true })) == true,
   "but allowed at the title screen, where the overworld is not on the stack")
-check(Game.quickSaveAllowed({}) == true,
-  "with no overworld it stays allowed")
+-- no game yet at all (Oak's intro, a fresh boot): nothing to save, and the
+-- touch key bar's SAVE wrote an empty save the launcher then offered as Continue
+check(Game.quickSaveAllowed({}) == false,
+  "with no overworld there is nothing to save")
 
 local hotkeyed = { refused = 0 }
 local stub = setmetatable({

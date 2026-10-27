@@ -1069,8 +1069,10 @@ end
 -- engine/overworld/events.asm:241-244
 function Game2:quickSaveAllowed()
   local w = self.world
-  if not w then return true end
-  if not (w.map and w.player) then return true end
+  -- no world yet (the opening movie, the title menu): there is no game to
+  -- save, and a save written here showed up in the launcher as "0:00"
+  if not w then return false end
+  if not (w.map and w.player) then return false end
   if not w.acceptsMenuInput then return true end
   return w:acceptsMenuInput() == true
 end

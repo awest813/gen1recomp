@@ -42,7 +42,7 @@ local TouchSkin = require("src.core.TouchSkin")
 local TouchControls = {}
 
 -- idle vs pressed overlay opacity
-local ALPHA = 0.65
+local ALPHA = 0.8 -- 0.65 nearly vanished over white title and naming screens
 local ALPHA_PRESSED = 0.95
 -- translucent backing disc behind each control: the prompt art is dark
 -- gray, so without it the controls melt into dark map areas
@@ -255,6 +255,18 @@ function TouchControls.defaultLayout(ww, wh, ox, oy, scale, shoulders)
     local shoulderY = oy + wh - margin - dpadW - lrH * 0.65 - wh * 0.09
     out.l = { cx = ox + margin + lrW * 0.65, cy = shoulderY, w = lrW, h = lrH, shape = "squircle" }
     out.r = { cx = ox + ww - margin - lrW * 0.65, cy = shoulderY, w = lrW, h = lrH, shape = "squircle" }
+    -- bottom-centre is the game picture here (its menus and text boxes sit
+    -- at the bottom): when the side columns beside the picture are wide
+    -- enough, SELECT and START go there, between the shoulder and the pads
+    local picW = wh * (shoulders and 1.5 or 10 / 9)
+    local side = (ww - picW) / 2
+    if side >= dpadW + margin then
+      local y = (shoulderY + lrH * 0.5 + (oy + wh - margin - dpadW)) / 2
+      -- clear of A, whose top sits higher than the d-pad's
+      y = math.min(y, out.a.cy - abW * 0.5 - ssW * 0.95)
+      out.select = { cx = out.dpad.cx, cy = y, w = ssW }
+      out.start = { cx = ox + ww - margin - abW * 1.1, cy = y, w = ssW }
+    end
   else
     -- Portrait: Place L and R in the control deck above D-pad and A/B clusters with ample clearance (+ 9% height clearance)
     local shoulderY = oy + wh - margin - dpadW - lrH * 0.90 - wh * 0.09

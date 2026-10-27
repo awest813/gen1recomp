@@ -1379,7 +1379,8 @@ end
 
 function Game:quickSaveAllowed()
   local ow = self.overworld
-  if not (ow and ow.player) then return true end
+  -- before a game is running (title, Oak's intro) there is nothing to save
+  if not (ow and ow.player) then return false end
   local states = self.stack.states
   local top = states[#states]
   if not top then return true end
