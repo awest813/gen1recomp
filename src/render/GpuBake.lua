@@ -27,11 +27,13 @@ extern float keepZero; // 1: alpha-0 texels pass through untouched
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen) {
   vec4 p = Texel(tex, uv);
   if (keepZero > 0.5 && p.a == 0.0) { return p; }
-  if (p.r > 0.83) {
+  // luminance: the red channel on gray art, the right shade on recolored art
+  float l = dot(p.rgb, vec3(0.299, 0.587, 0.114));
+  if (l > 0.83) {
     if (clear1 > 0.5) { return vec4(p.rgb, 0.0); }
     return vec4(c1, p.a);
   }
-  vec3 c = p.r > 0.5 ? c2 : (p.r > 0.17 ? c3 : c4);
+  vec3 c = l > 0.5 ? c2 : (l > 0.17 ? c3 : c4);
   return vec4(c, p.a);
 }
 ]]

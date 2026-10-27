@@ -62,6 +62,12 @@ mod.content.sprites:patch("SPRITE_RED", { trueColor = true })
 `patch`, not `override`: `image`, `frames` and `walker` stay whatever the
 merged view already holds, so the derived sheet keeps supplying the pixels.
 
+The opt-out is honored where the game draws full color: OPTION > COLORS
+ADVANCED in Red, Blue and Yellow, and GBC color in Gold, Silver and
+Crystal.  The palette modes that recreate a Game Boy look (OG, SGB, OG
+RED / YELLOW) still re-shade every sprite into their four shades; there the
+teal sheet falls back to the player's usual shading by its brightness.
+
 ## Empty state
 
 No ROM imported yet? `ctx.exists(rel)` is false, the transform writes

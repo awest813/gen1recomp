@@ -67,8 +67,12 @@ local function getObpImage(path, colors, group)
       local id = Assets.imageData(path)
       id:mapPixel(function(_, _, r, g, b, a)
         if a == 0 then return r, g, b, a end
-        if r > 0.83 then return r, g, b, 0 end -- OBJ color 0: always transparent
-        local col = r > 0.5 and colors[2] or r > 0.17 and colors[3] or colors[4]
+        -- the shade by luminance: on the four DMG grays it is the red channel
+        -- exactly, and a mod's recolored sheet (example_shiny_palette's teal)
+        -- falls into the right shades instead of keying off its red alone
+        local l = 0.299 * r + 0.587 * g + 0.114 * b
+        if l > 0.83 then return r, g, b, 0 end -- OBJ color 0: always transparent
+        local col = l > 0.5 and colors[2] or l > 0.17 and colors[3] or colors[4]
         return col[1] / 255, col[2] / 255, col[3] / 255, a
       end)
       img = love.graphics.newImage(id)
