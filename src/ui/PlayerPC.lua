@@ -218,14 +218,15 @@ local function toss(game)
       list.hollowIndex = list.index -- home/list_menu.asm:91
       local def = game.data.items[item.value]
       if (def and def.keyItem) or item.value:find("^HM_") then
-        list.footer = Strings("That's too impor-\ntant to toss!")
+        -- shown until a button, then .loop prints WhatToTossText again
+        list:showCompletion(Strings("That's too impor-\ntant to toss!{PROMPT}"))
         return
       end
       local QuantityBox = require("src.ui.QuantityBox")
       game.stack:push(QuantityBox.new(game, {
         max = item.stack or pc[item.value] or 1,
         onDone = function(qty)
-          if not qty then return end
+          if not qty then list.footer = list.pcPrompt return end
           list.footer = Strings("Toss %s?", itemName(game, item.value))
           game.stack:push(ChoiceBox.new(game, function(yes)
             if yes then
@@ -234,7 +235,7 @@ local function toss(game)
                 "Threw away\n%s.{PROMPT}", itemName(game, item.value)),
                 function() refreshRows(list, buildItems(game, Bag.pcRows(game.save, game.data))) end) -- engine/menus/players_pc.asm:240
             else
-              list.footer = nil
+              list.footer = list.pcPrompt -- .loop: "What do you want to toss away?"
             end
           end, { noSound = true }))
         end,

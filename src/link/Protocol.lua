@@ -139,7 +139,7 @@ function Protocol.unpackMon(data, packed, opts)
     local mdef = data.moves[mv.id]
     if mdef and #moves < 4 then
       local ppUps = math.max(0, math.min(3, math.floor(num(mv.ppUps, 0))))
-      local maxPP = mdef.pp + ppUps * math.floor(mdef.pp / 5)
+      local maxPP = require("src.pokemon.MaxPP").of(mdef.pp, ppUps)
       local move = { id = mv.id,
                      pp = math.max(0, math.min(maxPP, math.floor(num(mv.pp, 0)))) }
       if mv.ppUps ~= nil then move.ppUps = ppUps end
@@ -316,7 +316,7 @@ function Protocol.unpackMon2(data, packed, opts)
     local mdef = data.moves and data.moves[mv.id]
     if mdef and #moves < 4 then
       local ppUps = math.max(0, math.min(3, math.floor(num(mv.ppUps, 0))))
-      local maxPp = (mdef.pp or 0) + ppUps * math.floor((mdef.pp or 0) / 5)
+      local maxPp = require("src.pokemon.MaxPP").of(mdef.pp or 0, ppUps)
       local entry = { id = mv.id, maxPp = maxPp,
                       pp = math.max(0, math.min(maxPp, math.floor(num(mv.pp, 0)))) }
       if mv.ppUps ~= nil then entry.ppUps = ppUps end

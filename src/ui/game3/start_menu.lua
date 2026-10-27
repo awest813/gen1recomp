@@ -105,7 +105,14 @@ local function build_entries(session, game)
   -- only once at least one mod is discovered, so vanilla is unchanged.
   local status = game and game.modStatus
   if kind == "normal" and status and #(status.available or {}) > 0 then
-    table.insert(entries, #entries, { id = "mods", label = "MODS" })
+    table.insert(entries, #entries, { id = "mods", label = Strings("MODS") })
+  end
+  -- The port's EXIT asks to quit to the title (exitConfirms), so it says so,
+  -- as the Gen 1 and Gen 2 menus renamed theirs QUIT for the same behaviour.
+  if data(session).exitConfirms then
+    for _, e in ipairs(entries) do
+      if e.id == "exit" then e.label = Strings("QUIT") end
+    end
   end
   return entries, kind, ctx
 end

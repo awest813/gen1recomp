@@ -99,6 +99,9 @@ function Menu:update(dt)
       require("src.core.Sound").play(self.game.data, "Press_AB")
     end
     local item = self.items[self.index]
+    -- a mod hook can hand back no rows at all: A then does nothing, and B
+    -- still closes the menu
+    if not item then return end
     -- keepOpen entries run without closing the menu (e.g. the
     -- Pokédex CRY option keeps the side menu up)
     if not item.keepOpen then self.game.stack:pop() end

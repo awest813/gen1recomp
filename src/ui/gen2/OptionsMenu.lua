@@ -806,14 +806,26 @@ function OptionsMenu:update(_dt)
       -- A on a value row advances it, which is what the ASM's shared
       -- right-press path does when A is held on a non-CANCEL row.
       self:cycle(row, 1)
+      self:changed()
     end
     return
   end
   if input:wasPressed("left") then
     self:cycle(row, -1)
+    self:changed()
   elseif input:wasPressed("right") then
     self:cycle(row, 1)
+    self:changed()
   end
+end
+
+-- Saved as it changes, as the Gen 1 and Gen 3 screens do, not only on the way
+-- out: a phone that kills the app in the background would lose it otherwise.
+-- Debounced through DeferredWrite, which Game2 flushes on focus loss.
+function OptionsMenu:changed()
+  local game = self.game
+  if not (game and game.persistOptions and game.options == self.options) then return end
+  require("src.core.DeferredWrite").schedule("options", function() game:persistOptions() end)
 end
 
 function OptionsMenu:drawPanel()

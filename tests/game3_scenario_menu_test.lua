@@ -113,7 +113,12 @@ check(SaveMenu.cursor == 1, "YES is preselected")
 check(Stack.depth() == 2 and Stack.top().id == "save", "the save layer sits above the start layer")
 check(Stack.has("start") == true and StartMenu.isOpen() == true,
   "the start menu stays open beneath (input goes to Stack.top().mod)")
+-- a save exists already, so the overwrite question comes next
+local SaveDataStub = require("src.core.SaveData")
+local realLoadStub = SaveDataStub.load
+SaveDataStub.load = function() return {} end
 SaveMenu.confirm()
+SaveDataStub.load = realLoadStub
 check(SaveMenu._phase == "overwrite", "YES advances to the overwrite confirm")
 SaveMenu.confirm()
 check(SaveMenu._phase == "saved", "the second YES writes and reports saved")

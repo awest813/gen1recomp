@@ -306,35 +306,6 @@ local function drawRows(m, rows, y0, step, labelX, glyphX)
   return first, last
 end
 
-local function drawDetailBody(m)
-  local mod = m.currentMod
-  if not mod then return end
-  local lines = {}
-  local function push(s) lines[#lines + 1] = truncate(s, 24) end
-  push((mod.name or mod.id) .. " " .. (mod.version or ""))
-  push((mod.enabled and "ENABLED" or "DISABLED")
-    .. (m:isStaged(mod) and " (STAGED)" or ""))
-  push((mod.category or "OTHER") .. "/" .. (mod.profile or "content"))
-  local body = mod.error and ("FAILED: " .. mod.error)
-    or mod.note and ("SKIPPED: " .. m:skipText(mod))
-    or mod.description or ""
-  for paragraph in tostring(body):gmatch("[^\n]+") do
-    push(paragraph)
-  end
-  local rows = m:rowsForScreen()
-  -- header block occupies the top of the content window
-  local y = ROW_Y0
-  for i = 1, math.min(3, #lines) do
-    Window.printPx(lines[i], LABEL_X, y, { colors = FrlgFont.COLOR.DARK_GRAY })
-    y = y + ROW_STEP
-  end
-  drawRows(m, rows, y + 2, ROW_STEP, LABEL_X, nil)
-end
-
-local YESNO_LEFT, YESNO_TOP, YESNO_H = 21, 9, 4
-local MSG_MIN_TOP = 7
-local MSG_SIDE_W = YESNO_LEFT - 4
-
 local function wrapLines(lines, maxW)
   local out = {}
   for _, line in ipairs(lines) do
@@ -345,6 +316,47 @@ local function wrapLines(lines, maxW)
   end
   return out
 end
+
+-- The window: a status line, then what the mod does -- or why it failed or
+-- is skipped -- in DETAIL_TEXT lines that LEFT/RIGHT scroll (the shared
+-- descScroll), then the actions.  The name rides in the title box.
+local DETAIL_TEXT = 2
+local DETAIL_TEXT_W = 24 * 8
+
+local function drawDetailBody(m)
+  local mod = m.currentMod
+  if not mod then return end
+  local status = (mod.enabled and "ENABLED" or "DISABLED")
+  -- the same markers the Game Boy manager shows (ManagerState:drawDetail)
+  if mod.state == "wrong_generation" or not m:runsHere(mod) then
+    status = status .. " (NOT THIS GAME)"
+  elseif mod.state == "blocked_dependency" then
+    status = status .. " ?"
+  elseif mod.error then
+    status = status .. " !"
+  end
+  if m:isStaged(mod) then status = status .. " (STAGED)" end
+  local y = ROW_Y0
+  Window.printPx(truncate(status, 26), LABEL_X, y, { colors = FrlgFont.COLOR.DARK_GRAY })
+  y = y + ROW_STEP
+  local body = mod.error and ("FAILED: " .. mod.error)
+    or mod.note and ("SKIPPED: " .. m:skipText(mod))
+    or mod.description or ""
+  local text = wrapLines({ body }, DETAIL_TEXT_W)
+  local first = math.max(1, math.min(m.descScroll or 1, #text - DETAIL_TEXT + 1))
+  for i = first, first + DETAIL_TEXT - 1 do
+    if text[i] then
+      Window.printPx(text[i], LABEL_X, y, { colors = FrlgFont.COLOR.NORMAL })
+    end
+    y = y + ROW_STEP
+  end
+  drawRows(m, m:rowsForScreen(), y + 2, ROW_STEP, LABEL_X, nil)
+end
+
+local YESNO_LEFT, YESNO_TOP, YESNO_H = 21, 9, 4
+local MSG_MIN_TOP = 7
+local MSG_SIDE_W = YESNO_LEFT - 4
+
 
 local function tilesFor(n, lp)
   return math.ceil((1 + (n - 1) * lp + FrlgFont.GLYPH_HEIGHT) / 8)
@@ -434,9 +446,20 @@ function ModManager.draw()
   local title
   if list then
     -- Tab state lives on the title line; a third frame would overlap.
-    title = m.banner or TAB_LABEL[m.tab] or TAB_LABEL[1]
+    title = m.banner or Strings(TAB_LABEL[m.tab] or TAB_LABEL[1])
   else
-    title = m.banner or TITLE[m.screen] or Strings("MOD MANAGER")
+    title = m.banner or Strings(TITLE[m.screen] or "MOD MANAGER")
+    -- the detail page names its mod up here, which leaves the window room
+    -- for what the mod does (or why it is not running)
+    if not m.banner and m.screen == "detail" and m.currentMod then
+      local mod = m.currentMod
+      title = (mod.name or mod.id) .. " " .. (mod.version or "")
+    end
+  end
+  -- a notice ("DEFAULTS RESTORED", "NO OPTIONS") takes the title line while
+  -- it lasts: at the foot of the window it sat on the last row, half off screen
+  if m.notice then
+    title = m.notice
   end
   Chrome.fixedStdFrame(2, 3, 26, 2)
   Window.printPx(truncate(title, 24), 16 + 8, 24 + 1,
@@ -464,9 +487,6 @@ function ModManager.draw()
     scrollArrow("down", 208, WIN_Y + WIN_H - 16 + bob(k, -8))
   end
 
-  if m.notice then
-    Window.printPx(truncate(m.notice, 26), 16, 148, { colors = FrlgFont.COLOR.RED })
-  end
   drawOverlay(m)
   if ModManager._prompt and ModManager._prompt.kind == "qty" then
     drawQtyPrompt(ModManager._prompt)

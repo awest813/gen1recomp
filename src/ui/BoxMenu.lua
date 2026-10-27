@@ -225,11 +225,13 @@ local function release(game)
         choice = function(yes)
           if not yes then return end
           table.remove(box, list.index)
+          -- BillsPCRelease ends `jp BillsPCMenu`, as withdraw and deposit do:
+          -- the list closes under the goodbye
+          list:close()
           require("src.core.Sound").playCry(game.data, mon.species)
           game.stack:push(TextBox.new(game,
             ((t._MonWasReleasedText or Strings("%s was\nreleased outside.\fBye %s!", name, name))
               :gsub("{RAM:wStringBuffer}", name))))
-          list:removeCurrent()
         end,
       }))
     end,

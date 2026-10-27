@@ -255,7 +255,7 @@ function PaletteScreen:idAt(i)
 end
 
 function PaletteScreen:title()
-  if self.view == "root" then return Strings("COLOUR") end
+  if self.view == "root" then return Strings("COLORS") end
   if self.view == "mono" then return Strings("MONOCHROME") end
   return sanitize(self.group and self.group.name or "")
 end
@@ -332,6 +332,10 @@ function PaletteScreen:moveGrid(input, total, cancel)
   elseif input:wasPressed("down") then
     if i + COLS <= total then
       self.index = i + COLS
+    elseif math.ceil(i / COLS) < math.ceil(total / COLS) then
+      -- the partial last row has no swatch under this one: its last swatch,
+      -- not a jump past the whole row to CANCEL
+      self.index = total
     else
       self.index = cancel
     end
@@ -542,8 +546,11 @@ function PaletteScreen:drawFooter(total)
 
   local at = 0
   if total > PER_PAGE then
-    local page = math.floor(self.scroll / PER_PAGE) + 1
     local pages = math.ceil(total / PER_PAGE)
+    -- the view scrolls a row at a time, so the last page is wherever the
+    -- view has reached the end, not only at a whole page of scroll
+    local page = self.scroll >= total - PER_PAGE and pages
+      or math.floor(self.scroll / PER_PAGE) + 1
     Font.draw(("%d/%d"):format(page, pages), 0, 128)
     at = 40
   end

@@ -111,13 +111,30 @@ test("SaveMenu cursor movement", function()
 end)
 
 test("SaveMenu confirm transitions to overwrite then saved", function()
+  -- a save already exists, so FRLG asks before writing over it
+  local SaveData = require("src.core.SaveData")
+  local realLoad = SaveData.load
+  SaveData.load = function() return {} end
   SaveMenu.confirm()
+  SaveData.load = realLoad
   assert(SaveMenu._phase == "overwrite", "Selecting YES in confirm should transition to overwrite")
   SaveMenu.confirm()
   assert(SaveMenu._phase == "saved", "Selecting YES in overwrite should transition to saved")
   SaveMenu.confirm()
   assert(SaveMenu.isOpen() == false, "Confirm in saved phase should close menu")
   assert(saveClosed == true, "Save onClose callback should be called")
+end)
+
+test("SaveMenu with no save yet writes without asking to overwrite", function()
+  local SaveData = require("src.core.SaveData")
+  local realLoad = SaveData.load
+  SaveData.load = function() return nil end
+  SaveMenu.show({ session = session, onClose = function() end })
+  SaveMenu.confirm()
+  SaveData.load = realLoad
+  assert(SaveMenu._phase == "saved", "SAVE_STATUS_EMPTY goes straight to saving")
+  SaveMenu.confirm()
+  assert(SaveMenu.isOpen() == false, "and closes after")
 end)
 
 print("[test] 3. SaveMenu cancellation")

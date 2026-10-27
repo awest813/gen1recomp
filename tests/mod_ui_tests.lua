@@ -1292,7 +1292,7 @@ local permy = manifest("permy", { permissions = { "network" } })
 local msP = ManagerState.new(managerGame(fakeLoader({ permy })))
 msP.game.stack:push(msP)
 local prows = msP:permissionRows(permy)
-check(prows[1].glyph == "!" and prows[1].label == "USES THE NETWORK",
+check(prows[1].glyph == "!" and prows[1].label == "NETWORK ACCESS",
   "declared permissions render with risk glyphs")
 check(msP:permissionRows(manifest("pure"))[1].label == "DATA & API ONLY",
   "no permissions shows the synthetic clean row")

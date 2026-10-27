@@ -334,11 +334,15 @@ function ShopMenu.handleInput(input)
     local money = money_of(session)
     local maxQ = math.max(1, math.min(99, math.floor(money / math.max(1, unit))))
 
+    -- AdjustQuantityAccordingToDPadInput: up and down wrap, as the sell
+    -- count does (sell_flow.lua)
     if input:wasPressed("up") then
-      ShopMenu.qty = math.min(maxQ, ShopMenu.qty + 1)
+      ShopMenu.qty = ShopMenu.qty + 1
+      if ShopMenu.qty > maxQ then ShopMenu.qty = 1 end
       se(5)
     elseif input:wasPressed("down") then
-      ShopMenu.qty = math.max(1, ShopMenu.qty - 1)
+      ShopMenu.qty = ShopMenu.qty - 1
+      if ShopMenu.qty < 1 then ShopMenu.qty = maxQ end
       se(5)
     elseif input:wasPressed("right") then
       ShopMenu.qty = math.min(maxQ, ShopMenu.qty + 10)
@@ -368,12 +372,13 @@ function ShopMenu.handleInput(input)
     local rows = cached_rows("stock", ShopMenu._items)
     local total = #rows + 1
 
-    if input:wasPressed("up") then
-      ShopMenu.cursor = ((ShopMenu.cursor - 2) % total) + 1
+    -- pret's ListMenu stops at either end; it does not wrap round
+    if input:wasPressed("up") and ShopMenu.cursor > 1 then
+      ShopMenu.cursor = ShopMenu.cursor - 1
       clamp_buy_cursor()
       se(5)
-    elseif input:wasPressed("down") then
-      ShopMenu.cursor = (ShopMenu.cursor % total) + 1
+    elseif input:wasPressed("down") and ShopMenu.cursor < total then
+      ShopMenu.cursor = ShopMenu.cursor + 1
       clamp_buy_cursor()
       se(5)
     elseif input:wasPressed("a") then

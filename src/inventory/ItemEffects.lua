@@ -377,7 +377,7 @@ function ItemEffects.use(data, save, itemId, target, battle, moveIndex, ow)
     local allMoves = itemId == "ELIXER" or itemId == "MAX_ELIXER"
     local function restore(mv)
       local mdef = data.moves[mv.id]
-      local maxPP = mdef and (mdef.pp + (mv.ppUps or 0) * math.floor(mdef.pp / 5))
+      local maxPP = mdef and require("src.pokemon.MaxPP").of(mdef.pp, mv.ppUps)
       if maxPP and mv.pp < maxPP then
         mv.pp = full and maxPP or math.min(maxPP, mv.pp + 10)
         return true
@@ -567,8 +567,8 @@ function ItemEffects.use(data, save, itemId, target, battle, moveIndex, ow)
     local mdef = mv and data.moves[mv.id]
     if mdef and (mv.ppUps or 0) < 3 then
       mv.ppUps = (mv.ppUps or 0) + 1
-      -- each PP UP adds maxPP/5 uses on top of the base maximum
-      mv.pp = mv.pp + math.floor(mdef.pp / 5)
+      -- each PP UP adds a fifth of the base PP, at most 7 (AddBonusPP)
+      mv.pp = mv.pp + require("src.pokemon.MaxPP").bonus(mdef.pp)
       return "consumed", { romText(data, "_PPIncreasedText",
         "%s's PP\nincreased!", mdef.name) }
     end

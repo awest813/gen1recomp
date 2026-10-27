@@ -55,7 +55,9 @@ function ShaderFXParamsScreen.new(game, entry)
 
   local self = setmetatable(ListMenu.new(game, title, items, {
     rows = 6,
-    footer = Strings("A/L/R:STEP\nSELECT:RESET  START:ALL"),
+    -- two lines of at most 18: a longer one wraps to a third, and the
+    -- footer shows only the last two
+    footer = Strings("L/R:STEP SEL:RESET\nSTART:RESET ALL"),
   }), ShaderFXParamsScreen)
 
   -- Re-activates whichever slot(s) currently show this preset, so an edit

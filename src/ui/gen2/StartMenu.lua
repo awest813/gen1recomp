@@ -415,6 +415,10 @@ function StartMenu:draw()
     return
   end
 
+  -- read live: OPTION returns to this same menu (Game2:closeStartMenuItem),
+  -- and the cart's .ReturnRedraw shows a MENU ACCOUNT change at once
+  local options = self.save and self.save.options
+  if options then self.showDescription = options.menuAccount ~= false end
   if not self.showDescription then return end
   local item = self.list:current()
   local desc = item and item.desc

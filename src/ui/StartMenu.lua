@@ -164,8 +164,9 @@ function StartMenu.new(game)
     local TextBox = require("src.render.TextBox")
     game.stack:push(TextBox.new(game, Strings("QUIT? UNSAVED\nPROGRESS IS LOST."), nil, {
       defaultNo = true,
+      -- NO (or B) is back on the menu, where the QUIT was chosen from
       choice = function(yes)
-        if yes then game:returnToTitle() end
+        if yes then game:returnToTitle() else reopen() end
       end,
     }))
   end })

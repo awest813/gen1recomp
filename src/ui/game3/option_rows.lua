@@ -131,7 +131,7 @@ function Rows.build(ctx, skip)
   })
   local AUDIO_MODES = {
     { "both", "BOTH" },
-    { "external_only", "EXT. ONLY" },
+    { "external_only", "EXT ONLY" },
     { "game_only", "GAME ONLY" },
   }
   add({
@@ -305,12 +305,22 @@ function Rows.build(ctx, skip)
   })
   add({
     id = "vsync", label = Strings("VSYNC"),
+    -- the present-probe guard the Gen 1 and Gen 2 rows apply: where vsync
+    -- cannot be turned on it reads UNAVAILABLE and only steps toward OFF
     value = function(c)
       local VSync = require("src.core.VSync")
+      local ok, PS = pcall(require, "src.core.PresentSync")
+      if ok and PS.vsyncEnableBlocked and PS.vsyncEnableBlocked() then
+        return Strings("UNAVAILABLE")
+      end
       return Strings(VSync.label(c.options.vsync))
     end,
     step = function(c, dir)
       local VSync = require("src.core.VSync")
+      local ok, PS = pcall(require, "src.core.PresentSync")
+      if ok and PS.vsyncStepAllowed and not PS.vsyncStepAllowed(c.options.vsync, dir) then
+        return false
+      end
       c.options.vsync = VSync.cycle(c.options.vsync, dir)
       VSync.apply(c.options.vsync)
       return true
@@ -388,20 +398,36 @@ function Rows.build(ctx, skip)
   local EventIslands = require("src.core.game3.rse.event_islands")
   if EventIslands.available() then add(EventIslands.optionRow()) end
 
+  -- The touch rows live in this game's options block, where Game3:applyOptions
+  -- reads them first (and where the launcher's touch editor writes): a write
+  -- to the shared top level was overridden by the block, and changed Red's
+  -- pad besides.  A block with no value of its own falls back to the shared one.
+  local function touchGet(c, key)
+    local b = Options.block(c.options)
+    if b[key] ~= nil then return b[key] end
+    return c.options[key]
+  end
+  local function touchSet(c, key, value)
+    Options.block(c.options)[key] = value
+    local TouchControls = require("src.core.TouchControls")
+    TouchControls:applyOptions({
+      touchControls = touchGet(c, "touchControls"), haptics = touchGet(c, "haptics"),
+      hotbar = touchGet(c, "hotbar"), generation = 3,
+    })
+  end
   add({
     id = "touchControls", label = Strings("TOUCH PAD"),
     value = function(c)
-      local t = c.options.touchControls
+      local t = touchGet(c, "touchControls")
       local on = not (type(t) == "table" and t.enabled == false)
       return Strings(on and "ON" or "OFF")
     end,
     step = function(c)
-      local TouchControls = require("src.core.TouchControls")
-      local t = c.options.touchControls
-      if type(t) ~= "table" then t = { enabled = true } end
-      t.enabled = not (t.enabled ~= false)
-      c.options.touchControls = t
-      TouchControls:applyOptions(c.options)
+      local t = touchGet(c, "touchControls")
+      local copy = {}
+      if type(t) == "table" then for k, v in pairs(t) do copy[k] = v end end
+      copy.enabled = copy.enabled == false
+      touchSet(c, "touchControls", copy)
       return true
     end,
   })
@@ -409,13 +435,12 @@ function Rows.build(ctx, skip)
     id = "haptics", label = Strings("VIBRATION"),
     value = function(c)
       local TouchControls = require("src.core.TouchControls")
-      return Strings(TouchControls.hapticLabel(c.options.haptics))
+      return Strings(TouchControls.hapticLabel(touchGet(c, "haptics")))
     end,
     step = function(c, dir)
       local TouchControls = require("src.core.TouchControls")
-      c.options.haptics = TouchControls.cycleHaptics(c.options.haptics, dir)
-      TouchControls:applyOptions(c.options)
-      TouchControls.buzz(c.options.haptics)
+      touchSet(c, "haptics", TouchControls.cycleHaptics(touchGet(c, "haptics"), dir))
+      TouchControls.buzz(touchGet(c, "haptics"))
       return true
     end,
   })
@@ -435,11 +460,9 @@ function Rows.build(ctx, skip)
   })
   add({
     id = "hotbar", label = Strings("KEY BAR"),
-    value = function(c) return Strings(c.options.hotbar == false and "OFF" or "ON") end,
+    value = function(c) return Strings(touchGet(c, "hotbar") == false and "OFF" or "ON") end,
     step = function(c)
-      local TouchControls = require("src.core.TouchControls")
-      c.options.hotbar = (c.options.hotbar == false)
-      TouchControls:applyOptions(c.options)
+      touchSet(c, "hotbar", touchGet(c, "hotbar") == false)
       return true
     end,
   })
@@ -474,7 +497,7 @@ Rows.GROUPS = {
   { id = "group.graphics", label = "GRAPHICS",
     members = { "uiLetterbox", "frameType", "shaderfx", "shaderfx2" } },
   { id = "group.audio", label = "AUDIO",
-    members = { "sound", "musicVol", "sfxVol", "musicFilter" } },
+    members = { "sound", "musicVol", "sfxVol", "musicFilter", "audioMode" } },
   { id = "group.battle", label = "BATTLE OPTIONS",
     members = { "battleScene", "battleStyle" } },
   { id = "group.extras", label = "EXTRAS",

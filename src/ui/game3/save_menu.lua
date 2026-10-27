@@ -211,7 +211,12 @@ function SaveMenu.confirm()
       SaveMenu._phase = "saving_msg"
     end
   elseif SaveMenu.cursor == 1 then -- YES
-    if SaveMenu._phase == "confirm" then
+    if SaveMenu._phase == "confirm" and not saveExists(SaveMenu._session) then
+      -- pokefirered SaveDialogCB_AskSaveHandleInput: SAVE_STATUS_EMPTY goes
+      -- straight to saving; there is nothing to overwrite
+      se("SE_SELECT")
+      do_save()
+    elseif SaveMenu._phase == "confirm" then
       -- If there is an active save file, ask overwrite confirm
       SaveMenu._phase = "overwrite"
       SaveMenu.cursor = 1

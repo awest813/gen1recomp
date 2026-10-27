@@ -263,6 +263,10 @@ end
 function ListMenu:removeCurrent()
   table.remove(self.items, self.index)
   self.index = math.max(1, math.min(self.index, #self.items))
+  -- a shorter list near its end would otherwise keep a blank bottom row
+  local visible = self.cursorRows or self.rows
+  self.scroll = math.max(0, math.min(self.scroll, #self.items - visible))
+  syncScroll(self)
 end
 
 function ListMenu:close()
@@ -367,7 +371,9 @@ function ListMenu:draw()
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.rectangle("fill", 0, 0, 160, 144)
   love.graphics.setColor(0, 0, 0, 1)
-  Font.draw(Strings(self.title), 8, 4)
+  -- 18 characters from x=8 reach the screen's edge (a shader preset's file
+  -- name can be longer)
+  Font.draw(require("src.ui.Marquee").clip(Strings(self.title), 18), 8, 4)
   if #self.items == 0 then
     Font.draw(Strings("Nothing here."), 16, 64)
   end

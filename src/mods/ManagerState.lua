@@ -58,9 +58,10 @@ local FOOTER_COL, FOOTER_ROOM = 1, 18
 
 -- what the mod declared it does, shown before the player enables it
 local PERMISSION_ROWS = {
-  engine_internals = { glyph = "!", text = "PATCHES ENGINE CODE" },
-  network = { glyph = "!", text = "USES THE NETWORK" },
-  filesystem = { glyph = "!", text = "READS/WRITES FILES" },
+  -- each fits LABEL_ROOM (15): a longer one lost its tail on screen
+  engine_internals = { glyph = "!", text = "ENGINE PATCHES" },
+  network = { glyph = "!", text = "NETWORK ACCESS" },
+  filesystem = { glyph = "!", text = "FILE ACCESS" },
 }
 
 local OPTION_TYPES = { toggle = true, choice = true, number = true, text = true }
@@ -293,6 +294,14 @@ function ManagerState:targetGame()
   return version, GameVersion.generation(version)
 end
 
+-- The detail screen's text block: why it failed or was skipped, else what it
+-- does, wrapped to the 16 columns it is drawn in.
+local DETAIL_BODY_ROWS = 5
+function ManagerState:detailBody(m)
+  return wrap(m.error and ("FAILED: " .. m.error)
+    or (m.note and ("SKIPPED: " .. self:skipText(m))) or m.description, 16)
+end
+
 -- Why a mod is skipped, in the player's words.  The loader's own note names
 -- the manifest field an author must add ("not marked gen2compat"); the
 -- player gets the launcher's line instead ("For Gen 1, not Gold").
@@ -373,12 +382,12 @@ end
 function ManagerState:errorLines(mod)
   local lines = {}
   if mod and mod.error then
-    for _, line in ipairs(wrap("FAILED: " .. mod.error, 16)) do
+    for _, line in ipairs(wrap("FAILED: " .. mod.error, LABEL_ROOM)) do
       lines[#lines + 1] = line
     end
   end
   for _, err in ipairs(self.status.errors or {}) do
-    for _, line in ipairs(wrap(err, 16)) do
+    for _, line in ipairs(wrap(err, LABEL_ROOM)) do
       lines[#lines + 1] = line
     end
   end
@@ -662,7 +671,10 @@ function ManagerState:adjustOrTab(dir)
   elseif self.screen == "detail" then
     local row = self:focusedRow()
     if row and row.adjust then return row.adjust(dir) end
-    self.descScroll = math.max(1, self.descScroll + dir)
+    -- stops on its last page rather than scrolling into blank lines
+    local lines = self.currentMod and #self:detailBody(self.currentMod) or 0
+    local last = math.max(1, lines - DETAIL_BODY_ROWS + 1)
+    self.descScroll = math.max(1, math.min(last, self.descScroll + dir))
   else
     for _ = 1, LIST_ROWS - 1 do self:moveCursor(dir) end
   end
@@ -875,7 +887,17 @@ function ManagerState:toggleGen2Force(m)
   local want = not m.gen2Forced
   local function apply()
     local _, persisted = loader:setGen2Forced(m.id, want)
-    self.gen2Pending = persisted ~= false
+    -- remembered with its value at boot, so the apply screen can list it
+    -- and DISCARD can put it back; toggling it back is no change at all
+    if persisted ~= false then
+      self.gen2Toggled = self.gen2Toggled or {}
+      if self.gen2Toggled[m.id] then
+        self.gen2Toggled[m.id] = nil
+      else
+        self.gen2Toggled[m.id] = { name = m.name or m.id, was = not want, now = want }
+      end
+    end
+    self.gen2Pending = self.gen2Toggled ~= nil and next(self.gen2Toggled) ~= nil
     if loader.status then self.game.modStatus = loader:status() end
     self:refresh()
     if persisted == false then
@@ -937,6 +959,11 @@ function ManagerState:discardChanges()
     self.bootOrder, self.bootOrderShown, self.orderPending = nil, nil, false
     self:persistOptions()
   end
+  -- TRY HERE ANYWAY overrides go back to what this boot ran with
+  for id, t in pairs(self.gen2Toggled or {}) do
+    if loader and loader.setGen2Forced then loader:setGen2Forced(id, t.was) end
+  end
+  self.gen2Toggled, self.gen2Pending = nil, false
   if loader and loader.status then self.game.modStatus = loader:status() end
   self:refresh()
   self:notify("CHANGES DISCARDED")
@@ -1038,6 +1065,12 @@ function ManagerState:saveCurrentAs()
     title = Strings("PROFILE NAME?"),
     maxLen = 10,
     onDone = function(name)
+      -- START on an empty name is the naming screen's only way out: it
+      -- saves nothing rather than a nameless profile
+      if not tostring(name or ""):find("%S") then
+        self:notify(Strings("NOT SAVED"))
+        return
+      end
       local opts = self:optionsTable()
       opts.modProfiles = opts.modProfiles or {}
       local snap = ModProfile.capture(self.status.available,
@@ -1093,6 +1126,7 @@ function ManagerState:renameProfile(p)
     maxLen = 10,
     default = p.name,
     onDone = function(name)
+      if not tostring(name or ""):find("%S") then return end -- keeps its name
       local opts = self:optionsTable()
       if opts.activeProfile == p.name then opts.activeProfile = name end
       p.name = name
@@ -1267,6 +1301,12 @@ function ManagerState:buildOptionRows(m, schema)
           return true
         end,
         activate = function()
+          -- the bag's quantity box counts 1..99 in two digits: a range it
+          -- cannot show (0 or below, over 99) is changed with LEFT/RIGHT
+          if (tonumber(row.min) or 1) < 1 or (tonumber(row.max) or 99) > 99 then
+            self:notify("LEFT/RIGHT: CHANGE")
+            return
+          end
           local QuantityBox = require("src.ui.QuantityBox")
           self.game.stack:push(QuantityBox.new(self.game, {
             max = row.max or 99,
@@ -1356,10 +1396,11 @@ end
 
 -- ------- drawing
 
-local function drawTruncated(text, x, y, cols)
+-- cut by glyph, not byte (an accented mod name); with a key, a line too long
+-- for its room scrolls instead of losing its end
+local function drawTruncated(text, x, y, cols, key)
   text = tostring(text or "")
-  if #text > cols then text = text:sub(1, cols) end
-  Font.draw(text, x, y)
+  Font.draw(key and Marquee.scroll(text, cols, key) or Marquee.clip(text, cols), x, y)
 end
 
 -- the hot row scrolls a label too long for its room (as the Gen 2 options
@@ -1433,13 +1474,13 @@ function ManagerState:drawDetail()
     statusLine = statusLine .. " !"
   end
   if self:isStaged(m) then statusLine = statusLine .. " (STAGED)" end
-  drawTruncated(statusLine, 16, 3 * 8, 17)
+  -- "ENABLED (NOT THIS GAME) (STAGED)" is longer than the line: it scrolls
+  drawTruncated(statusLine, 16, 3 * 8, 17, "detail-status:" .. tostring(m.id))
   drawTruncated((m.category or "OTHER") .. " / " .. (m.profile or "content"),
                 16, 4 * 8, 17)
   drawTruncated("FOR " .. ModTargets.chip(m), 16, 5 * 8, 17)
-  local lines = wrap(m.error and ("FAILED: " .. m.error)
-    or (m.note and ("SKIPPED: " .. self:skipText(m))) or m.description, 16)
-  local visible = 5
+  local lines = self:detailBody(m)
+  local visible = DETAIL_BODY_ROWS
   for i = 1, visible do
     local line = lines[self.descScroll + i - 1]
     if not line then break end
@@ -1487,7 +1528,19 @@ function ManagerState:drawApply()
     drawTruncated(verb .. (m.name or m.id), 16, y * 8, 17)
     y = y + 1
   end
-  if #staged == 0 then
+  -- the other changes a restart applies: they are pending too
+  local extra = {}
+  if self.orderPending then extra[#extra + 1] = Strings("NEW LOAD ORDER") end
+  for _, t in pairs(self.gen2Toggled or {}) do
+    extra[#extra + 1] = (t.now and "TRY " or "SKIP ") .. tostring(t.name)
+  end
+  table.sort(extra)
+  for _, line in ipairs(extra) do
+    if y >= 11 then break end
+    drawTruncated(line, 16, y * 8, 17)
+    y = y + 1
+  end
+  if #staged == 0 and #extra == 0 then
     Font.draw(Runtime.safeMode and "SAFE MODE" or Strings("NO CHANGES"), 16, y * 8)
   end
   local rows = self:rowsForScreen()

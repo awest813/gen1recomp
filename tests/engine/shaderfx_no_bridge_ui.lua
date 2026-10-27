@@ -81,7 +81,7 @@ check(#screen.items[3].right <= #"CONVERT",
 eq(screen.items[2].right, nil, "an already-converted preset keeps its bare row")
 screen.onChoose(screen.items[3])
 eq(#converts, 0, "A on that row never calls convert")
-check(screen.footer and screen.footer:find("Reinstall", 1, true) ~= nil,
+check(screen.footer and screen.footer:find("REINSTALL", 1, true) ~= nil,
   "the footer names the fix (got " .. tostring(screen.footer) .. ")")
 check(screen.footer:find("\n", 1, true) == nil and #screen.footer <= 18,
   "the footer stays one 18-column line, so it cannot paint over list row 7")
@@ -101,7 +101,7 @@ do
   local s = open()
   s.onChoose(s.items[3])
   eq(#converts, 0, "a bridge that fails to link never calls convert")
-  eq(s.footer, "Update the app", "a bridge that ships but fails to link does not advise a reinstall")
+  eq(s.footer, "UPDATE THE APP", "a bridge that ships but fails to link does not advise a reinstall")
   check(#s.footer <= 18, "the link-failure footer stays one 18-column line")
   eq(s.items[3].right, "UPDATE", "the row keeps its UPDATE label")
   fake.bridgeError = realBridgeError

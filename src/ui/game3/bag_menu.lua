@@ -718,11 +718,22 @@ local function handle_menu_input(input)
     local rows = BagMenu.list()
     local row = rows[BagMenu.cursor]
     local maxQ = row and (tonumber(row.qty) or 1) or 1
-    if input:wasPressed("up") or input:wasPressed("right") then
-      BagMenu.tossQty = math.min(maxQ, BagMenu.tossQty + 1)
-      se(SE.SE_SELECT)
-    elseif input:wasPressed("down") or input:wasPressed("left") then
-      BagMenu.tossQty = math.max(1, BagMenu.tossQty - 1)
+    -- AdjustQuantityAccordingToDPadInput, as the deposit count above: up and
+    -- down step by one and wrap, right and left step by ten and clamp
+    local q = BagMenu.tossQty
+    if input:wasPressed("up") then
+      q = q + 1
+      if q > maxQ then q = 1 end
+    elseif input:wasPressed("down") then
+      q = q - 1
+      if q <= 0 then q = maxQ end
+    elseif input:wasPressed("right") then
+      q = math.min(maxQ, q + 10)
+    elseif input:wasPressed("left") then
+      q = math.max(1, q - 10)
+    end
+    if q ~= BagMenu.tossQty then
+      BagMenu.tossQty = q
       se(SE.SE_SELECT)
     elseif input:wasPressed("a") then
       se(SE.SE_SELECT) -- src/item_menu.c:1528

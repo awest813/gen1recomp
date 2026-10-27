@@ -117,8 +117,7 @@ local function moveCopies(game, battle)
     local mult, hitChance, displayPower = movePreview(battle, move, def)
     out[slot] = { slot = slot, id = move.id, name = def.name or move.id,
       pp = move.pp,
-      maxPp = (def.pp or move.pp or 0)
-        + (move.ppUps or 0) * math.floor((def.pp or 0) / 5),
+      maxPp = def.pp and require("src.pokemon.MaxPP").of(def.pp, move.ppUps) or (move.pp or 0),
       type = def.type, power = def.power, accuracy = def.accuracy,
       displayPower = displayPower, hitChance = hitChance,
       effectiveness = mult,

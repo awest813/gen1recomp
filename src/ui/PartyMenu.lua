@@ -715,7 +715,16 @@ function PartyMenu:update(dt)
         return
       elseif action == "softboiled" then
         -- field SOFTBOILED (StartMenu_Pokemon .softboiled): transfer
-        -- 1/5 of the user's max HP to a chosen teammate
+        -- 1/5 of the user's max HP to a chosen teammate.  The user's own HP
+        -- is checked first, before any target is asked for: at or under a
+        -- fifth of its max it prints .notHealthyEnoughText and loops back.
+        local maxHp = mon.stats and mon.stats.hp or 0
+        if (mon.hp or 0) <= math.floor(maxHp / 5) then
+          local TextBox = require("src.render.TextBox")
+          self.game.stack:push(TextBox.new(self.game,
+            self.game.data.text._NotHealthyEnoughText or Strings("Not healthy\nenough.")))
+          return
+        end
         self.softboiledFrom = self.index
       elseif action == "escape" then
         -- DIG / TELEPORT warp to the last Pokémon Center TOWN (wLastBlackoutMap,
@@ -783,6 +792,14 @@ function PartyMenu:update(dt)
     self.game.partyMenuSavedIndex = self.index -- HandlePartyMenuInput #768
     self.blink = 0 -- home/window.asm:16
   elseif input:wasPressed("b") then
+    if self.swapFrom or self.softboiledFrom then
+      -- HandlePartyMenuInput .swappingPokemon / the SOFTBOILED target pick:
+      -- B drops the pending pick (xor a / ld [wMenuItemToSwap], a) and
+      -- loops back to the party list rather than leaving it
+      self.swapFrom, self.softboiledFrom = nil, nil
+      self.blink = 0
+      return
+    end
     self.game.stack:pop()
     if self.onCancel then self.onCancel() end
   elseif input:wasPressed("a") and #party > 0 then

@@ -121,9 +121,9 @@ function ShaderFXScreen.new(game, slot)
       if not canConvert then
         local bridgeErr = ShaderFX.bridgeError and ShaderFX.bridgeError()
         if type(bridgeErr) == "string" and bridgeErr:find("cannot locate symbol", 1, true) then
-          self.footer = Strings("Update the app")
+          self.footer = Strings("UPDATE THE APP")
         else
-          self.footer = Strings("Reinstall the app")
+          self.footer = Strings("REINSTALL THE APP")
         end
         return
       end

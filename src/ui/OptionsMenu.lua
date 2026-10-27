@@ -186,8 +186,15 @@ local function buildRows(game)
   local rows = {
     { id = "textSpeed", label = Strings("TEXT SPEED"),
       value = function(g) return Strings(SPEEDS[speedIndex(g)][2]) end,
-      step = function(g)
-        local i = speedIndex(g) % #SPEEDS + 1
+      -- Left / Right walk FAST < MEDIUM < SLOW and stop at the ends, as
+      -- pokered's .pressedLeftInTextSpeed / Right do; A (a port addition)
+      -- still cycles round
+      step = function(g, dir, byA)
+        local at = speedIndex(g)
+        local i
+        if byA then i = at % #SPEEDS + 1
+        else i = math.max(1, math.min(#SPEEDS, at + (dir or 1))) end
+        if i == at then return false end
         g.save.options.textSpeed = SPEEDS[i][1]
         return true
       end },
@@ -897,8 +904,8 @@ function OptionsMenu:update(dt)
     if row and row.activate then
       if input:wasPressed("a") then row.activate(self.game) end
     elseif row and row.step then
-      changed = row.step(self.game, dir) and true or false
-    elseif input:wasPressed("a") then -- CANCEL
+      changed = row.step(self.game, dir, input:wasPressed("a")) and true or false
+    elseif input:wasPressed("a") and not row then -- CANCEL: the row past the list
       -- DisplayOptionMenu .exitMenu (engine/menus/main_menu.asm) is the
       -- only spot in this menu that plays SFX_PRESS_AB: A on a setting row
       -- and the Left/Right toggles stay silent (#570).  game.data is nil

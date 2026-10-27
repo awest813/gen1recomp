@@ -8,19 +8,34 @@ local Marquee = {}
 Marquee.HOLD = 1.0
 Marquee.STEP = 0.25
 
--- Only ever one row scrolls (the cursor's), so one shared phase keeps that
--- row's label and value stepping together.
-local phase = { key = nil, start = 0 }
+-- One phase per key, so a row's label and value (same key) step together,
+-- and two lines scrolling at once (a hot row and a detail line) do not keep
+-- restarting each other.  A key not drawn for a moment starts over.
+local phases, count = {}, 0
+local FORGET = 0.5
 
 local function clock()
   local timer = love and love.timer and love.timer.getTime
   return timer and timer() or 0
 end
 
+-- Characters, not bytes: "é" is one character and two bytes, and a cut
+-- through it leaves text the font cannot draw.
+local function chars(text)
+  local out = {}
+  for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do out[#out + 1] = ch end
+  return out
+end
+
+local function slice(list, from, to)
+  return table.concat(list, "", from, math.min(to, #list))
+end
+
 -- Pure, so a test can step it without a clock.
 function Marquee.at(text, maxChars, elapsed)
   text = text or ""
-  local over = #text - maxChars
+  local list = chars(text)
+  local over = #list - maxChars
   if over <= 0 then return text end
   local span = Marquee.HOLD * 2 + over * Marquee.STEP
   local now = elapsed % span
@@ -32,18 +47,30 @@ function Marquee.at(text, maxChars, elapsed)
   else
     offset = over
   end
-  return text:sub(offset + 1, offset + maxChars)
+  return slice(list, offset + 1, offset + maxChars)
 end
 
 -- `key` identifies the highlighted row; changing it restarts the cycle.
 function Marquee.scroll(text, maxChars, key)
   if not text or #text <= maxChars then return text or "" end
-  if phase.key ~= key then phase.key, phase.start = key, clock() end
-  return Marquee.at(text, maxChars, clock() - phase.start)
+  local now = clock()
+  local p = phases[key]
+  if not p or now - p.seen > FORGET then
+    if not p then
+      count = count + 1
+      if count > 64 then phases, count = {}, 1 end
+    end
+    p = { start = now }
+    phases[key] = p
+  end
+  p.seen = now
+  return Marquee.at(text, maxChars, now - p.start)
 end
 
 function Marquee.clip(text, maxChars)
-  return (text or ""):sub(1, maxChars)
+  text = text or ""
+  if #text <= maxChars then return text end
+  return slice(chars(text), 1, maxChars)
 end
 
 return Marquee

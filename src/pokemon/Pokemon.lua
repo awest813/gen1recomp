@@ -95,7 +95,7 @@ function Pokemon.heal(mon)
     for _, mv in ipairs(mon.moves) do
       local mdef = moves[mv.id]
       if mdef then
-        mv.pp = mdef.pp + (mv.ppUps or 0) * math.floor(mdef.pp / 5)
+        mv.pp = require("src.pokemon.MaxPP").of(mdef.pp, mv.ppUps)
       end
     end
   end

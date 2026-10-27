@@ -7203,7 +7203,7 @@ function BattleState:drawTextArea()
         -- the same call convention as the pre-battle screens (SummaryMenu,
         -- HallOfFame) that genuinely need the explicit data.
         Font.draw(def.type and TypeChart.displayName(def.type, self.data) or "", 16, 80)
-        local maxPP = def.pp + (sel.ppUps or 0) * math.floor(def.pp / 5)
+        local maxPP = require("src.pokemon.MaxPP").of(def.pp, sel.ppUps)
         Font.draw(("%2d/%2d"):format(sel.pp, maxPP), 40, 88)
       end
     end
