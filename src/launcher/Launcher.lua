@@ -1845,6 +1845,14 @@ function Launcher:drawSettings(x, y, w, h, s)
     end
     cy = cy + rowH + Theme.space("m", s)
   end
+  -- the launcher's own shortcuts, which nothing else on screen shows
+  local keys = "Keys: arrows move, Enter chooses, Esc goes back, Ctrl+Tab next section, "
+    .. "F11 full screen.  Controller: d-pad, A, B, shoulders switch sections, Start plays."
+  local okPf, Pf = pcall(require, "src.core.Platform")
+  if not (okPf and Pf.detect().mobile) then
+    Kit.textWrapped("micro", keys, cx, cy, cw, PAL.faint)
+    cy = cy + Kit.wrapHeight("micro", keys, cw) + Theme.space("s", s)
+  end
   local more = "More options (colors, zoom, speed, controls) are in the game's own OPTIONS menu."
   Kit.textWrapped("micro", more, cx, cy, cw, PAL.faint)
   cy = cy + Kit.wrapHeight("micro", more, cw) + Theme.space("s", s)
