@@ -2133,7 +2133,6 @@ function Launcher:drawGame(x, y, w, h, s)
   local gba = GameVersion.generation(v) == 3
   local cartW = gba and math.floor(cartH * 1.45) or math.floor(cartH * 0.82)
   if w < 360 * s then cartW, cartH = math.floor(cartW * 0.75), math.floor(cartH * 0.75) end
-  drawCartridge(x + pad, y + (bannerH - cartH) / 2, cartW, cartH, color, gba, s)
   local tx = x + pad + cartW + Theme.space("l", s)
   local cx, cw = x + pad, w - 2 * pad
   local slots = ready and self:slotsFor(v) or {}
@@ -2157,11 +2156,32 @@ function Launcher:drawGame(x, y, w, h, s)
     end
     rightW = mw + kw + Theme.space("s", s) + Theme.space("m", s)
   end
+  -- the name matters more than the art: a banner too narrow for both
+  -- (a GBA cartridge on a phone) drops the cartridge
+  local betaW = info.beta and Kit.textWidth("micro", "BETA") + Theme.space("m", s) or 0
+  local betaGap = info.beta and Theme.space("s", s) or 0
+  local wantW = Kit.textWidth(titleFont, info.label or info.displayName) + betaW + betaGap
+  if x + w - pad - rightW - tx < wantW then
+    tx = x + pad
+  else
+    drawCartridge(x + pad, y + (bannerH - cartH) / 2, cartW, cartH, color, gba, s)
+  end
   local titleW = x + w - pad - rightW - tx
+  -- still too narrow: one size down before the name is cut
+  if titleFont == "title" and Kit.textWidth(titleFont, info.label or info.displayName) + betaW + betaGap > titleW then
+    titleFont = "stat"
+  end
   local ty = y + (bannerH - Kit.textHeight(titleFont) - Kit.textHeight("small") - Theme.space("xs", s)) / 2
   local title = info.displayName
-  if Kit.textWidth(titleFont, title) > titleW then title = info.label or title end
-  Kit.textBold(titleFont, Kit.ellipsize(titleFont, title, math.max(0, titleW)), tx, ty, PAL.heading)
+  -- a game still in beta says so beside its name
+  local nameW = math.max(0, titleW - betaW - betaGap)
+  if Kit.textWidth(titleFont, title) > nameW then title = info.label or title end
+  local drawnW = Kit.textBold(titleFont, Kit.ellipsize(titleFont, title, nameW), tx, ty, PAL.heading) or 0
+  if info.beta and nameW > 0 then
+    local bh = Kit.textHeight("micro") + Theme.space("xs", s)
+    Kit.tag(tx + drawnW + betaGap, ty + (Kit.textHeight(titleFont) - bh) / 2, betaW, bh, "BETA",
+      PAL.yellow, { fill = true, bold = true })
+  end
   local status, scolor = statusText(self, v)
   if cartRow then
     status = "Playing as " .. tostring(cartRow.title or cartId)
