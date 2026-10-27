@@ -12,5 +12,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Quest-author gallery entry: a two-town fetch quest over real TEXT constants, with choices, labels, MOD_ flags and a parallel ambient script."
+  "description": "A short side quest: carry a lost parcel between two towns for a reward."
 }

@@ -332,4 +332,51 @@ ModLibrary.setEnabled("zeta", true, "gold")
 local bc = ModLibrary.translationStrings("gold")
 check(not (bc and bc.Hello == "Bytecode"), "a precompiled lang/strings.lua is refused")
 
+-- ------------------------------------------------------------ the gallery
+do
+  fs.write("mods/examples/ex_gold/manifest.json", manifest("ex_gold",
+    { '"games":["gold","silver"]', '"description":"Gold things"' }))
+  fs.write("mods/examples/ex_gold/main.lua", "return function() end")
+  fs.write("mods/examples/ex_gold/assets/a.png", "PNG")
+  fs.write("mods/examples/ex_gold/tests/ex_gold_test.lua", "-- a suite")
+  fs.write("mods/examples/ex_gold/tools/make.py", "# a script")
+  fs.write("mods/examples/ex_gold/.modkitignore", "tests/")
+  fs.write("mods/examples/ex_red/manifest.json", manifest("ex_red", { '"games":["red"]' }))
+  fs.write("mods/examples/ex_red/main.lua", "return function() end")
+  fs.write("mods/examples/notes.md", "not an example")
+
+  local rows = ModLibrary.examples("gold")
+  eq(#rows, 2, "every bundled example with a manifest is listed")
+  eq(rows[1].id, "ex_gold", "the one for this game first")
+  eq(rows[1].supported, true, "marked as running here")
+  eq(rows[2].supported, false, "and the other marked as not")
+  eq(rows[1].description, "Gold things", "with what it does")
+  eq(rows[1].installed, false, "and not installed yet")
+  for _, r in ipairs(ModLibrary.list("gold")) do
+    check(r.id ~= "ex_gold", "an example is not an installed mod until it is installed")
+  end
+
+  local got, err = ModLibrary.installExample("ex_gold")
+  eq(got and got.id, "ex_gold", "an example installs (" .. tostring(err) .. ")")
+  check(files["mods/ex_gold/main.lua"] and files["mods/ex_gold/assets/a.png"],
+    "into mods/<id>, with its assets")
+  eq(files["mods/ex_gold/tests/ex_gold_test.lua"], nil, "but not its test suite")
+  eq(files["mods/ex_gold/tools/make.py"], nil, "or its asset scripts")
+  eq(files["mods/ex_gold/.modkitignore"], nil, "or its packaging file")
+  eq(ModLibrary.examples("gold")[1].installed, true, "it now reads as installed")
+  local listed
+  for _, r in ipairs(ModLibrary.list("gold")) do if r.id == "ex_gold" then listed = r end end
+  check(listed and listed.enabled, "and is an installed mod, on like any new one")
+
+  files["mods/ex_gold/main.lua"] = "-- the player's edit"
+  local again, why = ModLibrary.installExample("ex_gold")
+  eq(again, nil, "installing it twice is refused")
+  check(tostring(why):find("already installed", 1, true), "with the reason")
+  eq(files["mods/ex_gold/main.lua"], "-- the player's edit", "and the player's copy is untouched")
+
+  eq((ModLibrary.installExample("../zeta")), nil, "a path is not an example name")
+  eq((ModLibrary.installExample("missing")), nil, "an example not in this build is refused")
+  ModLibrary.uninstall("mods/ex_gold")
+end
+
 T.finish("mod library")

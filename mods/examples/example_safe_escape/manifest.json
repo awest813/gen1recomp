@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Every-game gallery entry: running from a wild battle always works, through the battle.run hook all three generations share."
+  "description": "RUN always works in wild battles. Trainer battles and trapping moves still stop you."
 }

@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Every-game gallery entry: no low-HP beeping, through the battle.low_health_alarm hook all three generations share."
+  "description": "No more beeping when your Pokemon's HP is low. The HP bar still turns red."
 }

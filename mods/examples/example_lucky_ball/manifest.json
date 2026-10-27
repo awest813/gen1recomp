@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Every-game gallery entry: a ball that fails gets one more roll, through the catch.rate hook all three generations share."
+  "description": "A Poke Ball that fails gets one more try (two more if you choose). Each try is the game's own catch roll."
 }

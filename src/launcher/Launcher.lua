@@ -1643,7 +1643,10 @@ function Launcher:pageHeader(cx, cy, cw, s, o)
     end
   end
   local textW = cw - backW - (backW > 0 and Theme.space("m", s) or 0)
-  Kit.textBold("title", Kit.ellipsize("title", o.title, textW), cx, cy, PAL.heading)
+  -- a long name (a mod's, on a phone) steps down a size before it is cut
+  local font = Kit.textWidth("title", o.title) > textW and "stat" or "title"
+  Kit.textBold(font, Kit.ellipsize(font, o.title, textW), cx,
+    cy + (Kit.textHeight("title") - Kit.textHeight(font)) / 2, PAL.heading)
   cy = cy + Kit.textHeight("title") + Theme.space("xs", s)
   if o.subtitle then
     local tx = cx

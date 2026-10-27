@@ -25,10 +25,10 @@ ModsPage.__index = ModsPage
 -- Every launcher page this module draws, and where Back / Escape leads.
 ModsPage.PAGES = { mods = true, importers = true, mod = true, modoptions = true,
   modtools = true, loadorder = true, profiles = true, catalog = true,
-  catalogitem = true, feeds = true }
+  catalogitem = true, feeds = true, examples = true }
 ModsPage.PARENT = { importers = "mods", mod = "mods", modoptions = "mod",
   modtools = "mods", loadorder = "modtools", profiles = "modtools",
-  catalog = "mods", catalogitem = "catalog", feeds = "catalog" }
+  catalog = "mods", catalogitem = "catalog", feeds = "catalog", examples = "mods" }
 
 local MOD_KIND = { label = "Mod package", exts = { "zip" } }
 local PROFILE_NAME_MAX = 24
@@ -144,6 +144,21 @@ local function gameName(version)
   return info and info.displayName or tostring(version or "this game")
 end
 
+-- "Red, Blue, Yellow, Gold and Silver": the games a manifest claims, in the
+-- engine's own order, without the series name on each
+function ModsPage.runsOn(manifest)
+  local okT, ModTargets = pcall(require, "src.mods.ModTargets")
+  if not okT then return nil end
+  local okV, versions = pcall(ModTargets.versions, manifest)
+  if not okV or type(versions) ~= "table" or #versions == 0 then return nil end
+  local names = {}
+  for _, v in ipairs(versions) do
+    names[#names + 1] = (gameName(v):gsub("^Pok%S*mon ", ""))
+  end
+  if #names == 1 then return names[1] end
+  return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
+end
+
 -- -------------------------------------------------------------------- model
 
 -- Installed mods as ModLibrary lists them for one game, cached until
@@ -157,6 +172,16 @@ function ModsPage:modsFor(version)
   local okL, got = false, nil
   if ok then okL, got = pcall(ModLibrary.list, version) end
   rows = (okL and type(got) == "table") and got or {}
+  -- what can run on this game first, each half still by name: on Gold the
+  -- Gen 1-only mods would otherwise sit between the ones a player can use
+  local order = {}
+  for i, row in ipairs(rows) do order[row] = i end
+  table.sort(rows, function(a, b)
+    local ua = not a.broken and a.supported ~= false
+    local ub = not b.broken and b.supported ~= false
+    if ua ~= ub then return ua end
+    return order[a] < order[b]
+  end)
   l.modRows[version] = rows
   return rows
 end
@@ -164,7 +189,8 @@ end
 function ModsPage:changed()
   local l = self.launcher
   l.modRows, l.cartPlans = nil, nil
-  self.importerStates = nil
+  self.importerStates, self.schemas, self.seenSchemas = nil, nil, nil
+  self.exampleRows = nil
 end
 
 -- An asset importer's state (missing / partial / ready) reads its packs'
@@ -643,6 +669,15 @@ function ModsPage:schemaFor(row)
       return chunk()
     end)
     if ok and type(rows) == "table" then schema = rows end
+  end
+  -- a mod that declares its options in code (mod.options:define) has no
+  -- file to read: what the game reported after a boot is the answer
+  if not schema and row and row.id then
+    if self.seenSchemas == nil then
+      local okC, got = pcall(require("src.mods.OptionSchemaCache").load)
+      self.seenSchemas = okC and type(got) == "table" and got or {}
+    end
+    schema = self.seenSchemas[row.id] or false
   end
   self.schemas[key] = schema
   return schema or nil
@@ -1243,6 +1278,7 @@ function ModsPage:draw(x, y, w, h, s)
   end
   if not (l.selected and l.ready[l.selected]) then return l:drawGame(x, y, w, h, s) end
   if page == "catalog" then return self:drawCatalog(x, y, w, h, s) end
+  if page == "examples" then return self:drawExamples(x, y, w, h, s) end
   if page == "loadorder" then return self:drawLoadOrder(x, y, w, h, s) end
   local fitted = { mod = self.drawDetail, modoptions = self.drawOptions,
     modtools = self.drawTools, profiles = self.drawProfiles, catalogitem = self.drawEntry }
@@ -1312,6 +1348,7 @@ function ModsPage:drawMods(x, y, w, h, s)
   local busy = self:busy()
   cy = self:flow(cx, cy, cw, s, {
     { label = "Get mods", id = "mods-catalog", kind = "accent", run = function() self:openCatalog() end },
+    { label = "Examples", id = "mods-examples", run = function() l.page = "examples" end },
     avail > 0 and { label = ("Update all (%d)"):format(avail), id = "mods-update-all", kind = "primary",
         enabled = not busy, run = function() self:updateAll({}) end }
       or { label = "Check for updates", id = "mods-check", enabled = not self:checking() and not busy,
@@ -1337,6 +1374,9 @@ function ModsPage:drawMods(x, y, w, h, s)
     -- wide enough for the longest label with the button's own inset
     local longest = math.max(Kit.textWidth("small", "Add file"), Kit.textWidth("small", "Get pack"))
     local bw = math.max(Kit.tapMin(), longest + Theme.BUTTON.labelInset * s + math.floor(12 * s))
+    -- the toggle only ever says On or Off: sized for that, the name gets the room
+    local tw = math.max(Kit.tapMin(), math.max(Kit.textWidth("small", "On"),
+      Kit.textWidth("small", "Off")) + Theme.BUTTON.labelInset * s + math.floor(24 * s))
     local sbh = math.max(Kit.tapMin(), math.floor(32 * s))
     local bgap = math.floor(8 * s)
     for i, row in ipairs(rows) do
@@ -1346,8 +1386,8 @@ function ModsPage:drawMods(x, y, w, h, s)
       local need = not row.broken and row.supported and self:modNeeds(row) or nil
       -- a narrow row keeps its name readable: what the mod needs is on its
       -- details page (a tap on the row), not a second button here
-      local needBtn = need and rw - 2 * (bw + bgap) - math.floor(20 * s) >= 150 * s
-      local textW = rw - (needBtn and 2 or 1) * (bw + bgap) - math.floor(20 * s)
+      local needBtn = need and rw - bw - tw - 2 * bgap - math.floor(20 * s) >= 150 * s
+      local textW = rw - tw - bgap - (needBtn and (bw + bgap) or 0) - math.floor(20 * s)
       local detail
       local ink = PAL.muted
       local upd, updInk = self:updateLine(row)
@@ -1360,16 +1400,21 @@ function ModsPage:drawMods(x, y, w, h, s)
       elseif upd and updInk ~= PAL.muted then
         detail, ink = upd, updInk
       else
+        -- what it does says more than its version, which the details page keeps
         local parts = {}
-        if row.version then parts[#parts + 1] = "v" .. tostring(row.version) end
-        if row.author then parts[#parts + 1] = "by " .. tostring(row.author) end
-        if row.experimental then parts[#parts + 1] = "experimental" end
+        if row.experimental then parts[#parts + 1] = "Experimental" end
+        if row.description and row.description ~= "" then
+          parts[#parts + 1] = row.description
+        else
+          if row.version then parts[#parts + 1] = "v" .. tostring(row.version) end
+          if row.author then parts[#parts + 1] = "by " .. tostring(row.author) end
+        end
         detail = table.concat(parts, "  -  ")
         if detail == "" then detail = row.id end
       end
       twoLines(row.name, detail, tx, ry, rowH, textW, PAL.text, ink, s)
       local by = ry + (rowH - sbh) / 2
-      local onX = cx + rw - bw - math.floor(8 * s)
+      local onX = cx + rw - tw - math.floor(8 * s)
       local needX = onX - bw - bgap
       if needBtn then
         if Kit.button(needX, by, bw, sbh, need.file and "Add file" or "Get pack",
@@ -1381,13 +1426,13 @@ function ModsPage:drawMods(x, y, w, h, s)
         end
       end
       local usable = not row.broken and row.supported
-      if Kit.button(onX, by, bw, sbh, row.enabled and usable and "On" or "Off",
+      if Kit.button(onX, by, tw, sbh, row.enabled and usable and "On" or "Off",
           { id = "mod-toggle-" .. tostring(row.folder), font = "small",
             kind = row.enabled and usable and "primary" or nil, enabled = usable }) then
         l:queue(function() self:toggleMod(v, row) end)
       end
       -- a press on a button is not also a press on its row
-      if clicked and not Kit.hit(onX, by, bw, sbh)
+      if clicked and not Kit.hit(onX, by, tw, sbh)
           and not (needBtn and Kit.hit(needX, by, bw, sbh)) then
         local folder = row.folder
         l:queue(function() self.detailFolder, l.page = folder, "mod" end)
@@ -1408,6 +1453,83 @@ function ModsPage:drawMods(x, y, w, h, s)
   Kit.textWrapped("micro", hint, cx, fy + bh + math.floor(8 * s), cw, PAL.faint)
 end
 
+-- ------------------------------------------------------------ examples
+
+function ModsPage:examplesFor(version)
+  self.exampleRows = self.exampleRows or {}
+  local rows = self.exampleRows[version or ""]
+  if rows then return rows end
+  local okL, got = pcall(require("src.mods.ModLibrary").examples, version)
+  rows = okL and type(got) == "table" and got or {}
+  self.exampleRows[version or ""] = rows
+  return rows
+end
+
+function ModsPage:installExample(row)
+  local l = self.launcher
+  local ok, manifest, err = pcall(require("src.mods.ModLibrary").installExample, row.name)
+  if not ok then manifest, err = nil, manifest end
+  if not manifest then
+    return l:say("Could not install " .. tostring(row.title) .. ": " .. tostring(err), "error")
+  end
+  self:changed()
+  self.exampleRows = nil
+  local v = l.selected
+  if row.supported == false then
+    l:say(("%s is installed. It does not run on %s, so it stays off here."):format(
+      tostring(row.title), gameName(v)), "info")
+  else
+    l:say(("%s is installed and on for %s. It applies the next time the game starts."):format(
+      tostring(row.title), gameName(v)), "info")
+  end
+end
+
+-- The gallery that ships with the game, one press to install each.
+function ModsPage:drawExamples(x, y, w, h, s)
+  local l = self.launcher
+  local v = l.selected
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  cy = l:pageHeader(cx, cy, cw, s, { title = "Example mods",
+    subtitle = "Made with the game, to try or to learn from",
+    back = function() l.page = "mods" end, backId = "examples-back" })
+  local rows = self:examplesFor(v)
+  local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
+  local viewH = math.max(rowH, y + h - pad - cy)
+  if #rows == 0 then
+    Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "This build has no example mods")
+    return
+  end
+  local gapR = math.floor(4 * s)
+  local maxAt = Kit.scrollExtent(#rows * (rowH + gapR), viewH)
+  self.scroll.examples = Kit.scrollInput(self.scroll.examples or 0, maxAt, cx, cy, cw, viewH)
+  local py = Kit.scrollBegin(cx, cy, cw, viewH, self.scroll.examples, maxAt)
+  local rw = cw - Kit.scrollGutter(s)
+  local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Installed") + math.floor(24 * s))
+  local bh = math.max(Kit.tapMin(), math.floor(32 * s))
+  for i, row in ipairs(rows) do
+    local ry = py + (i - 1) * (rowH + gapR)
+    Kit.row(cx, ry, rw, rowH, false, "example-" .. tostring(row.name))
+    local detail, ink = row.description or row.id, PAL.muted
+    if row.supported == false then
+      detail = "Not for " .. gameName(v) .. ": runs on " .. tostring(ModsPage.runsOn(row.manifest) or "other games")
+      ink = PAL.faint
+    end
+    twoLines(row.title, detail, cx + math.floor(12 * s), ry, rowH,
+      rw - bw - math.floor(36 * s), PAL.text, ink, s)
+    local bx, by = cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2
+    if Kit.button(bx, by, bw, bh, row.installed and "Installed" or "Install",
+        { id = "example-install-" .. tostring(row.name), font = "small",
+          kind = not row.installed and row.supported ~= false and "primary" or nil,
+          enabled = not row.installed }) then
+      l:queue(function() self:installExample(row) end)
+    end
+  end
+  Kit.scrollEnd(cx, cy, cw, viewH, self.scroll.examples, maxAt, PAL.surface)
+end
+
 -- One mod: what it is, its update state, its files, and every action.
 function ModsPage:drawDetail(x, y, w, h, s)
   local l = self.launcher
@@ -1426,6 +1548,10 @@ function ModsPage:drawDetail(x, y, w, h, s)
   local sub = {}
   if row.version then sub[#sub + 1] = "v" .. tostring(row.version) end
   if row.author then sub[#sub + 1] = "by " .. tostring(row.author) end
+  local category = row.manifest and row.manifest.category
+  if type(category) == "string" and category ~= "" then
+    sub[#sub + 1] = (category:sub(1, 1) .. category:sub(2):lower():gsub("_", " "))
+  end
   cy = l:pageHeader(cx, cy, cw, s, { title = tostring(row.name),
     subtitle = #sub > 0 and table.concat(sub, "  -  ") or tostring(row.id),
     back = function() l.page = "mods" end, backId = "mod-back" })
@@ -1439,6 +1565,8 @@ function ModsPage:drawDetail(x, y, w, h, s)
     cy = para("small", "Its author marks it experimental.", cx, cy, cw, PAL.yellow, gap)
   end
   if row.description then cy = para("small", row.description, cx, cy, cw, PAL.text, gap) end
+  local games = row.manifest and ModsPage.runsOn(row.manifest)
+  if games then cy = para("micro", "Runs on " .. games, cx, cy, cw, PAL.muted, gap) end
   local upd, updInk = self:updateLine(row)
   if upd then cy = para("small", upd, cx, cy, cw, updInk, gap) end
   if row.bundled then
@@ -1478,7 +1606,7 @@ function ModsPage:drawDetail(x, y, w, h, s)
         end }
     end
   end
-  if row.manifest and row.manifest.options_schema then
+  if self:schemaFor(row) then
     items[#items + 1] = { label = "Options", id = "mod-detail-options",
       run = function() l.page = "modoptions" end }
   end
@@ -1871,8 +1999,11 @@ function ModsPage:drawCatalog(x, y, w, h, s)
   local viewH = math.max(rowH, y + h - pad - cy)
   if #feeds == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No mod indexes added yet")
-    para("micro", "Press Indexes and paste the address of an index you trust.", cx,
-      cy + math.min(viewH, rowH * 2) + gap, cw, PAL.faint, 0)
+    local ty = para("micro", "Press Indexes and paste the address of an index you trust, "
+      .. "or try the example mods that come with the game.", cx,
+      cy + math.min(viewH, rowH * 2) + gap, cw, PAL.faint, gap)
+    self:flow(cx, ty, cw, s, { { label = "Example mods", id = "catalog-examples", kind = "accent",
+      run = function() l.page = "examples" end } })
     return
   end
   local list = self:catalogFiltered(v)

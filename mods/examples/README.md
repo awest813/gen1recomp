@@ -41,7 +41,12 @@ level deeper, in `mods/examples/`, so a fresh install finds none of them
 and the vanilla game is unchanged — the parity invariant holds by
 construction.
 
-To run one, copy it up a level:
+Players install one from the launcher: **Mods > Examples**, then Install.
+That copies it into the save directory's `mods/` (without its `tests/` and
+`tools/`), on for every game it runs on. Release builds pack this folder for
+that page, minus the same two folders.
+
+From a checkout, copy one up a level instead:
 
 ```sh
 cp -r mods/examples/example_balance_tweaks mods/

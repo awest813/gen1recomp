@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Mechanic-designer gallery entry: a rain field effect behind an opt-in ruleset, driven by the battle.damage hook."
+  "description": "Rain in battle: WATER moves hit harder and FIRE moves softer. Pick the WEATHER ruleset in OPTIONS to use it."
 }

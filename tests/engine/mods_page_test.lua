@@ -612,4 +612,89 @@ do
   window(1280, 720)
 end
 
+-- -------------------------------------------- what a row and a details page say
+do
+  window(1280, 720)
+  -- a mod that cannot run on Gold, named to sort first alphabetically
+  installed.aaa = { id = "aaa", name = "Aaa Red Only", version = "1.0.0", games = { "red" } }
+  local realList = ModLibrary.list
+  ModLibrary.list = function(version)
+    local rows = realList(version)
+    for _, row in ipairs(rows) do
+      if row.id == "aaa" then row.supported = false end
+      if row.id == "plain" then
+        row.description = "Makes every battle plain."
+        row.manifest.category = "TOTAL_CONVERSION"
+        row.manifest.games = { "gold", "silver" }
+      end
+    end
+    return rows
+  end
+  local lp = fresh()
+  local order = {}
+  for _, row in ipairs(lp:modsFor("gold")) do order[#order + 1] = row.id end
+  eq(order[#order], "aaa", "a mod that cannot run on this game sorts after the ones that can")
+  eq(order[1], "cool", "and the rest keep their name order")
+  lp.page = "mods"
+  local text = drawText(lp)
+  check(text:find("Makes every battle plain.", 1, true), "a row says what the mod does")
+  check(text:find("Not made for this game", 1, true), "and a mod for another game says so")
+  lp:modsUi().detailFolder, lp.page = "mods/plain", "mod"
+  text = drawText(lp)
+  check(text:find("Runs on Gold and Silver", 1, true), "the details page names the games it runs on")
+  check(text:find("Total conversion", 1, true), "and its category, in words")
+  eq(ModsPage.runsOn({ games = { "red", "blue", "yellow" } }), "Red, Blue and Yellow",
+    "the game list reads as a sentence")
+
+  -- options a mod declares in code: no file, but the game reported them
+  local Cache = require("src.mods.OptionSchemaCache")
+  local realLoad = Cache.load
+  Cache.load = function() return { plain = { { key = "rate", type = "toggle", label = "Fast" } } } end
+  lp:modsUi():changed()
+  check(drawText(lp):find("Options", 1, true), "a mod whose options came from the game offers them")
+  lp.page = "modoptions"
+  check(drawText(lp):find("Fast", 1, true), "and the options page draws them")
+  Cache.load = function() return {} end
+  lp:modsUi():changed()
+  lp.page = "mod"
+  check(not drawText(lp):find("Options", 1, true), "a mod with no known options offers none")
+  Cache.load = realLoad
+  ModLibrary.list = realList
+  installed.aaa = nil
+end
+
+-- ------------------------------------------------------------ example mods
+do
+  window(1280, 720)
+  local installedEx = {}
+  ModLibrary.examples = function(version)
+    return {
+      { name = "ex_gold", id = "ex_gold", title = "Gold Example", description = "Gold things",
+        manifest = { games = { "gold", "silver" } }, supported = version == "gold",
+        installed = installedEx.ex_gold == true },
+      { name = "ex_red", id = "ex_red", title = "Red Example", description = "Red things",
+        manifest = { games = { "red" } }, supported = version == "red", installed = false },
+    }
+  end
+  ModLibrary.installExample = function(name)
+    installedEx[name] = true
+    return { id = name }
+  end
+  local le = fresh()
+  le.page = "mods"
+  check(drawText(le):find("Examples", 1, true), "the Mods page offers the example mods")
+  le.page = "examples"
+  local text = drawText(le)
+  check(text:find("Gold Example", 1, true) and text:find("Gold things", 1, true),
+    "the Examples page lists one with what it does")
+  check(text:find("Not for Pokemon Gold: runs on Red", 1, true),
+    "and says when one does not run on this game")
+  le:modsUi():installExample(le:modsUi():examplesFor("gold")[1])
+  eq(installedEx.ex_gold, true, "Install installs it")
+  check(tostring(le.message and le.message.text):find("installed and on for Pokemon Gold", 1, true),
+    "and says it is on")
+  check(drawText(le):find("Installed", 1, true), "the row then reads Installed")
+  ModLibrary.examples, ModLibrary.installExample = nil, nil
+end
+
 T.finish("mods page")

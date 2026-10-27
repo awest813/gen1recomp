@@ -12,5 +12,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Musician gallery entry: an authored ChipAsm song, a music.select hook, a new cry and a jukebox screen."
+  "description": "A new song, a new cry and a jukebox screen to play them, in Red, Blue and Yellow."
 }

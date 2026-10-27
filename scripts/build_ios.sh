@@ -353,6 +353,10 @@ pack_game_love() {
     $MANIFESTS \
     -x '*.DS_Store' -x '*/.git/*' -x '*/.DS_Store' \
     -x 'data/generated/*' -x 'assets/generated/*')
+  # the example mod gallery, so the launcher's Examples page can install one;
+  # its test suites and asset scripts are for modders, not players
+  (cd "$ROOT" && zip -q -9 -r "$LOVE_FILE" mods/examples \
+    -x '*.DS_Store' 'mods/examples/*/tests/*' 'mods/examples/*/tools/*' 'mods/examples/*/.modkitignore')
   # NOTE: grep -q here would race pipefail — it exits on first match, unzip
   # dies of SIGPIPE (141), and the pipeline "fails" nondeterministically.
   # >/dev/null keeps grep reading the whole stream instead.

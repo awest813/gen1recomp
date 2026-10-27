@@ -470,6 +470,10 @@ pack_game_love() {
     tools/rom_manifest_firered.json tools/rom_manifest_leafgreen.json tools/rom_manifest_emerald.json tools/rom_manifest_ruby.json tools/rom_manifest_sapphire.json \
     -x '*.DS_Store' -x '*/.git/*' -x '*/.DS_Store' \
     -x 'data/generated/*' -x 'assets/generated/*')
+  # the example mod gallery, so the launcher's Examples page can install one;
+  # its test suites and asset scripts are for modders, not players
+  (cd "$ROOT" && zip -q -9 -r "$LOVE_FILE" mods/examples \
+    -x '*.DS_Store' 'mods/examples/*/tests/*' 'mods/examples/*/tools/*' 'mods/examples/*/.modkitignore')
   # List once and match against the captured text: piping unzip straight into
   # grep under `set -o pipefail` SIGPIPEs unzip as soon as grep exits early,
   # and the pipeline's 141 outranks grep's own status.  For the generated-data

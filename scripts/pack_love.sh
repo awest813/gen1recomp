@@ -53,6 +53,10 @@ rm -f "$OUTPUT"
   tools/rom_manifest_silver.json tools/rom_manifest_crystal.json \
   tools/rom_manifest_firered.json tools/rom_manifest_leafgreen.json tools/rom_manifest_emerald.json tools/rom_manifest_ruby.json tools/rom_manifest_sapphire.json \
   -x '*.DS_Store' 'data/generated/*' 'assets/generated/*')
+# the example mod gallery, so the launcher's Examples page can install one;
+# its test suites and asset scripts are for modders, not players
+(cd "$ROOT" && zip -q -9 -r "$OUTPUT" mods/examples \
+  -x '*.DS_Store' 'mods/examples/*/tests/*' 'mods/examples/*/tools/*' 'mods/examples/*/.modkitignore')
 if [ -f "$ROOT/PATCH_NOTES.md" ]; then
   (cd "$ROOT" && zip -q "$OUTPUT" PATCH_NOTES.md)
 fi

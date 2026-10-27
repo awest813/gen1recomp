@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Every-game gallery entry: battles award 1.5x, 2x or 3x EXP, through the exp.gain hook all three generations share."
+  "description": "Battles award more EXP: double by default, or 1.5x or 3x in its options. TRAINERS ONLY keeps wild battles normal."
 }

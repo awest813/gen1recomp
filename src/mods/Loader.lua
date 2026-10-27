@@ -542,6 +542,9 @@ function Loader:_writeOptionSchemas()
   if not written then
     Logger.warn("mod option schema export: failed to write: %s", tostring(err))
   end
+  -- the snapshot is this boot only; the launcher's merged copy keeps the
+  -- rows of mods this game did not load (src/mods/OptionSchemaCache.lua)
+  pcall(require("src.mods.OptionSchemaCache").remember, self.fs, mods)
 end
 
 function Loader:setEnabled(id, enabled)

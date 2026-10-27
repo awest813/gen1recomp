@@ -63,6 +63,31 @@ The producer writes the snapshot after entry chunks and the final load set
 have been established. Consumers must treat the file as untrusted input and
 must not execute anything from it.
 
+## The launcher's merged copy
+
+A snapshot only covers one boot, so after a Gold boot it no longer lists a
+mod that runs only on Red. The built-in launcher keeps a merged copy,
+`launcher_mod_option_schemas.json`, in the same directory and with the same
+envelope (`{"schema_version":1,"mods":{...}}`). `src/mods/OptionSchemaCache.lua`
+owns it:
+
+- the loader folds each boot's rows into it right after writing the snapshot
+  (`OptionSchemaCache.remember`), so a mod stays known while other games are
+  played;
+- the launcher folds in whatever snapshot it finds when it reads the copy
+  (`OptionSchemaCache.load`);
+- a mod's rows are replaced when a boot reports different ones, and never
+  removed because a boot did not load the mod;
+- every row is re-checked on the way in and out: unknown types, rows with no
+  key and choices with no valid pairs are dropped, and only the fields this
+  contract names are kept.
+
+The snapshot itself is unchanged and stays the contract for other consumers.
+The launcher reads a mod's `options_schema` file first, and the merged copy
+only for mods that declare options with `mod.options:define`. Until such a mod
+has been loaded once, the launcher has no rows for it, and its options are
+in the game's own MODS menu.
+
 ## Compatibility and versioning
 
 The contract is optional on both sides. A native consumer may be absent, and

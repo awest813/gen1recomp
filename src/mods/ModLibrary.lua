@@ -338,6 +338,96 @@ function ModLibrary.installZip(bytes, name, opts)
   return result
 end
 
+-- ------------------------------------------------------------ the gallery
+
+-- The example mods shipped with the game (mods/examples/, packed by the
+-- build scripts).  One level deeper than the loader looks, so none of them
+-- runs until a player installs it.
+ModLibrary.EXAMPLES = ModLibrary.ROOT .. "/examples"
+
+-- what an installed copy leaves out: the author's suites and asset scripts
+local EXAMPLE_SKIP = { tests = true, tools = true, [".modkitignore"] = true }
+
+local function copyExample(fs, out, from, to)
+  out.mkdir(to)
+  for _, name in ipairs(fs.getDirectoryItems(from) or {}) do
+    if not EXAMPLE_SKIP[name] then
+      local src, dst = from .. "/" .. name, to .. "/" .. name
+      local info = fs.getInfo(src)
+      if info and info.type == "directory" then
+        copyTree(fs, out, src, dst)
+      elseif info then
+        local body = fs.read(src)
+        if type(body) ~= "string" then error("could not read " .. src, 0) end
+        local ok, err = out.write(dst, body)
+        if not ok then error("could not write " .. dst .. ": " .. tostring(err), 0) end
+      end
+    end
+  end
+end
+
+-- Every bundled example as a row: { name, id, title, description, manifest,
+-- supported (for `version`), installed }.  Sorted with what runs on that game
+-- first, then by title.
+function ModLibrary.examples(version, fs)
+  fs = fsys(fs)
+  local rows = {}
+  if not (fs.getInfo and fs.getInfo(ModLibrary.EXAMPLES)) then return rows end
+  for _, name in ipairs(fs.getDirectoryItems(ModLibrary.EXAMPLES) or {}) do
+    local folder = ModLibrary.EXAMPLES .. "/" .. name
+    local info = fs.getInfo(folder)
+    if info and info.type == "directory" and fs.getInfo(folder .. "/manifest.json") then
+      local manifest = readManifest(fs, folder)
+      if manifest then
+        local row = { name = name, folder = folder, id = manifest.id,
+          title = manifest.name or manifest.id, description = manifest.description,
+          manifest = manifest, installed = findInstalled(fs, manifest.id) ~= nil }
+        if version then
+          local okT, supported = pcall(ModTargets.supports, manifest, version,
+            GameVersion.generation(version))
+          row.supported = okT and supported and true or false
+        end
+        rows[#rows + 1] = row
+      end
+    end
+  end
+  table.sort(rows, function(a, b)
+    if (a.supported ~= false) ~= (b.supported ~= false) then return a.supported ~= false end
+    return tostring(a.title):lower() < tostring(b.title):lower()
+  end)
+  return rows
+end
+
+-- Install one bundled example by its folder name.  Returns the manifest, or
+-- nil plus a reason.  An example already installed is left alone: the player
+-- may have changed it, and the Mods page is where it is removed.
+function ModLibrary.installExample(name, opts)
+  opts = opts or {}
+  local fs = fsys(opts.fs)
+  local out = sink(fs, opts.fs ~= nil)
+  if type(name) ~= "string" or not name:match("^[%w_%-%.]+$") or name:match("^%.") then
+    return nil, "that is not an example mod"
+  end
+  local from = ModLibrary.EXAMPLES .. "/" .. name
+  if not fs.getInfo(from .. "/manifest.json") then return nil, "that example is not in this build" end
+  local manifest, merr = readManifest(fs, from)
+  if not manifest then return nil, "invalid manifest.json: " .. tostring(merr) end
+  if not tostring(manifest.id):match("^[%w_%-%.]+$") then
+    return nil, "the mod id is not a safe folder name"
+  end
+  local installed, clash = findInstalled(fs, manifest.id)
+  if clash then return nil, clash end
+  if installed then return nil, manifest.id .. " is already installed" end
+  local target = ModLibrary.ROOT .. "/" .. manifest.id
+  out.mkdir(ModLibrary.ROOT)
+  local ok, err = pcall(copyExample, fs, out, from, target)
+  if not ok then
+    removeTree(fs, target, out)
+    return nil, tostring(err)
+  end
+  return manifest
+end
+
 function ModLibrary.uninstall(folder, fs)
   local custom = fs ~= nil
   fs = fsys(fs)

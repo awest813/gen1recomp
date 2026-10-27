@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Tool-builder gallery entry: a start-menu overlay over the merged dex, with mod options and a stable inter-mod export."
+  "description": "Adds DEXNAV to the START menu: a quick look at which Pokemon you have seen and caught."
 }

@@ -12,5 +12,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Artist gallery entry: a recolored player sheet derived from the player's own cache, plus two palette records."
+  "description": "A teal outfit for the player, shown when OPTION > COLORS is set to ADVANCED."
 }

@@ -11,5 +11,5 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Reshapes Oak's intro speech with extra questions, sprite swaps, and answers saved to mod.save."
+  "description": "Professor Oak asks a few extra, sillier questions at the start of a new game."
 }
