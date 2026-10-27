@@ -303,6 +303,26 @@ function ImportJob:_unlock()
   withPrefix(self.prefix, function(CacheFs) CacheFs.remove(ImportJob.LOCK_PATH) end)
 end
 
+-- Imports running in this process, by cache prefix.
+local running = {}
+ImportJob._running = running
+
+-- Whether `version`'s last import was cut off (the app quit or crashed
+-- mid-import): its lock is still there, nothing is importing it now, and
+-- there is no completion marker.  A front end can say "the last import did
+-- not finish" instead of showing the game as never imported.
+function ImportJob.interrupted(version)
+  local info = GameVersion.info(version)
+  if not info then return false end
+  local prefix = info.cachePrefix
+  if running[prefix] and running[prefix].state == "working" then return false end
+  if lockedElsewhere(prefix) then return false end
+  local ok, lock, marker = withPrefix(prefix, function(CacheFs)
+    return CacheFs.read(ImportJob.LOCK_PATH), CacheFs.read(CacheContract.MARKER_PATH)
+  end)
+  return ok and type(lock) == "string" and marker == nil or false
+end
+
 local function extractorFor(version)
   local gen = GameVersion.generation(version)
   if gen == 3 then return require("src.import.RomExtractorGen3") end
@@ -316,10 +336,6 @@ local function threadsUsable()
   local okP, Platform = pcall(require, "src.core.Platform")
   return not okP or not Platform.hasThreads or Platform.hasThreads()
 end
-
--- Imports running in this process, by cache prefix.
-local running = {}
-ImportJob._running = running
 
 -- Begin importing a verified ROM (the table verify() returned).
 function ImportJob.start(rom)

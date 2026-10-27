@@ -355,6 +355,17 @@ for _ = 1, 10 do if pub:step(0) ~= "working" then break end end
 eq(pub.state, "error", "a raising publish fails the job instead of the launcher")
 check(pub.error:find("disk space", 1, true) ~= nil, pub.error)
 
+-- 7. an import the app quit in the middle of is reported as such
+eq(ImportJob.interrupted("blue"), false, "a game never imported was not interrupted")
+fakeFs.files["blue/" .. ImportJob.LOCK_PATH] = tostring(os.time() - 3600) .. "\n"
+eq(ImportJob.interrupted("blue"), true, "a left-over lock without a marker is an interrupted import")
+fakeFs.files["blue/" .. CacheContract.MARKER_PATH] = "marker"
+eq(ImportJob.interrupted("blue"), false, "a published cache was not interrupted")
+fakeFs.files["blue/" .. CacheContract.MARKER_PATH] = nil
+fakeFs.files["blue/" .. ImportJob.LOCK_PATH] = tostring(os.time()) .. "\n"
+eq(ImportJob.interrupted("blue"), false, "a live import elsewhere is not interrupted")
+fakeFs.files["blue/" .. ImportJob.LOCK_PATH] = nil
+
 CacheContract.publish = realPublish
 os.getenv = realGetenv -- luacheck: ignore 122
 
