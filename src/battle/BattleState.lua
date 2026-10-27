@@ -262,11 +262,15 @@ local function mattedPic(path)
 end
 
 -- Remap the 4 DMG grays of an ImageData to `c` (4 {r, g, b}, 0-255) in place.
+-- Shades by luminance, as GpuBake's shader does: the same as the red channel
+-- on gray art, and the same answer on desktop and in the browser for a mod's
+-- recolored art.
 local function cpuPaletteBake(id, c)
   id:mapPixel(function(_, _, r, g, b, a)
     if a == 0 then return r, g, b, a end
-    local col = r > 0.83 and c[1] or r > 0.5 and c[2]
-                or r > 0.17 and c[3] or c[4]
+    local l = 0.299 * r + 0.587 * g + 0.114 * b
+    local col = l > 0.83 and c[1] or l > 0.5 and c[2]
+                or l > 0.17 and c[3] or c[4]
     return col[1] / 255, col[2] / 255, col[3] / 255, a
   end)
 end

@@ -25,9 +25,14 @@ do
     eq(touch.value(ctx), "ON", "it starts ON")
     touch.step(ctx, 1)
     TouchControls.applyOptions = realApply
-    local block = Options.block(ctx.options)
-    eq(block.touchControls and block.touchControls.enabled, false,
-      "turning it off writes this game's block, which Game3:applyOptions reads first")
+    local g3 = ctx.options.game3 or {}
+    eq(g3.touchControls and g3.touchControls.enabled, false,
+      "turning it off writes options.game3, which Game3:applyOptions reads first")
+    eq(Options.block(ctx.options).touchControls, nil, "not the per-game save block nothing reads")
+    -- the read Game3:applyOptions makes (src/core/Game3.lua)
+    local o = ctx.options
+    local seen = (type(o.game3) == "table" and o.game3.touchControls) or o.touchControls
+    eq(seen and seen.enabled, false, "so the game sees the pad off on its next apply")
     eq(ctx.options.touchControls.enabled, true, "and leaves Red's shared pad alone")
     eq(applied and applied.touchControls and applied.touchControls.enabled, false,
       "the pad is applied with the new value")

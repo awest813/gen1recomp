@@ -398,17 +398,21 @@ function Rows.build(ctx, skip)
   local EventIslands = require("src.core.game3.rse.event_islands")
   if EventIslands.available() then add(EventIslands.optionRow()) end
 
-  -- The touch rows live in this game's options block, where Game3:applyOptions
-  -- reads them first (and where the launcher's touch editor writes): a write
-  -- to the shared top level was overridden by the block, and changed Red's
-  -- pad besides.  A block with no value of its own falls back to the shared one.
+  -- The touch rows live in options.game3, which Game3:applyOptions reads
+  -- before the shared top level (and where the launcher's touch editor
+  -- writes): a write to the top level was overridden there, and changed Red's
+  -- pad besides.  With no Gen 3 value yet, the shared one is the default.
+  local function g3block(c)
+    if type(c.options.game3) ~= "table" then c.options.game3 = {} end
+    return c.options.game3
+  end
   local function touchGet(c, key)
-    local b = Options.block(c.options)
-    if b[key] ~= nil then return b[key] end
+    local g3 = type(c.options.game3) == "table" and c.options.game3 or nil
+    if g3 and g3[key] ~= nil then return g3[key] end
     return c.options[key]
   end
   local function touchSet(c, key, value)
-    Options.block(c.options)[key] = value
+    g3block(c)[key] = value
     local TouchControls = require("src.core.TouchControls")
     TouchControls:applyOptions({
       touchControls = touchGet(c, "touchControls"), haptics = touchGet(c, "haptics"),

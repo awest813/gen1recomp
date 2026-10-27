@@ -22,7 +22,7 @@ extern vec3 c1;
 extern vec3 c2;
 extern vec3 c3;
 extern vec3 c4;
-extern float clear1;   // 1: bucket 1 (r > 0.83) becomes transparent
+extern float clear1;   // 1: bucket 1 (luminance > 0.83) becomes transparent
 extern float keepZero; // 1: alpha-0 texels pass through untouched
 vec4 effect(vec4 color, Image tex, vec2 uv, vec2 screen) {
   vec4 p = Texel(tex, uv);
@@ -82,7 +82,7 @@ local function bake(source, colors, opts)
 end
 
 -- Recolor `source` (an Image) into a new Canvas.  colors[1..4] are 0-255
--- {r, g, b} for the buckets r > 0.83, > 0.5, > 0.17 and the rest.
+-- {r, g, b} for the luminance buckets > 0.83, > 0.5, > 0.17 and the rest.
 --   opts.clear1   bucket 1 becomes alpha 0, keeping its source rgb (OBJ
 --                 colour 0 is always transparent)
 --   opts.keepZero false: alpha-0 texels are recoloured too (default: they
@@ -117,12 +117,13 @@ function GpuBake.obp3100(path)
     if baked then return baked end
   end
   local id = Assets.imageData(path)
-  id:mapPixel(function(_, _, r, _, _, a)
-    -- the extracted art is the four DMG grays, keyed off the red channel
-    -- exactly the way PaletteFX's shade-remap shader keys them
+  id:mapPixel(function(_, _, r, g, b, a)
+    -- by luminance, as the shader above buckets: the red channel on the four
+    -- DMG grays the extractor writes, the same shade for recolored art
+    local l = 0.299 * r + 0.587 * g + 0.114 * b
     local v = 0
-    if r > 0.5 then v = 1               -- OBJ colors 0 and 1 -> shade 0
-    elseif r > 0.17 then v = 170 / 255  -- OBJ color 2 -> shade 1
+    if l > 0.5 then v = 1               -- OBJ colors 0 and 1 -> shade 0
+    elseif l > 0.17 then v = 170 / 255  -- OBJ color 2 -> shade 1
     end                                 -- OBJ color 3 -> shade 3
     return v, v, v, a
   end)
