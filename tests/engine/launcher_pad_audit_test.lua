@@ -259,4 +259,21 @@ pad("b"); frame(12)
 eq(l.page, "settings", "B goes back to Settings")
 eq(Kit.focusId, "keys", "with the ring on the row that opened it")
 
+-- ---- plugging a controller in or out says so
+do
+  local xbox = { getName = function() return "Xbox Controller" end, isGamepad = function() return true end }
+  l:joystickChanged(xbox, true)
+  check(l.message and l.message.text == "Xbox Controller connected.", "a connected controller is named")
+  l:joystickChanged(xbox, false)
+  check(l.message and l.message.text == "Xbox Controller disconnected." and l.message.kind == "notice",
+    "and its disconnection is a heads-up")
+  l.message = nil
+  local GM = require("src.core.GamepadMap")
+  local real = GM.isAccelerometer
+  GM.isAccelerometer = function() return true end
+  l:joystickChanged(xbox, true)
+  eq(l.message, nil, "an accelerometer is not news")
+  GM.isAccelerometer = real
+end
+
 T.finish("launcher pad audit")

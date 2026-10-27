@@ -1346,7 +1346,7 @@ function love.joystickadded(joystick)
   SwitchDiagnostics.onJoystickEvent("joystickadded", joystick)
   noteJoysticksChanged()
   if editorMode or TouchEditor or Studio then return end
-  if Importer then return end
+  if Importer then return Importer:joystickChanged(joystick, true) end
   if not Game then return end
   Game:joystickadded(joystick)
 end
@@ -1355,7 +1355,7 @@ function love.joystickremoved(joystick)
   SwitchDiagnostics.onJoystickEvent("joystickremoved", joystick)
   noteJoysticksChanged()
   if editorMode or TouchEditor or Studio then return end
-  if Importer then return end
+  if Importer then return Importer:joystickChanged(joystick, false) end
   if not Game then return end
   Game:joystickremoved(joystick)
 end

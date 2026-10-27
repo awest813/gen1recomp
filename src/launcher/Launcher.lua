@@ -1501,6 +1501,24 @@ function Launcher:joystickpressed(joystick, index)
   return self:gamepadpressed(joystick, button)
 end
 function Launcher:joystickreleased() end
+
+-- A controller plugged in or pulled out says so, so a player on the couch
+-- knows the launcher saw it.  A phone's accelerometer (reported as a
+-- joystick) and a Switch's own controllers are not news.
+function Launcher:joystickChanged(joystick, added)
+  local okG, GamepadMap = pcall(require, "src.core.GamepadMap")
+  if okG and GamepadMap.isAccelerometer and GamepadMap.isAccelerometer(joystick) then return end
+  local okP, Platform = pcall(require, "src.core.Platform")
+  if okP and Platform.isNX and Platform.isNX() then return end
+  local okN, name = pcall(function() return joystick:getName() end)
+  name = okN and type(name) == "string" and name ~= "" and name or "Controller"
+  if not added then
+    self.dpadDir, self.dpadKey = nil, nil
+    self.stickDir = nil
+  end
+  self:say(added and (name .. " connected.") or (name .. " disconnected."),
+    added and "info" or "notice")
+end
 -- An unmapped stick's first two axes steer like a left stick, as they do
 -- in the game (Input:joystickaxis); a mapped pad's arrive as gamepadaxis.
 function Launcher:joystickaxis(joystick, axis, value)
