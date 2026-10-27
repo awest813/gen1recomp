@@ -19,7 +19,6 @@ local Runtime = require("src.mods.Runtime")
 local SafePath = require("src.mods.SafePath")
 
 local unpack = table.unpack or unpack
-local loadstring = loadstring or load
 
 local AssetTransform = {}
 
@@ -107,9 +106,19 @@ end
 -- Globals the recipe sees.  Everything that could reach the filesystem,
 -- the network or another engine module is absent, so the only way out of
 -- the sandbox is the ctx table the transform is handed.
+-- Private copies of the libraries, so a recipe that assigns string.format or
+-- table.insert changes its own view and not the engine's.
+local function copyLib(lib)
+  local out = {}
+  for key, value in pairs(lib) do out[key] = value end
+  return out
+end
+
 local function sandboxEnv()
+  local str = copyLib(string)
+  str.dump = nil
   return {
-    math = math, string = string, table = table,
+    math = copyLib(math), string = str, table = copyLib(table),
     ipairs = ipairs, pairs = pairs, next = next, select = select,
     type = type, tostring = tostring, tonumber = tonumber,
     assert = assert, error = error, pcall = pcall, unpack = unpack,
@@ -121,15 +130,11 @@ end
 -- 5.1/LuaJIT swap it after the fact with setfenv, 5.2+ dropped setfenv and
 -- take the env as load's 4th argument.  Getting this wrong hands the chunk
 -- the real globals -- require, love, io -- so it is never left to chance.
+-- Sandbox.compile also refuses precompiled bytecode: LuaJIT loads it without
+-- verification, and hostile bytecode reads and writes memory outside any
+-- environment table.
 local function loadSandboxed(source, chunkname)
-  local env = sandboxEnv()
-  if setfenv then
-    local chunk, err = loadstring(source, chunkname)
-    if not chunk then return nil, err end
-    setfenv(chunk, env)
-    return chunk
-  end
-  return load(source, chunkname, "t", env)
+  return require("src.mods.Sandbox").compile(source, chunkname, sandboxEnv())
 end
 
 -- ------- stamp
