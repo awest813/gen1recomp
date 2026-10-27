@@ -149,4 +149,18 @@ if check(field ~= nil, "Settings has a text field") then
   check(not Kit.VirtualKeyboard.active, "cancel closes it")
 end
 
+-- ---- a save's "..." menu opened from the pad puts the ring on its first item
+l.page = nil; frame(12)
+Kit.setFocus("save-menu-slot1"); frame(2)
+pad("a"); frame(2)
+eq(Kit.focusId, "save-rename", "the ring lands on Rename, the menu's first item")
+pad("b"); frame(2)
+
+-- ---- a shoulder press shows the ring on the section it moved to
+pad("rightshoulder"); frame(4)
+check(tostring(Kit.focusId):match("^nav%-") ~= nil and Kit._ringShown,
+  "the ring is on the new section's rail button (" .. tostring(Kit.focusId) .. ")")
+-- (the stubbed Box cannot open here, so the section itself stays put)
+eq(Kit.focusId, "nav-box", "Games then RB: the ring is on Box")
+
 T.finish("launcher pad audit")

@@ -104,7 +104,7 @@ local PAD_SHORT = {
   rightstick_up = "RS-UP", rightstick_down = "RS-DN",
   rightstick_left = "RS-LT", rightstick_right = "RS-RT",
   rsup = "RS-UP", rsdown = "RS-DN", rsleft = "RS-LT", rsright = "RS-RT",
-  guide = "GUIDE", back = "BACK", start = "START",
+  guide = "GUIDE", back = "SEL", start = "START", -- "BACK" read as the B button
   misc1 = "MISC1", touchpad = "PAD",
   paddle1 = "P1", paddle2 = "P2", paddle3 = "P3", paddle4 = "P4",
   x = "X", y = "Y", a = "A", b = "B",
@@ -214,6 +214,14 @@ end
 
 function BindingsMenu:capturePad(button)
   if self.pending then return self:endCapture() end
+  -- the pad's B backs out, as it does everywhere else on a console: a
+  -- controller has no Escape, and binding B away from B by accident left
+  -- the player with no way back (only the B row itself takes it)
+  local name = GamepadMap.normalizePad and GamepadMap.normalizePad(button) or button
+  if self.capture and self.capture.button.id ~= "b"
+      and Input.padBindings and Input.padBindings[name] == "b" then
+    return self:endCapture()
+  end
   self.pending = { slot = "pad", value = button }
 end
 
@@ -381,6 +389,10 @@ function BindingsMenu:confirmReset()
     for _, it in ipairs(self.items) do
       it.right = boundRight(nil, it.button)
     end
+    -- the defaults go live now: a reset is how a player gets out of a map
+    -- that left them without a working B, so it cannot wait for a close
+    -- that map may not be able to reach
+    self:commitBindings()
     if game.writeOptions then
       game:writeOptions()
     elseif game.persistOptions then
@@ -432,7 +444,7 @@ function BindingsMenu:draw()
     love.graphics.setColor(0, 0, 0, 1)
     Font.draw(Strings("PRESS A BUTTON"), 24, 60)
     Font.draw(Strings("RELEASE TO SET"), 24, 72)
-    Font.draw(Strings("ESC/2ND CANCELS"), 24, 84)
+    Font.draw(Strings("B/ESC CANCELS"), 24, 84)
     Font.draw(Strings("TOUCH B CANCELS"), 24, 96)
     love.graphics.setColor(1, 1, 1, 1)
   end

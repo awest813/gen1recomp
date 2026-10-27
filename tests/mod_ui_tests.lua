@@ -493,7 +493,7 @@ check(#bm.items == 10,
 check(bm.items[1].label == "UP" and bm.items[1].right == "UP/D-UP"
   and bm.items[5].label == "A" and bm.items[5].right == "Z/A"
   and bm.items[7].label == "START" and bm.items[7].right == "ESC/START"
-  and bm.items[8].label == "SELECT" and bm.items[8].right == "TAB/BACK",
+  and bm.items[8].label == "SELECT" and bm.items[8].right == "TAB/SEL",
   "with no rebind the rows mirror the fixed map, key and pad both (#589)")
 check(bm.items[9].label == "SLOWER" and bm.items[9].right == "0/LB"
   and bm.items[10].label == "FASTER" and bm.items[10].right == "1/RB",

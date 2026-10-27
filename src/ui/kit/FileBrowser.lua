@@ -191,6 +191,14 @@ function FileBrowser.open(opts)
     FileBrowser.currentDir = "/"
     FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   end
+  -- where it opened: B there closes it rather than climbing to "/"
+  FileBrowser.homeDir = FileBrowser.currentDir
+end
+
+-- B: up a folder, or out when back where it opened (a console's "back")
+local function atHome()
+  local dir = FileBrowser.currentDir
+  return dir == "/" or dir == "." or dir == FileBrowser.homeDir
 end
 
 function FileBrowser.close(path)
@@ -264,7 +272,7 @@ function FileBrowser.gamepadpressed(button)
     end
     return true
   elseif button == "b" then
-    if FileBrowser.currentDir ~= "/" and FileBrowser.currentDir ~= "." then
+    if not atHome() then
       FileBrowser.setDirectory(parentDir(FileBrowser.currentDir))
     else
       FileBrowser.close(nil)
@@ -449,7 +457,7 @@ function FileBrowser.draw(m)
     FileBrowser.close(nil)
     return
   end
-  local hint = "A open   B up   X next place"
+  local hint = atHome() and "A open   B close   X next place" or "A open   B up   X next place"
   if Kit.textWidth("micro", hint) < cw - cancelW - gap then
     Kit.text("micro", hint, cx, fy + (btn - Kit.textHeight("micro")) / 2, PAL.muted)
   end

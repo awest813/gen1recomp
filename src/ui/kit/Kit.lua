@@ -343,9 +343,12 @@ function Kit.beginFrame(mx, my, clicked, wheel)
   -- Resolve any queued focus-ring movement against LAST frame's geometry.
   -- Immediate mode has no geometry until the frame is built, and the ring
   -- must move before widgets test themselves against it.
-  local before = Kit.focusId
+  -- compared with last frame, not just this resolve: a host that moves the
+  -- ring itself (the game a finished import selects) scrolls it into view too
+  local before = Kit._focusShownLast
   Kit._resolveNav()
-  if Kit.focusId ~= before then Kit._revealFocus() end
+  if Kit.focusId ~= before and Kit._ringShown then Kit._revealFocus() end
+  Kit._focusShownLast = Kit.focusId
   -- Start collecting this frame's focusables.
   Kit._navN = 0
 end

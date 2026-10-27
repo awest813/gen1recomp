@@ -1346,6 +1346,11 @@ function Launcher:gamepadpressed(joystick, button)
       -- the save the player picked, as Continue does
       local slot = self:selectedSaveId(v)
       self:queue(function() self:play(v, slot) end)
+    elseif not self.page and not busy and self.selected and self.ready[self.selected]
+        and not self:importing() then
+      -- no save yet: Start begins one, as New game does
+      local v = self.selected
+      self:queue(function() self:newGame(v) end)
     else
       Kit.activateFocused()
     end
@@ -1389,7 +1394,12 @@ function Launcher:cycleSection(dir)
   local at = 1
   for i, it in ipairs(Launcher.NAV) do if it.id == self:section() then at = i end end
   local nextId = Launcher.NAV[(at - 1 + dir) % #Launcher.NAV + 1].id
-  self:queue(function() self:goSection(nextId) end)
+  self:queue(function()
+    self:goSection(nextId)
+    -- the ring shows where the shoulder went: the section's rail button,
+    -- one Right away from its page (it stayed hidden on the old one)
+    Kit.setFocus("nav-" .. nextId)
+  end)
 end
 
 -- The left stick moves the ring like the d-pad: one step when it is pushed
@@ -2242,7 +2252,7 @@ function Launcher:drawGame(x, y, w, h, s)
     rightW = mw + kw + Theme.space("s", s) + Theme.space("m", s)
     -- "..." : the game's own, rarer actions
     local gx = x + w - pad - mw - Theme.space("s", s) - kw - Theme.space("s", s) - mh
-    if Kit.button(gx, by, mh, mh, "", { id = "banner-menu", icon = "ellipsis", face = "bare", ring = false,
+    if Kit.button(gx, by, mh, mh, "", { id = "banner-menu", icon = "ellipsis", face = "bare",
         iconInk = PAL.text }) then
       self:queue(function() self.gameMenu = not self.gameMenu end)
     end
@@ -2400,7 +2410,7 @@ function Launcher:drawGame(x, y, w, h, s)
       local mbw = math.max(Kit.tapMin(), math.floor(36 * s))
       local mbx, mby = cx + rw - mbw - Theme.space("s", s), ry + (cardH - mbw) / 2
       if Kit.button(mbx, mby, mbw, mbw, "", { id = "save-menu-" .. slot.id, icon = "ellipsis",
-          face = "bare", ring = false, iconInk = picked and PAL.inverse or PAL.text }) then
+          face = "bare", iconInk = picked and PAL.inverse or PAL.text }) then
         local id = slot.id
         self:queue(function()
           self.selectedSlot[scope] = id
@@ -2554,6 +2564,16 @@ function Launcher:drawPopup(at, items, x, y, w, h, s, openerId, close)
   Theme.strokeRounded(mx, my, mw, mh, PAL.line, Theme.A.hairline, 1, Theme.radius())
   local wasOverlay = Kit._overlay
   Kit._overlay = true
+  -- opened from the pad: the ring moves onto its first item, or the player
+  -- sees a menu with nothing highlighted
+  self._popupNow = self._popupNow or {}
+  self._popupNow[openerId] = true
+  if not (self._popupPrev and self._popupPrev[openerId]) and Kit._ringShown
+      and Kit.focusId == openerId then
+    for _, it in ipairs(items) do
+      if it.enabled ~= false then Kit.focusId = it.id break end
+    end
+  end
   for i, it in ipairs(items) do
     local iy = my + Theme.space("xs", s) + (i - 1) * itemH
     if Kit.button(mx + Theme.space("xs", s), iy, mw - 2 * Theme.space("xs", s), itemH, it.label,
@@ -2808,6 +2828,8 @@ function Launcher:draw()
   end
   Kit.beginFrame(mx, my, click ~= nil, self.wheel or 0)
   self.pageEntryId = nil
+  -- which popups were up last frame, so one that just opened can take the ring
+  self._popupPrev, self._popupNow = self._popupNow or {}, {}
   -- the toast is drawn last; last frame's rect keeps a press on it from
   -- also landing on the control underneath
   local tr = self.message and self.toastRect

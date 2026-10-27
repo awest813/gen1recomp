@@ -159,7 +159,7 @@ local function drawCapture()
   local x, y = 5 * 8 + 4, 9 * 8 + 2
   Window.printPx(Strings("PRESS A BUTTON"), x, y, { colors = FrlgFont.COLOR.NORMAL })
   Window.printPx(Strings("RELEASE TO SET"), x, y + 15, { colors = FrlgFont.COLOR.NORMAL })
-  Window.printPx(Strings("ESC/2ND CANCELS"), x, y + 30, { colors = FrlgFont.COLOR.NORMAL })
+  Window.printPx(Strings("B OR ESC CANCELS"), x, y + 30, { colors = FrlgFont.COLOR.NORMAL })
 end
 
 local function drawConfirm(c)

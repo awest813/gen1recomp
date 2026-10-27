@@ -64,17 +64,26 @@ local game = newGame()
 local bm = BindingsMenu.new(game)
 game.stack:push(bm)
 
+-- the pad's B cancels a capture on any other row (a controller has no
+-- Escape), so the swap is made from the B row
 bm.index = ROW_A
 press(bm, "a")
 eq(bm.capture, bm.items[ROW_A], "A arms the A row")
 bm:onGamepadPressed("b")
+eq(bm.capture, nil, "the pad's B cancels the A row's capture")
+check(game.save.options.bindings == nil, "and stores nothing")
+
+bm.index = ROW_B
+press(bm, "a")
+eq(bm.capture, bm.items[ROW_B], "A arms the B row")
+bm:onGamepadPressed("a")
 check(game.save.options.bindings == nil,
       "a pad capture holds its press; nothing stores before the release")
-bm:onGamepadReleased("b")
+bm:onGamepadReleased("a")
 local bindings = game.save.options.bindings
-eq(bindings.a.pad, "b", "releasing pad B stores it on the A row")
-eq(bindings.b.pad, "a",
-   "and the B row, which owned pad B, inherits the A row's old pad (#589)")
+eq(bindings.b.pad, "a", "releasing pad A stores it on the B row")
+eq(bindings.a.pad, "b",
+   "and the A row, which owned pad A, inherits the B row's old pad (#589)")
 eq(bm.items[ROW_A].right, "Z/B", "the A row redraws with the new pad")
 eq(bm.items[ROW_B].right, "X/A", "so does the B row")
 
@@ -127,13 +136,13 @@ check(bindings.select == nil, "press alone commits nothing (#589)")
 eq(game.wroteOptions, writesAfterSwap, "and touches nothing on disk")
 bm:onKeyReleased("q")
 eq(bindings.select.key, "q", "the release is the commit")
-eq(bm.items[ROW_SELECT].right, "Q/BACK", "the row shows the new key")
+eq(bm.items[ROW_SELECT].right, "Q/SEL", "the row shows the new key")
 
 -- ---- (d) SELECT on a row forgets its rebind -------------------------------
 
 press(bm, "select")
 check(bindings.select == nil, "SELECT drops the row's overlay entry (#589)")
-eq(bm.items[ROW_SELECT].right, "TAB/BACK", "the row falls back to the default")
+eq(bm.items[ROW_SELECT].right, "TAB/SEL", "the row falls back to the default")
 -- the swapped B row clears the same way; a second SELECT on the now
 -- default row is a no-op, not a write
 local writes = game.wroteOptions

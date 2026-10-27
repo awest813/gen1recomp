@@ -66,8 +66,8 @@ do
   local game = newGame()
   local bm = BindingsMenu.new(game)
   game.stack:push(bm)
-  capturePad(bm, ROW_A, "b")
-  eq(bm.items[ROW_B].right, "X/A", "binding A to the B button hands B the A button")
+  capturePad(bm, ROW_B, "a")
+  eq(bm.items[ROW_A].right, "Z/B", "binding B to the A button hands A the B button")
   bm.index = ROW_A
   bm:clearBinding(bm.items[ROW_A])
   eq(bm.items[ROW_A].right, "Z/A", "clearing A puts it back on the A button")
@@ -157,6 +157,27 @@ do
   gold.bindings = nil -- RESET ALL
   GoldSave.saveOptions(gold)
   eq(SaveData.loadOptions().bindings, nil, "a reset in Gold clears them everywhere")
+end
+
+-- ---- the pad's B cancels a capture, and RESET applies at once
+do
+  Input:init()
+  local game = newGame()
+  local bm = BindingsMenu.new(game)
+  game.stack:push(bm)
+  bm.index = 9 -- SLOWER
+  press(bm, "a")
+  bm:onGamepadPressed("b")
+  eq(bm.capture, nil, "B backs out of an armed row")
+  eq(game.save.options.bindings, nil, "without binding B to it")
+  game.save.options.bindings = { b = { pad = "leftshoulder" }, l = { pad = "b" } }
+  Input:applyBindings(game.save.options.bindings)
+  eq(Input.padBindings.b, "l", "a map that took B away")
+  bm:confirmReset()
+  local box = game.stack:top()
+  box.index = 1
+  box.onChoose(true)
+  eq(Input.padBindings.b, "b", "RESET gives B back straight away")
 end
 
 T.finish("rebind controls audit")
