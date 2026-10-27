@@ -1066,6 +1066,13 @@ function Game2:writeSave()
   return written, err
 end
 
+-- F2 loads from the title too; in a running game it waits like a save.
+function Game2:quickLoadAllowed()
+  local w = self.world
+  if not (w and w.map and w.player) then return true end
+  return self:quickSaveAllowed()
+end
+
 -- engine/overworld/events.asm:241-244
 function Game2:quickSaveAllowed()
   local w = self.world
@@ -2225,7 +2232,7 @@ function Game2:hotkey(key)
     self:writeSave()
     return true
   elseif key == "f2" then
-    if not self:quickSaveAllowed() then return true end
+    if not self:quickLoadAllowed() then return true end
     local loaded = Save.load()
     if loaded then self:continueGame(loaded) end
     return true

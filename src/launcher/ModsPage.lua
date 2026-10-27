@@ -1573,7 +1573,14 @@ end
 
 function ModsPage:installExample(row)
   local l = self.launcher
-  local ok, manifest, err = pcall(require("src.mods.ModLibrary").installExample, row.name,
+  -- replacing a copy asks twice: it may hold the player's own edits
+  if row.outdated and l.armedUpdate ~= row.name then
+    l.armedUpdate = row.name
+    return l:say("Press Update again to replace your copy of " .. tostring(row.title)
+      .. " with this build's. Your copy is kept in a backup folder.", "notice")
+  end
+  l.armedUpdate = nil
+  local ok, manifest, err, backup = pcall(require("src.mods.ModLibrary").installExample, row.name,
     { replace = row.outdated == true })
   if not ok then manifest, err = nil, manifest end
   if not manifest then
@@ -1583,8 +1590,8 @@ function ModsPage:installExample(row)
   self.exampleRows = nil
   local v = l.selected
   if row.outdated then
-    return l:say(("%s is updated to this build's copy. It applies the next time the game starts.")
-      :format(tostring(row.title)), "info")
+    return l:say(("%s is updated to this build's copy; your old one is in %s. "
+      .. "It applies the next time the game starts."):format(tostring(row.title), tostring(backup)), "info")
   end
   if row.supported == false then
     l:say(("%s is installed. It does not run on %s, so it stays off here."):format(
@@ -1692,7 +1699,8 @@ function ModsPage:drawExample(x, y, w, h, s)
   end
   local items = {}
   if row.outdated then
-    cy = para("small", "Your copy is from an older build. Update replaces it with this build's; "
+    cy = para("small", "Your copy differs from this build's: an older build installed it, or "
+      .. "its files were changed. Update replaces it and keeps your copy in a backup folder; "
       .. "its settings are kept.", cx, cy, cw, PAL.yellow, gap)
   end
   if row.installed then

@@ -1312,6 +1312,10 @@ function Launcher:gamepadpressed(joystick, button)
     local dir = DPAD_DIRS[okM and GM.mapLauncherButton and GM.mapLauncherButton(button) or button]
     if dir and not (self._boxPopup or self._boxPrompt) then
       self.dpadDir, self.dpadHeld, self.dpadPad, self.dpadButton = dir, 0, joystick, button
+    elseif not dir then
+      -- any other button ends a repeat (its release may never come: the
+      -- press that opened a page or launched a game)
+      self.dpadDir = nil
     end
   end
   -- the on-screen keyboard and the file browser own the pad while they are
@@ -1398,7 +1402,12 @@ function Launcher:cycleSection(dir)
     self:goSection(nextId)
     -- the ring shows where the shoulder went: the section's rail button,
     -- one Right away from its page (it stayed hidden on the old one)
-    Kit.setFocus("nav-" .. nextId)
+    -- the rail's button, or the bottom tab bar's on a phone held upright
+    local id = "nav-" .. nextId
+    for i = 1, Kit._navPrevN or 0 do
+      if Kit._nav[i].id == "tab-" .. nextId then id = "tab-" .. nextId break end
+    end
+    Kit.setFocus(id)
   end)
 end
 
@@ -2916,12 +2925,18 @@ function Launcher:draw()
     -- Back lands the ring on the control that opened the page (the "Save
     -- sync" row), not wherever the vanished Back button sat
     self.openers = self.openers or {}
+    -- only a sub-page and the page it was opened from: switching sections
+    -- (Settings, then Online, then Settings) is not a Back
     local prevKey = self.lastPageKey
     local opener = prevKey and self.openers[prevKey]
-    if opener and opener.from == pageKey then
+    local function sub(child, parent)
+      return PARENT[child] == parent or (RETURNS[child] and self.cameFrom
+        and tostring(self.cameFrom[child]) == parent)
+    end
+    if opener and opener.from == pageKey and sub(self.lastPage, pageKey) then
       self.openers[prevKey] = nil
       if Kit._ringShown and opener.id then Kit.focusId = opener.id end
-    elseif prevKey then
+    elseif prevKey and self.page and sub(self.page, prevKey) then
       self.openers[pageKey] = { from = prevKey, id = Kit.focusId }
     end
     -- an unsaved relay address is not kept for the next visit, where it

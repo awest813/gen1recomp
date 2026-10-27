@@ -401,7 +401,9 @@ function Save.loadOptions(fs)
     for key in pairs(SHARED_KEYS) do
       if loaded[key] ~= nil then
         options[key] = loaded[key]
-      elseif type(stored) == "table" and stored[key] ~= nil then
+      -- bindings are never read back from the gold block: a copy an older
+      -- build left there would undo a RESET made in Red or FireRed
+      elseif key ~= "bindings" and type(stored) == "table" and stored[key] ~= nil then
         options[key] = stored[key]
       end
     end

@@ -345,6 +345,12 @@ function Kit.beginFrame(mx, my, clicked, wheel)
   -- must move before widgets test themselves against it.
   -- compared with last frame, not just this resolve: a host that moves the
   -- ring itself (the game a finished import selects) scrolls it into view too
+  -- the on-screen keyboard's Done / Cancel, pressed after its field already
+  -- drew this frame, reach the field on the next
+  if Kit._carry then
+    for _, e in ipairs(Kit._carry) do edits[#edits + 1] = e end
+    Kit._carry = nil
+  end
   local before = Kit._focusShownLast
   Kit._resolveNav()
   if Kit.focusId ~= before and Kit._ringShown then Kit._revealFocus() end
@@ -403,7 +409,13 @@ end
 -- Anything typed while no field had focus is dropped here rather than
 -- replayed into the next field that gets clicked.
 function Kit.endFrame()
-  if Kit.focus and ((Kit.mouseClicked and not Kit._fieldHit) or not Kit._focusDrawn) then Kit.blur() end
+  -- the on-screen keyboard is the field's input while it is up: a tap on its
+  -- keys is not a click away from the field
+  local vkUp = VirtualKeyboard.active or (Kit._carry and #Kit._carry > 0)
+  if Kit.focus and not vkUp
+      and ((Kit.mouseClicked and not Kit._fieldHit) or not Kit._focusDrawn) then
+    Kit.blur()
+  end
   for i = #edits, 1, -1 do edits[i] = nil end
   Kit.wheelY = 0
   Kit._activateId, Kit._padActivate = nil, nil
@@ -484,6 +496,8 @@ function Kit.focusable(id, x, y, w, h)
   slot.id, slot.x, slot.y, slot.w, slot.h = id, x, y, w, h
   local clip = Kit._clipRect
   slot.clipX, slot.clipY, slot.clipH = clip and clip.x, clip and clip.y, clip and clip.h
+  -- drawn inside a popup (Kit._overlay): the ring stays among its items
+  slot.overlay = Kit._overlay and true or nil
   Kit._navSeen[id] = true
   if id == Kit.focusId then
     local r = Kit._lastFocusRect or {}
@@ -529,7 +543,10 @@ function Kit._resolveColumns(cur, dir, n)
   local function each(fn)
     for i = 1, n do
       local c = Kit._nav[i]
-      if c.id ~= cur.id and colOf(c) ~= "skip" then fn(c, colOf(c)) end
+      -- inside a popup, only its own items: the cards under it are not reachable
+      if c.id ~= cur.id and colOf(c) ~= "skip" and (not cur.overlay or c.overlay) then
+        fn(c, colOf(c))
+      end
     end
   end
   local best, bestScore
@@ -1113,12 +1130,15 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
       targetId = id,
       title = placeholder or "Enter Text",
       onDone = function(newText, confirmed)
+        -- carried to the next frame (beginFrame): a tap on Done lands after
+        -- this field has drawn, and endFrame would drop it
+        Kit._carry = Kit._carry or {}
         if confirmed then
-          edits[#edits + 1] = "\r"
+          Kit._carry[#Kit._carry + 1] = "\r"
         else
           -- cancelled: the text goes back to what it was, and the field ends
           Kit._restore = { id = id, value = before }
-          edits[#edits + 1] = "\27"
+          Kit._carry[#Kit._carry + 1] = "\27"
         end
       end
     })

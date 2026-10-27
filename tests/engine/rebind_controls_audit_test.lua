@@ -157,6 +157,13 @@ do
   gold.bindings = nil -- RESET ALL
   GoldSave.saveOptions(gold)
   eq(SaveData.loadOptions().bindings, nil, "a reset in Gold clears them everywhere")
+  -- an older build's copy in the gold block does not come back after a reset elsewhere
+  local file = SaveData.loadOptions()
+  file.gold = file.gold or {}
+  file.gold.bindings = { a = { key = "q" } }
+  file.bindings = nil
+  SaveData.saveOptions(file)
+  eq(GoldSave.loadOptions().bindings, nil, "Gold ignores a stale per-game copy")
 end
 
 -- ---- the pad's B cancels a capture, and RESET applies at once

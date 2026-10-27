@@ -344,6 +344,8 @@ end
 -- build scripts).  One level deeper than the loader looks, so none of them
 -- runs until a player installs it.
 ModLibrary.EXAMPLES = ModLibrary.ROOT .. "/examples"
+-- where an example's replaced copy is kept (installExample opts.replace)
+ModLibrary.BACKUPS = "mod_backups"
 
 -- what an installed copy leaves out: the author's suites and asset scripts
 local EXAMPLE_SKIP = { tests = true, tools = true, [".modkitignore"] = true }
@@ -441,13 +443,28 @@ function ModLibrary.installExample(name, opts)
   if clash then return nil, clash end
   if installed and not opts.replace then return nil, manifest.id .. " is already installed" end
   local target = installed or (ModLibrary.ROOT .. "/" .. manifest.id)
-  if installed then removeTree(fs, installed, out) end
+  -- a copy that differs may be the player's own edits (the gallery README
+  -- says to build on an example), so the old folder is kept whole in a
+  -- backup outside mods/ (the loader never sees it) before it is replaced
+  local backup
+  if installed then
+    backup = ModLibrary.BACKUPS .. "/" .. manifest.id .. "-" .. tostring(os.time())
+    out.mkdir(ModLibrary.BACKUPS)
+    local okB, berr = pcall(copyTree, fs, out, installed, backup)
+    if not okB then
+      removeTree(fs, backup, out)
+      return nil, "could not back up your copy first: " .. tostring(berr)
+    end
+    removeTree(fs, installed, out)
+  end
   out.mkdir(ModLibrary.ROOT)
   local ok, err = pcall(copyExample, fs, out, from, target)
   if not ok then
     removeTree(fs, target, out)
+    if backup then pcall(copyTree, fs, out, backup, target) end
     return nil, tostring(err)
   end
+  if backup then return manifest, nil, backup end
   return manifest
 end
 

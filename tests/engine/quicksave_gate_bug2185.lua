@@ -18,6 +18,10 @@ check(Game2.quickSaveAllowed(gen2(true)) == false,
   "and refused while the world is busy with a scene script")
 check(Game2.quickSaveAllowed({}) == false,
   "with no world at all (title, intro) there is nothing to save")
+check(Game2.quickLoadAllowed({}) == true,
+  "but F2 still loads from the title")
+check(Game2.quickLoadAllowed(setmetatable(gen2(true), { __index = Game2 })) == false,
+  "and waits for a busy world like a save")
 
 local function gen1(running, moving, moves, extra)
   local ow = { player = { moving = moving },
@@ -54,6 +58,8 @@ check(Game.quickSaveAllowed(gen1(false, false, nil, { title = true })) == true,
 -- touch key bar's SAVE wrote an empty save the launcher then offered as Continue
 check(Game.quickSaveAllowed({}) == false,
   "with no overworld there is nothing to save")
+check(Game.quickLoadAllowed({}) == true,
+  "but F2 still loads from the title")
 
 local hotkeyed = { refused = 0 }
 local stub = setmetatable({

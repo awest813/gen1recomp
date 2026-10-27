@@ -880,7 +880,7 @@ function Game:keypressed(key)
       self:writeSave()
       return
     elseif key == "f2" then
-      if not self:quickSaveAllowed() then return end
+      if not self:quickLoadAllowed() then return end
       local loaded, recovered = SaveData.load()
       if loaded then
         -- F2 jumps straight to the loaded save's map/position, with no
@@ -1384,6 +1384,14 @@ function Game:writeSave()
     if eng then pcall(eng.noteSaveWritten, eng) end
   end
   return written
+end
+
+-- F2 loads from the title too (nothing running is lost); once a game is
+-- up it waits for the same quiet moments a save does.
+function Game:quickLoadAllowed()
+  local ow = self.overworld
+  if not (ow and ow.player) then return true end
+  return self:quickSaveAllowed()
 end
 
 function Game:quickSaveAllowed()

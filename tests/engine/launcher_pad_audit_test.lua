@@ -147,6 +147,15 @@ if check(field ~= nil, "Settings has a text field") then
   Kit.VirtualKeyboard.text = "typed"
   Kit.VirtualKeyboard.close(false); frame(2)
   check(not Kit.VirtualKeyboard.active, "cancel closes it")
+  eq(Kit.focus, nil, "and the field ends with it")
+  -- a tap on the keyboard (touch on a Steam Deck) is not a click away
+  Kit.setFocus(field); frame(2)
+  pad("a")
+  check(Kit.VirtualKeyboard.active, "the keyboard is up again")
+  l:mousepressed(5, 5, 1); l:mousereleased(5, 5, 1); frame(2)
+  eq(Kit.focus, field, "a click while it is up keeps the field focused")
+  Kit.VirtualKeyboard.close(true); frame(2)
+  eq(Kit.focus, nil, "and Done still ends the field")
 end
 
 -- ---- a save's "..." menu opened from the pad puts the ring on its first item
@@ -171,5 +180,20 @@ eq(Kit.focusId, "safe-mode", "Down from Back reaches the Safe mode switch")
 l:keypressed("down"); frame(2)
 eq(Kit.focusId, "mods-all-on", "then the Turn all row, not the bottom row")
 l.page = nil; frame(12)
+
+-- ---- switching sections is not a Back, and a held d-pad stops at another button
+l.page = "settings"; frame(12)
+Kit.setFocus("nav-online"); frame(2)
+pad("a"); frame(12)
+Kit.setFocus("nav-settings"); frame(2)
+pad("a"); frame(12)
+eq(l.page, "settings", "Online then Settings from the rail")
+eq(Kit.focusId, "nav-settings", "leaves the ring on Settings, not back on Online")
+local held = { isGamepad = function() return true end, getName = function() return "Xbox" end,
+               isGamepadDown = function() return true end }
+l:gamepadpressed(held, "dpdown")
+pad("leftshoulder"); frame(30)
+eq(Kit.focusId, "nav-online", "a shoulder press ends a d-pad repeat; the ring stays on Online")
+l:gamepadreleased(held, "dpdown")
 
 T.finish("launcher pad audit")
