@@ -303,9 +303,37 @@ check(fakeFs.files["gold/" .. ImportJob.LOCK_PATH] ~= nil, "and leaves that wind
 fakeFs.files["gold/" .. ImportJob.LOCK_PATH] = tostring(os.time() - 3600) .. "\n"
 local stale = ImportJob.start(verified("gold"))
 eq(stale.state, "working", "a lock left by a crash an hour ago does not block a new import")
+check(fakeFs.files["gold/" .. ImportJob.LOCK_PATH]:match("^%d+ %d*\n$") ~= nil,
+  "the new lock records its time and, where known, its process")
 for _ = 1, 10 do if stale:step(0) ~= "working" then break end end
 
+-- where the host can tell, a fresh lock whose process is gone (quit or
+-- killed a moment ago) does not block either; a live one does
+local okFfi, ffi = pcall(require, "ffi")
+if okFfi and ffi.os ~= "Windows" then
+  pcall(ffi.cdef, "int getpid(void);")
+  fakeFs.files["gold/" .. ImportJob.LOCK_PATH] = os.time() .. " 4194303\n"
+  local afterQuit = ImportJob.start(verified("gold"))
+  eq(afterQuit.state, "working", "a lock from a process that is gone is ignored at once")
+  for _ = 1, 10 do if afterQuit:step(0) ~= "working" then break end end
+  fakeFs.files["gold/" .. ImportJob.LOCK_PATH] = os.time() .. " " .. ffi.C.getpid() .. "\n"
+  local live = ImportJob.start(verified("gold"))
+  eq(live.state, "error", "a lock from a running process still refuses")
+end
+fakeFs.files["gold/" .. ImportJob.LOCK_PATH] = nil
+
+-- a refused import never empties the tree the other window is filling;
+-- a failed one empties its own (a half-built cache is what filled the disk)
+calls = {}
+fakeFs.files["gold/" .. ImportJob.LOCK_PATH] = tostring(os.time()) .. "\n"
+ImportJob.start(verified("gold"))
+local cleared = false
+for _, c in ipairs(calls) do if c:find("^clear gold/") then cleared = true end end
+check(not cleared, "a refused import leaves the other window's tree alone")
+fakeFs.files["gold/" .. ImportJob.LOCK_PATH] = nil
+
 -- 5. an extractor error reaches the player as a sentence; the cause is kept
+calls = {}
 Extractor.new = function()
   return { run = function() error("src/import/RomExtractor.lua:99: attempt to index a nil value", 0) end }
 end
@@ -315,6 +343,9 @@ eq(bad.state, "error", "an extractor crash fails the job")
 playerSentence(bad.error, "the extractor-crash message")
 check(bad.detail:find("RomExtractor.lua:99", 1, true) ~= nil, "the technical cause stays in job.detail")
 eq(fakeFs.files["red/" .. ImportJob.LOCK_PATH], nil, "a failed import drops its lock too")
+local emptied = 0
+for _, c in ipairs(calls) do if c == "clear red/data/generated" then emptied = emptied + 1 end end
+eq(emptied, 2, "and empties the half-built tree it started (once to start, once on failure)")
 
 -- 6. a publish that raises (an adapter's I/O error) fails the job cleanly
 Extractor.new = function() return { run = function() end } end

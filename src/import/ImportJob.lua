@@ -33,8 +33,8 @@ ImportJob.OVERDUMP_BYTES = { [4194304] = true, [8388608] = true, [33554432] = tr
 -- A lock older than this belongs to an import that was killed, not one that
 -- is still running (a running one refreshes it every LOCK_REFRESH seconds).
 ImportJob.LOCK_PATH = "rom-cache.importing"
-ImportJob.LOCK_REFRESH = 5
-ImportJob.LOCK_STALE = 20
+ImportJob.LOCK_REFRESH = 2
+ImportJob.LOCK_STALE = 8
 
 local TIMING = os.getenv("POKEPORT_IMPORT_TIMING") == "1"
 
@@ -243,19 +243,57 @@ end
 
 -- Another process importing this game right now (two windows, or a second
 -- copy of the app), going by the lock it refreshes while it runs.
+-- This process's id and a liveness probe for another's, where the host has
+-- them (POSIX through FFI).  Elsewhere only the lock's age counts.
+local processApi
+local function processes()
+  if processApi ~= nil then return processApi end
+  processApi = false
+  local okF, ffi = pcall(require, "ffi")
+  if not okF or ffi.os == "Windows" then return processApi end
+  pcall(ffi.cdef, "int getpid(void); int kill(int pid, int sig);")
+  local okP = pcall(function() return ffi.C.getpid, ffi.C.kill end)
+  if okP then
+    processApi = {
+      self = function() return tonumber(ffi.C.getpid()) end,
+      -- signal 0 only checks: 0 = alive; -1 with EPERM = alive, someone else's
+      alive = function(pid)
+        if ffi.C.kill(pid, 0) == 0 then return true end
+        return ffi.errno() == 1
+      end,
+    }
+  end
+  return processApi
+end
+
+-- Another process importing this game right now (two windows, or a second
+-- copy of the app), going by the lock it refreshes while it runs: "<time>
+-- <pid>".  A lock whose process is gone (quit or killed mid-import) is
+-- ignored at once where the host can tell, and after LOCK_STALE seconds
+-- everywhere.
 local function lockedElsewhere(prefix)
   local ok, raw = withPrefix(prefix, function(CacheFs)
     return CacheFs.read and CacheFs.read(ImportJob.LOCK_PATH)
   end)
   if not ok or type(raw) ~= "string" then return false end
-  local stamp = tonumber(raw:match("^(%d+)"))
-  return stamp ~= nil and math.abs(os.time() - stamp) < ImportJob.LOCK_STALE
+  local stamp, pid = raw:match("^(%d+)%s*(%d*)")
+  stamp, pid = tonumber(stamp), tonumber(pid)
+  if not stamp or math.abs(os.time() - stamp) >= ImportJob.LOCK_STALE then return false end
+  local api = pid and processes()
+  if api then
+    local okA, alive = pcall(api.alive, pid)
+    if okA and not alive then return false end
+  end
+  return true
 end
 
 function ImportJob:_lock()
   self.lockedAt = os.time()
+  local api = processes()
+  local pid = api and select(2, pcall(api.self))
   withPrefix(self.prefix, function(CacheFs)
-    return CacheFs.write(ImportJob.LOCK_PATH, tostring(self.lockedAt) .. "\n")
+    return CacheFs.write(ImportJob.LOCK_PATH, ("%d %s\n"):format(self.lockedAt,
+      type(pid) == "number" and tostring(pid) or ""))
   end)
 end
 
@@ -304,6 +342,8 @@ function ImportJob.start(rom)
   job:_lock()
   job:_mark("Clearing the old game data")
   local ok, err = clearCache(job.prefix)
+  -- from here on the tree is this job's to fill, and to empty if it fails
+  job.ownsTree = true
   if not ok then return job:fail(err) end
   if threadsUsable() and job:_startThread(rom.data) then return job end
   job:_startCoroutine(rom.data)
@@ -319,6 +359,14 @@ function ImportJob:fail(err, detail)
   end
   self.state, self.error, self.detail = "error", tostring(err), tostring(detail)
   self.thread, self.worker = nil, nil
+  -- A half-built cache is useless without its marker, and after a full disk
+  -- it is what fills the disk: the game's own saves would fail next.  Only
+  -- a job that cleared the tree itself empties it (never one refused for
+  -- another window's lock).
+  if self.ownsTree then
+    self.ownsTree = nil
+    pcall(clearCache, self.prefix)
+  end
   if running[self.prefix] == self then running[self.prefix] = nil end
   self:_unlock()
   pcall(function()

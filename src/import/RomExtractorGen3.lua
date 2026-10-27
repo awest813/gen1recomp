@@ -789,7 +789,12 @@ function runBody(self, sha1)
     }
   end
 
-  print("[RomExtractorGen3] Parallel extraction fell back to sequential: " .. tostring(parErr or parRes))
+  -- The sequential path is for hosts whose threads failed, not for a disk
+  -- that is full or read-only: running every stage again would only fail
+  -- the same way, minutes later on a slow device.
+  local parText = tostring(parErr or parRes)
+  if okPar and parText:find("could not write", 1, true) then error(parText, 0) end
+  print("[RomExtractorGen3] Parallel extraction fell back to sequential: " .. parText)
 
   local ok, detail, okPoke, okAux = true, nil, true, true
   for _, stage in ipairs(self.plan.sequential or {}) do
