@@ -107,7 +107,9 @@ local function isMatchingFilter(name, isDir, mode)
     end
     return false
   elseif mode == "save" then
-    return (ext == "sav" or ext == "srm" or ext == "lua")
+    -- the same set the launcher's import takes (Launcher SAVE_KIND)
+    return (ext == "sav" or ext == "srm" or ext == "sa1" or ext == "dsv" or ext == "sgm"
+      or ext == "lua")
   elseif mode == "box" then
     return (ext == "gci" or ext == "sav")
   elseif mode == "mod" then

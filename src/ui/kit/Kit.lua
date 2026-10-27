@@ -782,6 +782,14 @@ end
 -- A widget inside a clip region can sit at coordinates outside the visible
 -- rect, so the active clip bounds the hit: what the user cannot see cannot
 -- take the tap.
+-- A pointer press inside the rect this frame.  A row that holds a button
+-- asks this, not Kit.hit, before treating its own press as the row's: a row
+-- activated by Enter or A while the pointer happens to rest over its button
+-- is still the row being chosen.
+function Kit.clickIn(x, y, w, h)
+  return Kit.mouseClicked and Kit.hit(x, y, w, h)
+end
+
 function Kit.hit(x, y, w, h)
   local c = Kit._clipRect
   if c and not (Kit.mouseX >= c.x and Kit.mouseX <= c.x + c.w

@@ -323,7 +323,10 @@ function CartsPage:draw(x, y, w, h, s)
   if l.page == "cartnew" then
     return l:drawFitted("cartnew", x, y, w, h, s, function(_, ...) return self:drawNew(...) end)
   end
-  return self:drawCarts(x, y, w, h, s)
+  -- too short for the list between its header and its buttons (a phone on
+  -- its side): the whole page scrolls instead of overlapping
+  return l:drawFitted("carts:" .. tostring(l.selected), x, y, w, h, s,
+    function(_, ...) return self:drawCarts(...) end)
 end
 
 local function twoLines(title, detail, x, y, h, w, titleInk, detailInk, s)
@@ -388,6 +391,8 @@ function CartsPage:drawCarts(x, y, w, h, s)
   local gap = math.floor(4 * s)
   local footY = y + h - pad - bh - hintH - gap8
   local viewH = math.max(rowH, footY - gap8 - actH - cy)
+  -- two rows of the list between the header and what sits below it
+  local need = math.max(h, (cy - y) + 2 * (rowH + gap) + gap8 + actH + (y + h - footY))
   local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
   l.cartScroll = Kit.scrollInput(l.cartScroll or 0, maxAt, cx, cy, cw, viewH)
   local py = Kit.scrollBegin(cx, cy, cw, viewH, l.cartScroll, maxAt)
@@ -413,7 +418,7 @@ function CartsPage:drawCarts(x, y, w, h, s)
       chosen and (ink or PAL.text) or PAL.muted, s)
     local rbx, rby = cx + rw - bw - math.floor(8 * s), ry + (rowH - sbh) / 2
     -- a press on Remove is not also a press on its row
-    if clicked and (row.original or not Kit.hit(rbx, rby, bw, sbh)) then
+    if clicked and (row.original or not Kit.clickIn(rbx, rby, bw, sbh)) then
       l:queue(function() l:selectCart(v, row.id) end)
     end
     if not row.original then
@@ -443,6 +448,7 @@ function CartsPage:drawCarts(x, y, w, h, s)
     end)
   end
   Kit.textWrapped("micro", hint, cx, footY + bh + gap8, cw, PAL.faint)
+  return need
 end
 
 -- The form that saves the current mod setup as a cart.

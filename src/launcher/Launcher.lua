@@ -592,8 +592,9 @@ function Launcher:scanInbox()
       elseif item.kind == "rom" then
         if not self:importing() then
           self:importData(lfs.read(item.path), item.name)
-          ok = self:importing()
-          if not ok then self.inboxTried[item.path] = true end
+          -- the ROM stays in the imports folder until its import has
+          -- finished: a failed one leaves the player's only copy where it was
+          if self:importing() then self.inboxRom = item end
         else
           self.inboxTried[item.path] = nil -- one ROM at a time; next scan
         end
@@ -744,7 +745,7 @@ end
 
 -- ------------------------------------------------------------ save files
 
-local SAVE_KIND = { label = "Save file", exts = { "sav", "srm", "sa1", "dsv", "sgm" } }
+local SAVE_KIND = { label = "Save file", exts = { "sav", "srm", "sa1", "dsv", "sgm", "lua" } }
 
 function Launcher:selectedSaveId(version)
   version = version or self.selected
@@ -840,10 +841,7 @@ function Launcher:sayExported(path)
   local okP, Platform = pcall(require, "src.core.Platform")
   local action
   if dir and sys and sys.openURL and okP and Platform.canSpawnProcess() then
-    action = { label = "Open folder", run = function()
-      local url = "file://" .. (dir:sub(1, 1) == "/" and "" or "/") .. dir:gsub("\\", "/")
-      if not pcall(sys.openURL, url) then self:say("Could not open " .. dir, "error") end
-    end }
+    action = { label = "Open folder", run = function() self:openFolder(dir) end }
   end
   self:say("Exported to " .. tostring(path), "info", action)
 end
@@ -1107,6 +1105,10 @@ function Launcher:update(dt)
     if state == "done" then
       local version = self.job.version
       self.job = nil
+      if self.inboxRom then
+        pcall(require("src.launcher.Inbox").take, self.inboxRom)
+        self.inboxRom = nil
+      end
       self:refresh(true)
       self:selectGame(version)
       self:say(GameVersion.info(version).displayName .. " is ready to play.", "info")
@@ -1116,6 +1118,7 @@ function Launcher:update(dt)
       -- from here on their own
       if self.opts.onImported then return self.opts.onImported(version) end
     elseif state == "error" then
+      self.inboxRom = nil -- left in the imports folder, not retried this session
       self:say("Import failed: " .. tostring(self.job.error), "error")
       -- a headless import (POKEPORT_IMPORT_ONLY) has no one to read that
       if os.getenv("POKEPORT_IMPORT_ONLY") == "1" then
@@ -1150,10 +1153,27 @@ local PARENT = { sync = "settings" }
 for k, v in pairs(require("src.launcher.ModsPage").PARENT) do PARENT[k] = v end
 for k, v in pairs(require("src.launcher.CartsPage").PARENT) do PARENT[k] = v end
 
+local RETURNS = require("src.launcher.ModsPage").RETURNS
+
 function Launcher:back()
   if self.page == "box" then return self:closeBox() end
   if self.page == "notes" then self.page = self.notesFrom return end
+  local from = RETURNS[self.page] and self.cameFrom and self.cameFrom[self.page]
+  if from then
+    self.cameFrom[self.page] = nil
+    self.page = from
+    return
+  end
   self.page = PARENT[self.page]
+end
+
+-- Where a page with several ways in was entered from, so Back returns there.
+-- Coming back up from one of its own sub-pages is not an entry.
+function Launcher:notePageEntry(from, to)
+  if not (to and RETURNS[to]) or from == to then return end
+  if from and PARENT[from] == to then return end
+  self.cameFrom = self.cameFrom or {}
+  self.cameFrom[to] = from
 end
 
 -- --------------------------------------------------------------- online
@@ -1230,7 +1250,7 @@ end
 function Launcher:wheelmoved(_, dy) self.wheel = (self.wheel or 0) + dy end
 
 function Launcher:keypressed(key)
-  if Kit.FileBrowser.active then return Kit.keypressed(key) end
+  if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then return Kit.keypressed(key) end
   if self._boxPrompt then
     if key == "escape" then
       self:queue(function() require("src.import.BoxPrompt").close(self, false) end)
@@ -1270,6 +1290,7 @@ function Launcher:keypressed(key)
     self:queue(function() self:back() end)
     return true
   end
+  if key == "escape" and not self.page and self:closeGamesPopup() then return true end
   if key == "escape" and self.renaming then
     self:queue(function() self.renaming = nil end)
     return true
@@ -1280,31 +1301,68 @@ end
 local POPUP_KEYS = { dpup = "up", dpdown = "down", a = "return", b = "escape" }
 
 function Launcher:gamepadpressed(_, button)
-  -- a Box popup or rename prompt owns the pad while it is up
-  if self._boxPrompt and button == "b" then return self:keypressed("escape") end
-  if self._boxPopup and POPUP_KEYS[button] then return self:keypressed(POPUP_KEYS[button]) end
-  if button == "b" and not Kit.focus then
-    if self._boxPopup or self._boxPrompt or self.page then return self:keypressed("escape") end
+  -- the on-screen keyboard and the file browser own the pad while they are
+  -- up (B there is "delete" / "up a folder", not Back); Kit maps the button
+  if Kit.VirtualKeyboard.active or Kit.FileBrowser.active then
+    return Kit.gamepadpressed(button)
   end
-  if Kit.FileBrowser.active then return Kit.gamepadpressed(button) end
+  -- every test below is on the ACTION: Switch swaps A/B (and X/Y) on the
+  -- way in, the same mapping Kit.gamepadpressed applies to activation
+  local okG, GamepadMap = pcall(require, "src.core.GamepadMap")
+  local action = okG and GamepadMap.mapLauncherButton and GamepadMap.mapLauncherButton(button) or button
+  -- a Box popup or rename prompt owns the pad while it is up
+  if self._boxPrompt and action == "b" then return self:keypressed("escape") end
+  if self._boxPopup and POPUP_KEYS[action] then return self:keypressed(POPUP_KEYS[action]) end
+  if action == "b" and not Kit.focus then
+    if self._boxPopup or self._boxPrompt or self.page then return self:keypressed("escape") end
+    if self:closeGamesPopup() then return true end
+  end
   -- shoulders step through the sections, as tabs do on a console
   if not (self._boxPopup or self._boxPrompt) and (button == "leftshoulder" or button == "rightshoulder") then
     self:cycleSection(button == "leftshoulder" and -1 or 1)
     return true
   end
   if Kit.gamepadpressed(button) then return true end
-  if button == "start" then
+  if action == "start" then
     -- Start plays: Continue on the game screen, else whatever is focused
     if not self.page and self.selected and self.ready[self.selected]
         and #self:slotsFor(self.selected) > 0 then
       local v = self.selected
-      self:queue(function() self:play(v) end)
+      -- the save the player picked, as Continue does
+      local slot = self:selectedSaveId(v)
+      self:queue(function() self:play(v, slot) end)
     else
       Kit.activateFocused()
     end
     return true
   end
   return false
+end
+
+-- The Games page's own popups -- a save's "..." menu, the game's "..." menu,
+-- the emulator-footer question -- close on Escape / B like any page does.
+-- True when one was open.
+function Launcher:closeGamesPopup()
+  if self.saveMenu or self.gameMenu then
+    self:queue(function() self.saveMenu, self.gameMenu = nil, nil end)
+    return true
+  end
+  if self.saveConfirm then
+    self:queue(function() self:confirmSave(false) end)
+    return true
+  end
+  return false
+end
+
+-- A folder in the system file manager.  file:// wants three slashes before
+-- a Windows drive (file:///C:/...), so the path is normalized first; a
+-- failure says so rather than doing nothing.
+function Launcher:openFolder(dir)
+  local sys = love and love.system
+  local url = "file://" .. (dir:sub(1, 1) == "/" and "" or "/") .. dir:gsub("\\", "/")
+  local ok, opened = false, false
+  if sys and sys.openURL then ok, opened = pcall(sys.openURL, url) end
+  if not ok or opened == false then self:say("Could not open " .. dir, "error") end
 end
 
 function Launcher:cycleSection(dir)
@@ -1326,7 +1384,7 @@ function Launcher:gamepadaxis(_, axis, value)
   elseif math.abs(self.stick.leftx) >= STICK_ON then dir = self.stick.leftx > 0 and "right" or "left" end
   if dir and dir ~= self.stickDir then
     self.stickDir, self.stickHeld = dir, 0
-    if Kit.FileBrowser.active then
+    if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then
       Kit.gamepadpressed("dp" .. dir)
     else
       Kit.navigate(dir)
@@ -1342,18 +1400,35 @@ function Launcher:stickRepeat(dt)
   self.stickHeld = (self.stickHeld or 0) + dt
   if self.stickHeld >= 0.4 then
     self.stickHeld = 0.4 - 0.12
-    if Kit.FileBrowser.active then Kit.gamepadpressed("dp" .. self.stickDir)
+    if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then
+      Kit.gamepadpressed("dp" .. self.stickDir)
     else Kit.navigate(self.stickDir) end
   end
 end
 
 function Launcher:gamepadreleased() end
-function Launcher:joystickpressed() end
+-- A controller SDL has no mapping for arrives only as raw buttons (some
+-- handhelds without a gamecontrollerdb entry): translated here so A, B and
+-- Start still work.  A mapped pad's raw buttons are ignored -- its
+-- gamepadpressed already carries the same press.
+function Launcher:joystickpressed(joystick, index)
+  local okG, GamepadMap = pcall(require, "src.core.GamepadMap")
+  if not okG or GamepadMap.ignoreRawForJoystick(joystick) then return false end
+  if GamepadMap.isAccelerometer and GamepadMap.isAccelerometer(joystick) then return false end
+  local button = GamepadMap.mapRawToGamepadButton(index)
+  if not button then return false end
+  return self:gamepadpressed(joystick, button)
+end
 function Launcher:joystickreleased() end
 function Launcher:joystickaxis() end
 function Launcher:joystickhat(_, _, direction)
   local map = { u = "up", d = "down", l = "left", r = "right" }
-  if map[direction] then Kit.navigate(map[direction]) end
+  if not map[direction] then return end
+  if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then
+    Kit.gamepadpressed("dp" .. map[direction])
+  else
+    Kit.navigate(map[direction])
+  end
 end
 function Launcher:textinput(text)
   if self.page == "box" and not self._boxPrompt
@@ -1363,7 +1438,9 @@ function Launcher:textinput(text)
   return Kit.textinput(text)
 end
 
-local SAVE_EXTS = { sav = true, srm = true, sa1 = true, dsv = true, sgm = true }
+-- .lua is the launcher's own export (Export .lua): SaveFileIO reads it back
+-- by its content, so it is a save wherever it comes in
+local SAVE_EXTS = { sav = true, srm = true, sa1 = true, dsv = true, sgm = true, lua = true }
 
 local function isSaveName(name)
   local ext = tostring(name or ""):lower():match("%.([%w]+)$")
@@ -1391,8 +1468,9 @@ function Launcher:handleDrop(file)
     return self:importSave(file, fname:match("[^/\\]+$") or fname)
   end
   local isCart = fname:lower():match("%.g1rcart$") ~= nil
-  -- a .zip dropped on the Mods page is a mod; anywhere else, a zipped ROM
-  local asMod = self.page == "mods" and fname:lower():match("%.zip$") ~= nil
+  -- a .zip dropped on any Mods page (the list, a mod, Get mods, Examples...)
+  -- is a mod; anywhere else, a zipped ROM
+  local asMod = require("src.launcher.ModsPage").PAGES[self.page or ""] == true and fname:lower():match("%.zip$") ~= nil
   local ok, data = pcall(function()
     file:open("r")
     local bytes = file:read()
@@ -1614,7 +1692,7 @@ function Launcher:drawGameList(x, y, w, h, s)
         Kit.text("button", Kit.ellipsize("button", name, math.max(0, nameW)), tx,
           py + (rowH - Kit.textHeight("button")) / 2, ink or (ready and PAL.text or PAL.muted))
       end
-      if clicked and not (not ready and Kit.hit(x + rw - rightW, py, rightW, rowH)) then
+      if clicked and not (not ready and Kit.clickIn(x + rw - rightW, py, rightW, rowH)) then
         self:queue(function()
           self:selectGame(v)
           self.page = nil
@@ -1884,6 +1962,11 @@ function Launcher:drawNotes(x, y, w, h, s)
   Kit.card(x, y, w, h)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
+  -- the notes may come with the update check, which can answer after this
+  -- page first opens: a miss is asked again every few seconds, not kept
+  if self.notesMissing and now() >= (self.notesRetryAt or 0) then
+    self.notesText, self.notesLines = nil, nil
+  end
   if not self.notesText then
     local okP, PatchNotes = pcall(require, "src.update.PatchNotes")
     local okC, Check = pcall(require, "src.update.Check")
@@ -1894,6 +1977,8 @@ function Launcher:drawNotes(x, y, w, h, s)
     end
     self.notesText = body or "Unable to fetch patch notes."
     self.notesVersion = ver
+    self.notesMissing = body == nil
+    self.notesRetryAt = now() + 3
   end
   cy = self:pageHeader(cx, cy, cw, s, { title = "What's new",
     subtitle = self.notesVersion and ("Version " .. tostring(self.notesVersion)) or nil,
@@ -2220,8 +2305,13 @@ function Launcher:drawGame(x, y, w, h, s)
   local has = chosen ~= nil and #slots > 0
   local cardH = math.max(Kit.tapMin() + Theme.space("m", s), math.floor(62 * s))
   local gap = Theme.space("s", s)
-  local extraH = (self.saveConfirm and self.saveConfirm.version == v or (self.renaming == chosen and has))
+  local asking = self.saveConfirm and self.saveConfirm.version == v
+  local extraH = (asking or (self.renaming == chosen and has))
     and (smallH + Theme.space("m", s)) or 0
+  -- the question stays beside its buttons; the toast that also asks it fades
+  local askLine = asking and ("Import %s without its %d bytes of emulator clock data?")
+    :format(tostring(self.saveConfirm.name or "this save"), self.saveConfirm.extra or 0)
+  if askLine then extraH = extraH + Kit.textHeight("micro") + Theme.space("xs", s) end
   local footY = y + h - pad - btnH
   local viewH = footY - Theme.space("l", s) - extraH - cy
   local menuAt
@@ -2277,7 +2367,7 @@ function Launcher:drawGame(x, y, w, h, s)
       if dotsW == 0 and meta.badges then parts[#parts + 1] = tostring(meta.badges) .. " badges" end
       Kit.text("micro", Kit.ellipsize("micro", table.concat(parts, "  -  "), textW), tx2,
         top + Kit.textHeight("button") + Theme.space("xxs", s), picked and (ink or PAL.text) or PAL.muted)
-      if clicked and not Kit.hit(mbx, mby, mbw, mbw) then
+      if clicked and not Kit.clickIn(mbx, mby, mbw, mbw) then
         local id = slot.id
         self:queue(function() self.selectedSlot[scope] = id; self.saveMenu = nil end)
       end
@@ -2287,7 +2377,9 @@ function Launcher:drawGame(x, y, w, h, s)
 
   -- rename field, or the footer-bytes question, above the buttons
   local ay = footY - Theme.space("m", s) - smallH
-  if self.saveConfirm and self.saveConfirm.version == v then
+  if asking then
+    Kit.text("micro", Kit.ellipsize("micro", askLine, cw), cx,
+      ay - Kit.textHeight("micro") - Theme.space("xs", s), PAL.text)
     local half2 = math.floor((cw - Theme.space("m", s)) / 2)
     if Kit.button(cx, ay, half2, smallH, "Import without them",
         { id = "save-confirm-yes", kind = "primary", font = "small" }) then
@@ -2341,7 +2433,7 @@ function Launcher:drawGame(x, y, w, h, s)
     local lfs = love and love.filesystem
     if okP and Platform.canSpawnProcess() and lfs and lfs.getSaveDirectory and love.system.openURL then
       items[#items + 1] = { id = "banner-folder", label = "Open data folder", icon = "folder-open",
-        run = function() pcall(love.system.openURL, "file://" .. lfs.getSaveDirectory()) end }
+        run = function() self:openFolder(lfs.getSaveDirectory()) end }
     end
     self.gameMenuRect = self:drawPopup(gameMenuAt, items, x, y, w, h, s, "banner-menu",
       function() self.gameMenu = nil end)
@@ -2507,7 +2599,9 @@ function Launcher:section()
 end
 
 function Launcher:goSection(section)
-  if section == self:section() and section ~= "games" then return end
+  -- the section's own page is already up; a sub-page of it (Save sync under
+  -- Settings) goes back to the section, as Games does
+  if section == self:section() and section ~= "games" and self.page == section then return end
   if self.page == "box" and section ~= "box" then self:closeBox() end
   if section == "games" then self.page = nil
   elseif section == "box" then self:openBox()
@@ -2658,12 +2752,16 @@ function Launcher:draw()
   if tr then Kit.occlude(tr[1], tr[2], tr[3], tr[4]) end
   -- the in-app file browser is modal: nothing under it takes a press
   local browsing = Kit.FileBrowser.active
-  if browsing then Kit.blockClicks = true end
+  -- the on-screen keyboard (a Linux handheld's text entry) is modal too
+  local typing = Kit.VirtualKeyboard.active
+  -- what already blocks this frame (a screen transition, set by beginFrame)
+  -- and the modals: every later reset keeps them
+  local baseBlock = Kit.blockClicks or browsing or typing
   self.click, self.wheel = nil, 0
   Theme.field()
   -- a Box popup or prompt owns the frame: nothing under its scrim takes clicks
   local boxModal = self.page == "box" and (self._boxPopup or self._boxPrompt) ~= nil
-  Kit.blockClicks = boxModal
+  Kit.blockClicks = baseBlock or boxModal
 
   local pad = math.floor(Theme.clamp(W * 0.03, 12, 28))
   -- a left rail on a wide window or a landscape phone; a bottom tab bar on
@@ -2704,7 +2802,17 @@ function Launcher:draw()
   local pageKey = tostring(self.page)
   if pageKey ~= self.lastPageKey then
     if self.lastPageKey ~= nil and not self.reduceMotion then self.pageAt, self.pageFrames = now(), 0 end
-    self.lastPageKey = pageKey
+    -- a page opened with the mouse: the first arrow key belongs on that page
+    -- (its Back), not on the game row clicked before it, which is still on
+    -- screen and so would keep the hidden ring
+    if self.lastPageKey ~= nil and self.page ~= nil and not Kit._ringShown then
+      Kit.focusId = nil
+    end
+    self:notePageEntry(self.lastPage, self.page)
+    -- an unsaved relay address is not kept for the next visit, where it
+    -- would read as the saved one
+    if self.lastPage == "settings" and self.page ~= "settings" then self.relayDraft = nil end
+    self.lastPageKey, self.lastPage = pageKey, self.page
   end
   local t = 1
   if self.pageAt then
@@ -2751,12 +2859,17 @@ function Launcher:draw()
   self:drawFooter(x, fy, w, s)
   if pushed then
     love.graphics.pop()
-    Kit.blockClicks = boxModal
+    Kit.blockClicks = baseBlock or boxModal
   end
   self:drawToast(x, y + Theme.space("xs", s), w, s)
   if browsing then
     local W, H = love.graphics.getDimensions()
     Kit.FileBrowser.draw({ s = s, W = W, H = H })
+  end
+  if typing then
+    local W, H = love.graphics.getDimensions()
+    Kit.blockClicks = false
+    Kit.VirtualKeyboard.draw({ s = s, W = W, H = H })
   end
   if self.page == "box" then
     Kit.blockClicks = false

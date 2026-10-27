@@ -544,7 +544,7 @@ package.loaded["src.import.Importers"] = {
   resolve = function() return {} end,
 }
 local realButton = Kit.button
-for _, size in ipairs({ { 390, 844 }, { 1280, 720 }, { 360, 640 } }) do
+for _, size in ipairs({ { 390, 844 }, { 1280, 720 }, { 360, 640 }, { 844, 390 } }) do
   window(size[1], size[2])
   l = fresh()
   l:modsUi().entry = feedBody.mods[1]
@@ -553,7 +553,7 @@ for _, size in ipairs({ { 390, 844 }, { 1280, 720 }, { 360, 640 } }) do
   l:modsUi():openCatalog()
   pump(l, 3)
   for _, page in ipairs({ "mods", "mod", "modoptions", "modtools", "loadorder", "profiles",
-      "catalog", "catalogitem", "feeds", "importers", "carts", "cartnew" }) do
+      "catalog", "catalogitem", "feeds", "importers", "carts", "cartnew", "examples" }) do
     l.page = page
     local bad
     Kit.button = function(x, y, w, h, label, o)
@@ -567,6 +567,40 @@ for _, size in ipairs({ { 390, 844 }, { 1280, 720 }, { 360, 640 } }) do
   end
 end
 Kit.button = realButton
+
+-- a phone on its side: the Mods list never runs under its own buttons
+do
+  window(844, 390)
+  local lo = fresh()
+  lo.page = "mods"
+  local realRow = Kit.row
+  local rows, footer
+  for _ = 1, 3 do
+    rows, footer = {}, nil
+    Kit.row = function(x, y, w, h, ...)
+      local c = Kit._clipRect
+      local top, bottom = y, y + h
+      if c then top, bottom = math.max(top, c.y), math.min(bottom, c.y + c.h) end
+      if bottom > top then rows[#rows + 1] = { top, bottom } end
+      return realRow(x, y, w, h, ...)
+    end
+    Kit.button = function(x, y, w, h, label, o)
+      if label == "Install mod .zip" then
+        local c = Kit._clipRect
+        footer = { c and math.max(y, c.y) or y, c and math.min(y + h, c.y + c.h) or y + h }
+      end
+      return realButton(x, y, w, h, label, o)
+    end
+    drawText(lo)
+    lo:update(1 / 60)
+  end
+  Kit.row, Kit.button = realRow, realButton
+  local overlap
+  for _, r in ipairs(rows) do
+    if footer and footer[2] > footer[1] and r[1] < footer[2] and footer[1] < r[2] then overlap = true end
+  end
+  check(not overlap, "844x390: no visible mod row sits under Install mod .zip")
+end
 
 -- a phone row for a mod that needs a pack: no second button, and a tap on
 -- its name opens the mod, whose page says what it needs and offers it
@@ -663,6 +697,23 @@ do
   installed.aaa = nil
 end
 
+-- ------------------------------------- a page opened with the mouse takes focus
+do
+  window(1280, 720)
+  local lf = fresh()
+  drawText(lf)
+  Kit.setFocus("game-gold")
+  Kit._ringShown = false   -- the mouse was last used: the ring is hidden
+  lf.page = "mods"
+  for _ = 1, 12 do drawText(lf); lf:update(1 / 60) end
+  eq(Kit.focusId, "mods-back", "the first arrow key starts on the page just opened, not the game row")
+  Kit.setFocus("game-gold")    -- the keyboard was in use: its place is kept
+  lf.page = "examples"
+  for _ = 1, 12 do drawText(lf); lf:update(1 / 60) end
+  eq(Kit.focusId, "game-gold", "a visible ring is never moved by a page change")
+  Kit.setFocus(nil)
+end
+
 -- ------------------------------------------------------------ example mods
 do
   window(1280, 720)
@@ -694,7 +745,160 @@ do
   check(tostring(le.message and le.message.text):find("installed and on for Pokemon Gold", 1, true),
     "and says it is on")
   check(drawText(le):find("Installed", 1, true), "the row then reads Installed")
+  le:modsUi().exampleName, le.page = "ex_red", "example"
+  text = drawText(le)
+  check(text:find("Red things", 1, true) and text:find("Runs on Red", 1, true),
+    "an example's own page says what it does and where it runs")
+  check(text:find("does not run on Pokemon Gold", 1, true), "and when it cannot run here")
+  check(text:find("Install", 1, true), "with its Install button")
+  le:modsUi().exampleName = "ex_gold"
+  check(drawText(le):find("Open in Mods", 1, true), "an installed one points to its Mods entry")
+  eq(ModsPage.PARENT.example, "examples", "Back leads to the list")
   ModLibrary.examples, ModLibrary.installExample = nil, nil
+end
+
+-- ------------------------------------------------- launcher audit (fixes)
+do
+  window(1280, 720)
+  local GamepadMap = require("src.core.GamepadMap")
+  local la = fresh()
+  local function settle(n) for _ = 1, n or 12 do drawText(la); la:update(1 / 60) end end
+
+  -- the modal file browser: nothing drawn under it takes a press
+  local blockedUnder
+  local realGame = la.drawGame
+  la.drawGame = function(self, ...) blockedUnder = Kit.blockClicks return realGame(self, ...) end
+  local realBrowserDraw = Kit.FileBrowser.draw
+  Kit.FileBrowser.active, Kit.FileBrowser.draw = true, function() end
+  drawText(la)
+  eq(blockedUnder, true, "the launcher under the file browser takes no press")
+  Kit.FileBrowser.active, Kit.FileBrowser.draw = false, realBrowserDraw
+  drawText(la)
+  eq(blockedUnder, false, "and takes them again once it closes")
+  la.drawGame = realGame
+
+  -- the on-screen keyboard is drawn when a field opens it
+  local VK = Kit.VirtualKeyboard
+  VK.active, VK.title, VK.text, VK.row, VK.col, VK.mode = true, "Profile name", "", 1, 1, 1
+  check(drawText(la):find("Profile name", 1, true), "the on-screen keyboard is drawn")
+  la.page = "mods"
+  la:gamepadpressed(nil, "rightshoulder")
+  settle(2)
+  eq(la.page, "mods", "a shoulder press goes to the keyboard, not to the next section")
+  la:gamepadpressed(nil, "b")
+  eq(VK.active, false, "B closes the keyboard")
+  eq(la.page, "mods", "and only the keyboard")
+
+  -- Switch swaps A and B on the way in: every launcher test reads the action
+  local realMap = GamepadMap.mapLauncherButton
+  GamepadMap.mapLauncherButton = function(b) return ({ a = "b", b = "a" })[b] or b end
+  la.page = "mods"
+  la:gamepadpressed(nil, "b") -- physical A on a Switch
+  settle(2)
+  eq(la.page, "mods", "a Switch's A does not go Back")
+  la:gamepadpressed(nil, "a") -- physical B
+  settle(2)
+  eq(la.page, nil, "a Switch's B does")
+  GamepadMap.mapLauncherButton = realMap
+
+  -- raw buttons from an unmapped controller still reach the launcher
+  local realRaw, realIgnore = GamepadMap.mapRawToGamepadButton, GamepadMap.ignoreRawForJoystick
+  GamepadMap.ignoreRawForJoystick = function() return false end
+  GamepadMap.mapRawToGamepadButton = function(i) return ({ [2] = "b" })[i] end
+  la.page = "mods"
+  la:joystickpressed({}, 2)
+  settle(2)
+  eq(la.page, nil, "a raw B press goes Back")
+  GamepadMap.mapRawToGamepadButton, GamepadMap.ignoreRawForJoystick = realRaw, realIgnore
+
+  -- Start plays the save the player picked, as Continue does
+  local played
+  local realPlay = la.play
+  la.play = function(_, v, slot) played = { v, slot } end
+  la.selectedSlot[la:scopeKey("gold")] = "slot2"
+  la:gamepadpressed(nil, "start")
+  la:update(0)
+  eq(played and played[2], "slot2", "Start plays the chosen save")
+  la.play = realPlay
+
+  -- the file browser keeps B while it is up, even on a page
+  local browserKey
+  local realPad = Kit.FileBrowser.gamepadpressed
+  Kit.FileBrowser.active = true
+  Kit.FileBrowser.gamepadpressed = function(b) browserKey = b return true end
+  la.page = "mods"
+  la:gamepadpressed(nil, "b")
+  settle(1)
+  eq(browserKey, "b", "B goes to the browser (up a folder)")
+  eq(la.page, "mods", "not to the page under it")
+  Kit.FileBrowser.active, Kit.FileBrowser.gamepadpressed = false, realPad
+
+  -- Escape / B close the Games page's own popups
+  la.page, la.saveMenu = nil, "slot1"
+  la:keypressed("escape")
+  la:update(0)
+  eq(la.saveMenu, nil, "Escape closes a save's menu")
+
+  -- a .zip on any Mods page is a mod, and an exported .lua is a save
+  local gotMod
+  local realInstall = la.installMod
+  la.installMod = function() gotMod = true end
+  la.page = "examples"
+  la:handleDrop({ getFilename = function() return "/tmp/cool.zip" end,
+    open = function() end, read = function() return "PKzip" end, close = function() end })
+  eq(gotMod, true, "a .zip dropped on Examples installs as a mod")
+  la.installMod = realInstall
+  eq(Launcher.isSaveName("gen1recomp-gold-KRIS.lua"), true, "an exported .lua is a save")
+
+  -- a section's own button leaves its sub-page
+  la.page = "sync"
+  la:goSection("settings")
+  eq(la.page, "settings", "Settings from Save sync goes to Settings")
+
+  -- Back from a page with two ways in goes the way it came
+  la.page = "catalog"
+  settle(2)
+  la.page = "examples"
+  settle(2)
+  la:back()
+  eq(la.page, "catalog", "Examples opened from Get mods goes Back to Get mods")
+  la.page = "mods"
+  settle(2)
+  la.page = "examples"
+  settle(2)
+  la.page = "example"
+  settle(2)
+  la.page = "examples"
+  settle(2)
+  la:back()
+  eq(la.page, "mods", "and from Mods to Mods, even after visiting an example")
+
+  -- an unsaved relay address is dropped when Settings is left
+  la.page = "settings"
+  settle(2)
+  la.relayDraft = "typed.but.not.saved:1"
+  la.page = nil
+  settle(2)
+  eq(la.relayDraft, nil, "an unsaved relay address is not kept")
+
+  -- a row chosen by Enter is chosen even with the pointer over its button
+  Kit.mouseClicked = false
+  eq(Kit.clickIn(0, 0, 10000, 10000), false, "no click, no click-in")
+
+  -- Mods page odds and ends
+  eq(ModsPage.clip("Pokémon Gold", 5), "Pokém", "names are cut by character")
+  local ui = la:modsUi()
+  ui.current = { id = "x", name = "Big Mod", stage = "releases" }
+  ui:stop()
+  eq(ui.current, nil, "Stop drops a single download")
+  check(tostring(la.message and la.message.text):find("Stopped getting Big Mod", 1, true),
+    "and says so")
+  local realSet = ModLibrary.setModOptions
+  ModLibrary.setModOptions = function() return false, "disk full" end
+  ui:resetOptions({ id = "fancy", name = "Fancy Mod", folder = "mods/fancy" })
+  check(tostring(la.message.text):find("Could not reset", 1, true), "a failed reset says it failed")
+  ModLibrary.setModOptions = realSet
+  Kit.setFocus(nil)
 end
 
 T.finish("mods page")

@@ -25,10 +25,14 @@ ModsPage.__index = ModsPage
 -- Every launcher page this module draws, and where Back / Escape leads.
 ModsPage.PAGES = { mods = true, importers = true, mod = true, modoptions = true,
   modtools = true, loadorder = true, profiles = true, catalog = true,
-  catalogitem = true, feeds = true, examples = true }
+  catalogitem = true, feeds = true, examples = true, example = true }
+-- Pages with more than one way in go Back the way they were entered
+-- (Launcher:back); PARENT is their answer when that is not known.
+ModsPage.RETURNS = { examples = true, importers = true }
 ModsPage.PARENT = { importers = "mods", mod = "mods", modoptions = "mod",
   modtools = "mods", loadorder = "modtools", profiles = "modtools",
-  catalog = "mods", catalogitem = "catalog", feeds = "catalog", examples = "mods" }
+  catalog = "mods", catalogitem = "catalog", feeds = "catalog", examples = "mods",
+  example = "examples" }
 
 local MOD_KIND = { label = "Mod package", exts = { "zip" } }
 local PROFILE_NAME_MAX = 24
@@ -65,6 +69,20 @@ function ModsPage.canFetch()
   local okW, web = pcall(Platform.isWeb)
   return okW and web == true
 end
+
+-- At most `max` characters, never half of one: a byte cut through an
+-- accented letter leaves text the kit measures as empty.
+local function clip(text, max)
+  text = tostring(text or "")
+  local out, n = {}, 0
+  for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    n = n + 1
+    if n > max then break end
+    out[n] = ch
+  end
+  return table.concat(out)
+end
+ModsPage.clip = clip
 
 local function trim(text)
   return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -547,7 +565,7 @@ function ModsPage:saveProfile(version, name)
   local l = self.launcher
   name = trim(name)
   if name == "" then return l:say("Give the profile a name first.", "error") end
-  if #name > PROFILE_NAME_MAX then name = name:sub(1, PROFILE_NAME_MAX) end
+  name = clip(name, PROFILE_NAME_MAX)
   local SaveData = require("src.core.SaveData")
   local ModProfile = require("src.mods.ModProfile")
   local opts = l:options()
@@ -619,7 +637,7 @@ function ModsPage:renameProfile(old, new)
   new = trim(new)
   self.renamingProfile = nil
   if new == "" or new == old then return end
-  if #new > PROFILE_NAME_MAX then new = new:sub(1, PROFILE_NAME_MAX) end
+  new = clip(new, PROFILE_NAME_MAX)
   local opts = l:options()
   local list = type(opts.modProfiles) == "table" and opts.modProfiles or {}
   if findProfile(list, new) then return l:say("A profile named " .. new .. " already exists.", "error") end
@@ -712,7 +730,11 @@ function ModsPage:resetOptions(row)
       values[opt.key] = opt.default
     end
   end
-  pcall(require("src.mods.ModLibrary").setModOptions, row.id, values)
+  local ok, saved, err = pcall(require("src.mods.ModLibrary").setModOptions, row.id, values)
+  if not ok or not saved then
+    return self.launcher:say("Could not reset " .. tostring(row.name) .. "'s options: "
+      .. tostring(ok and err or saved), "error")
+  end
   self.launcher:say(tostring(row.name) .. "'s options are back to their defaults.", "info")
 end
 
@@ -884,6 +906,18 @@ function ModsPage:stop()
   local b = self.batch
   self.queue = {}
   if b then b.cancelled = true end
+  -- one download on its own (a catalog Install, one Update): dropped now.
+  -- Its transfer cannot be interrupted, so it finishes in the background and
+  -- its file is thrown away (pumpAbandoned); nothing is installed from it.
+  local job = self.current
+  if job and not b and job.stage ~= "install" then
+    self.current = nil
+    if job.h and job.stage == "download" then
+      self.abandoned = self.abandoned or {}
+      self.abandoned[#self.abandoned + 1] = job
+    end
+    self.launcher:say("Stopped getting " .. tostring(job.name) .. ".", "info")
+  end
   if b and b.phase == "checking" then
     self.checks = {}
     self:finishBatch()
@@ -940,6 +974,21 @@ function ModsPage:pumpBatch()
 end
 
 -- ------------------------------------------------- downloads and installs
+
+function ModsPage:pumpAbandoned()
+  local list = self.abandoned
+  if not list then return end
+  local ModUpdate = require("src.mods.ModUpdate")
+  for i = #list, 1, -1 do
+    local job = list[i]
+    local ok, done, path = pcall(ModUpdate.pumpDownloadZip, job.h)
+    if not ok or done then
+      if ok and path then pcall(love.filesystem.remove, path) end
+      table.remove(list, i)
+    end
+  end
+  if #list == 0 then self.abandoned = nil end
+end
 
 -- Start the next job, or advance the one running: an optional release
 -- lookup (a cart pin names a repo and a version), the download, then the
@@ -1262,6 +1311,7 @@ function ModsPage:update()
   -- a job that throws ends with the reason rather than repeating every frame
   local ok, err = pcall(self.pumpInstalls, self)
   if not ok and self.current then self:finishJob(self.current, false, err) end
+  self:pumpAbandoned()
   self:pumpBatch()
 end
 
@@ -1277,17 +1327,17 @@ function ModsPage:draw(x, y, w, h, s)
     return l:drawFitted("feeds", x, y, w, h, s, function(_, ...) return self:drawFeeds(...) end)
   end
   if not (l.selected and l.ready[l.selected]) then return l:drawGame(x, y, w, h, s) end
-  if page == "catalog" then return self:drawCatalog(x, y, w, h, s) end
-  if page == "examples" then return self:drawExamples(x, y, w, h, s) end
-  if page == "loadorder" then return self:drawLoadOrder(x, y, w, h, s) end
+  -- the list pages keep a list between a header and buttons; too short for
+  -- that (a phone on its side), the whole page scrolls instead of overlapping
+  local lists = { catalog = self.drawCatalog, examples = self.drawExamples,
+    loadorder = self.drawLoadOrder, mods = self.drawMods }
+  local list = lists[page] or (not ModsPage.PAGES[page] and self.drawMods) or nil
   local fitted = { mod = self.drawDetail, modoptions = self.drawOptions,
-    modtools = self.drawTools, profiles = self.drawProfiles, catalogitem = self.drawEntry }
-  local fn = fitted[page]
-  if fn then
-    return l:drawFitted(page .. ":" .. tostring(l.selected), x, y, w, h, s,
-      function(_, ...) return fn(self, ...) end)
-  end
-  return self:drawMods(x, y, w, h, s)
+    modtools = self.drawTools, profiles = self.drawProfiles, catalogitem = self.drawEntry,
+    example = self.drawExample }
+  local fn = fitted[page] or list or self.drawMods
+  return l:drawFitted(tostring(page) .. ":" .. tostring(l.selected), x, y, w, h, s,
+    function(_, ...) return fn(self, ...) end)
 end
 
 -- The strip shown while downloads or update checks run, with Stop.
@@ -1306,7 +1356,7 @@ function ModsPage:drawJobStrip(cx, cy, cw, s)
     Kit.text("micro", "Working...", cx, my, PAL.muted)
   end
   if Kit.button(cx + cw - stopW, cy, stopW, bh, "Stop", { id = "mods-stop", font = "small",
-      enabled = self.batch ~= nil or #self.queue > 0 }) then
+      enabled = self.batch ~= nil or #self.queue > 0 or self.current ~= nil }) then
     l:queue(function() self:stop() end)
   end
   return cy + math.max(bh, Kit.textHeight("small") + math.floor(14 * s)) + Theme.space("s", s)
@@ -1364,6 +1414,7 @@ function ModsPage:drawMods(x, y, w, h, s)
   local hintH = Kit.wrapHeight("micro", hint, cw)
   local footH = bh + math.floor(12 * s) + hintH
   local viewH = math.max(rowH, y + h - pad - footH - math.floor(10 * s) - cy)
+  local need = math.max(h, (cy - y) + 2 * (rowH + gap) + footH + pad + math.floor(10 * s))
   if #rows == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No mods installed")
   else
@@ -1432,8 +1483,8 @@ function ModsPage:drawMods(x, y, w, h, s)
         l:queue(function() self:toggleMod(v, row) end)
       end
       -- a press on a button is not also a press on its row
-      if clicked and not Kit.hit(onX, by, tw, sbh)
-          and not (needBtn and Kit.hit(needX, by, bw, sbh)) then
+      if clicked and not Kit.clickIn(onX, by, tw, sbh)
+          and not (needBtn and Kit.clickIn(needX, by, bw, sbh)) then
         local folder = row.folder
         l:queue(function() self.detailFolder, l.page = folder, "mod" end)
       end
@@ -1451,6 +1502,7 @@ function ModsPage:drawMods(x, y, w, h, s)
     l:queue(function() l.page = "importers" end)
   end
   Kit.textWrapped("micro", hint, cx, fy + bh + math.floor(8 * s), cw, PAL.faint)
+  return need
 end
 
 -- ------------------------------------------------------------ examples
@@ -1494,13 +1546,14 @@ function ModsPage:drawExamples(x, y, w, h, s)
   local cy = y + pad
   cy = l:pageHeader(cx, cy, cw, s, { title = "Example mods",
     subtitle = "Made with the game, to try or to learn from",
-    back = function() l.page = "mods" end, backId = "examples-back" })
+    back = function() l:back() end, backId = "examples-back" })
   local rows = self:examplesFor(v)
   local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
   local viewH = math.max(rowH, y + h - pad - cy)
+  local need = math.max(h, (cy - y) + 2 * rowH + pad)
   if #rows == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "This build has no example mods")
-    return
+    return need
   end
   local gapR = math.floor(4 * s)
   local maxAt = Kit.scrollExtent(#rows * (rowH + gapR), viewH)
@@ -1511,7 +1564,7 @@ function ModsPage:drawExamples(x, y, w, h, s)
   local bh = math.max(Kit.tapMin(), math.floor(32 * s))
   for i, row in ipairs(rows) do
     local ry = py + (i - 1) * (rowH + gapR)
-    Kit.row(cx, ry, rw, rowH, false, "example-" .. tostring(row.name))
+    local clicked = Kit.row(cx, ry, rw, rowH, false, "example-" .. tostring(row.name))
     local detail, ink = row.description or row.id, PAL.muted
     if row.supported == false then
       detail = "Not for " .. gameName(v) .. ": runs on " .. tostring(ModsPage.runsOn(row.manifest) or "other games")
@@ -1525,9 +1578,66 @@ function ModsPage:drawExamples(x, y, w, h, s)
           kind = not row.installed and row.supported ~= false and "primary" or nil,
           enabled = not row.installed }) then
       l:queue(function() self:installExample(row) end)
+    elseif clicked and not Kit.clickIn(bx, by, bw, bh) then
+      local name = row.name
+      l:queue(function() self.exampleName, l.page = name, "example" end)
     end
   end
   Kit.scrollEnd(cx, cy, cw, viewH, self.scroll.examples, maxAt, PAL.surface)
+  return need
+end
+
+-- One example in full: a phone's row has room for a few words of it.
+function ModsPage:drawExample(x, y, w, h, s)
+  local l = self.launcher
+  local v = l.selected
+  local pad = math.floor(18 * s)
+  Kit.card(x, y, w, h)
+  local cx, cw = x + pad, w - 2 * pad
+  local cy = y + pad
+  local row
+  for _, r in ipairs(self:examplesFor(v)) do
+    if r.name == self.exampleName then row = r end
+  end
+  local back = function() l.page = "examples" end
+  if not row then
+    cy = l:pageHeader(cx, cy, cw, s, { title = "Example", back = back, backId = "example-back" })
+    Kit.text("small", "That example is not in this build.", cx, cy, PAL.muted)
+    return cy + Kit.textHeight("small") + pad - y
+  end
+  local m = row.manifest or {}
+  local sub = {}
+  if m.version then sub[#sub + 1] = "v" .. tostring(m.version) end
+  if type(m.category) == "string" and m.category ~= "" then
+    sub[#sub + 1] = (m.category:sub(1, 1) .. m.category:sub(2):lower():gsub("_", " "))
+  end
+  cy = l:pageHeader(cx, cy, cw, s, { title = tostring(row.title),
+    subtitle = #sub > 0 and table.concat(sub, "  -  ") or nil, back = back, backId = "example-back" })
+  local gap = Theme.space("s", s)
+  if row.description then cy = para("small", row.description, cx, cy, cw, PAL.text, gap) end
+  local games = ModsPage.runsOn(m)
+  if games then cy = para("micro", "Runs on " .. games, cx, cy, cw, PAL.muted, gap) end
+  if row.supported == false then
+    cy = para("small", "It does not run on " .. gameName(v) .. ".", cx, cy, cw, PAL.yellow, gap)
+  end
+  if m.experimental then
+    cy = para("small", "Its author marks it experimental: it starts off.", cx, cy, cw, PAL.yellow, gap)
+  end
+  local items = {}
+  if row.installed then
+    items[1] = { label = "Installed", id = "example-detail-installed", enabled = false }
+    items[2] = { label = "Open in Mods", id = "example-detail-open", run = function()
+      local folder
+      for _, r in ipairs(self:modsFor(v)) do if r.id == row.id then folder = r.folder end end
+      if folder then self.detailFolder, l.page = folder, "mod" else l.page = "mods" end
+    end }
+  else
+    items[1] = { label = "Install", id = "example-detail-install",
+      kind = row.supported ~= false and "primary" or nil,
+      run = function() self:installExample(row) end }
+  end
+  cy = self:flow(cx, cy + gap, cw, s, items)
+  return cy + pad - y
 end
 
 -- One mod: what it is, its update state, its files, and every action.
@@ -1735,7 +1845,7 @@ function ModsPage:drawOptions(x, y, w, h, s)
         self.textDrafts[dk] = draft
         if ended == "submit" then
           local text = draft
-          if tonumber(opt.maxLen) then text = text:sub(1, tonumber(opt.maxLen)) end
+          if tonumber(opt.maxLen) then text = clip(text, tonumber(opt.maxLen)) end
           l:queue(function() self:setOption(id, key, text); self.textDrafts[dk] = nil end)
         elseif ended == "cancel" then
           self.textDrafts[dk] = nil
@@ -1812,9 +1922,10 @@ function ModsPage:drawLoadOrder(x, y, w, h, s)
   local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(48 * s))
   local gap = math.floor(4 * s)
   local viewH = math.max(rowH, y + h - pad - cy)
+  local need = math.max(h, (cy - y) + 2 * rowH + pad)
   if #list == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No mods installed")
-    return
+    return need
   end
   local maxAt = Kit.scrollExtent(#list * (rowH + gap), viewH)
   self.scroll.order = Kit.scrollInput(self.scroll.order or 0, maxAt, cx, cy, cw, viewH)
@@ -1843,6 +1954,7 @@ function ModsPage:drawLoadOrder(x, y, w, h, s)
     end
   end
   Kit.scrollEnd(cx, cy, cw, viewH, self.scroll.order, maxAt, PAL.surface)
+  return need
 end
 
 function ModsPage:drawProfiles(x, y, w, h, s)
@@ -1920,7 +2032,7 @@ function ModsPage:drawImporters(x, y, w, h, s)
   cy = l:pageHeader(cx, cy, cw, s, { title = "Asset importers",
     subtitle = "Some mods use art or sound from another game you own. Import it once "
       .. "here and every mod that asks for it can use it.",
-    back = function() l.page = "mods" end, backId = "importers-back" })
+    back = function() l:back() end, backId = "importers-back" })
 
   local job = l.assetJob
   if job then
@@ -1997,6 +2109,7 @@ function ModsPage:drawCatalog(x, y, w, h, s)
   end
   local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
   local viewH = math.max(rowH, y + h - pad - cy)
+  local need = math.max(h, (cy - y) + 2 * rowH + pad)
   if #feeds == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No mod indexes added yet")
     local ty = para("micro", "Press Indexes and paste the address of an index you trust, "
@@ -2004,13 +2117,13 @@ function ModsPage:drawCatalog(x, y, w, h, s)
       cy + math.min(viewH, rowH * 2) + gap, cw, PAL.faint, gap)
     self:flow(cx, ty, cw, s, { { label = "Example mods", id = "catalog-examples", kind = "accent",
       run = function() l.page = "examples" end } })
-    return
+    return need
   end
   local list = self:catalogFiltered(v)
   if #list == 0 then
     Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2),
       self:catalogLoading() and "Loading..." or "Nothing matches")
-    return
+    return need
   end
   local ModIndex = require("src.mods.ModIndex")
   local gapR = math.floor(4 * s)
@@ -2041,11 +2154,12 @@ function ModsPage:drawCatalog(x, y, w, h, s)
         kind = can and "primary" or nil, enabled = can }) then
       l:queue(function() self:installEntry(entry) end)
     end
-    if clicked and not Kit.hit(bx, by, bw, bh) then
+    if clicked and not Kit.clickIn(bx, by, bw, bh) then
       l:queue(function() self.entry, l.page = entry, "catalogitem" end)
     end
   end
   Kit.scrollEnd(cx, cy, cw, viewH, self.scroll.catalog, maxAt, PAL.surface)
+  return need
 end
 
 -- One listing: what it is, what to watch out for, and Install.
