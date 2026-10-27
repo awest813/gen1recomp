@@ -257,7 +257,11 @@ window(1280, 720)
 l.page = "settings"
 local stext = drawText(l)
 check(stext:find("Music volume", 1, true) and stext:find("Sound volume", 1, true)
-  and stext:find("Fullscreen", 1, true), "the settings page draws its rows")
+  and stext:find("Launcher window", 1, true), "the settings page draws its rows")
+l:setOption("musicVol", 3)
+eq(savedOptions.musicVol, 3, "a volume is saved for Gen 1 and Gen 3")
+eq(type(savedOptions.gold) == "table" and savedOptions.gold.musicVol, 3,
+  "and for Gen 2, which keeps its own block")
 check(stext:find("BOIS CLUB", 1, true) ~= nil, "with the credit still on screen")
 l:queue(function() end)
 local rects2 = {}
@@ -1159,6 +1163,28 @@ do
   m.page = "sync"
   m:back()
   eq(m.page, "settings", "and on Save sync to Settings")
+end
+
+-- ------------------------------------------ a toast covers what is under it
+do
+  window(1280, 720)
+  local m = fresh()
+  m.selected = "gold"
+  m:say("Something happened.", "info")
+  drawText(m)
+  local r = m.toastRect
+  check(r ~= nil, "the toast reports where it drew")
+  -- press the middle of the toast: it closes, and nothing beneath runs
+  local cx, cy = r[1] + r[3] / 2, r[2] + r[4] / 2
+  local realPos = love.mouse.getPosition
+  love.mouse.getPosition = function() return cx, cy end
+  local pageBefore = m.page
+  m.click = { x = cx, y = cy }
+  drawText(m)
+  love.mouse.getPosition = realPos
+  m:update(0)
+  eq(m.message, nil, "a press on the toast dismisses it")
+  eq(m.page, pageBefore, "and does not also press the control under it")
 end
 
 -- ------------------------------------- a selected save that does not exist

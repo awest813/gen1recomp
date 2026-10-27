@@ -179,7 +179,8 @@ function FileBrowser.open(opts)
   FileBrowser.selectedIdx = 1
   FileBrowser.page = 1
 
-  local initPath = opts.initialPath or findSdCardRoot()
+  FileBrowser.places = nil
+  local initPath = opts.initialPath or FileBrowser._startDir()
   FileBrowser.currentDir = initPath
   FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   if #FileBrowser.entries == 0 and initPath ~= "/" then
@@ -203,6 +204,7 @@ function FileBrowser.close(path)
 end
 
 function FileBrowser.setDirectory(dir)
+  FileBrowser.scroll, FileBrowser.followSel = 0, false
   FileBrowser.currentDir = normalizePath(dir)
   FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   FileBrowser.selectedIdx = 1
@@ -217,6 +219,7 @@ end
 
 function FileBrowser.gamepadpressed(button)
   if not FileBrowser.active then return false end
+  FileBrowser.followSel = true
 
   local total = #FileBrowser.entries
   local perPage = FileBrowser.perPage
@@ -295,94 +298,157 @@ function FileBrowser.keypressed(key)
   return false
 end
 
+-- Where a browse starts: the SD card on a handheld, the home folder on a
+-- desktop (the root of the disk is never where a ROM is).
+local function startDir()
+  if os.getenv("HANDHELD") == "1" or os.getenv("PORTMASTER") == "1" then
+    return findSdCardRoot()
+  end
+  local home = os.getenv("HOME") or os.getenv("USERPROFILE")
+  return home and normalizePath(home) or findSdCardRoot()
+end
+FileBrowser._startDir = startDir
+
+-- Quick jumps that exist on this machine, worked out once per open.
+local function places()
+  local out, seen = {}, {}
+  local function add(label, path)
+    if not path or seen[path] then return end
+    local ok, h = pcall(io.popen, string.format("test -d %s && echo yes", shQuote(path)))
+    local found = false
+    if ok and h then found = (h:read("*a") or ""):match("yes") ~= nil; h:close() end
+    if found then seen[path] = true; out[#out + 1] = { label = label, path = path } end
+  end
+  local home = os.getenv("HOME")
+  if home then
+    add("Home", home)
+    add("Downloads", home .. "/Downloads")
+    add("Desktop", home .. "/Desktop")
+  end
+  for _, sc in ipairs(SHORTCUTS) do
+    if sc.path ~= "/" and sc.path ~= "." then add(sc.label, sc.path) end
+  end
+  return out
+end
+
+local MODE_LABEL = { rom = "ROM", save = "Save", box = "Box save", mod = "Mod", cart = "Cart", all = "File" }
+
 function FileBrowser.draw(m)
   if not FileBrowser.active then return end
 
   local Kit = getKit()
+  local Icons = require("src.ui.kit.Icons")
   local s = m and m.s or Kit.scale or 1
   local W = (m and m.W) or (love.graphics and love.graphics.getWidth()) or 640
   local H = (m and m.H) or (love.graphics and love.graphics.getHeight()) or 480
+  FileBrowser.places = FileBrowser.places or places()
 
-  Theme.fill(0, 0, W, H, PAL.bg, 0.94)
-  Kit.blockClicks = true
+  -- the host blocks clicks for everything under the modal; the modal itself
+  -- takes them
+  Kit.blockClicks = false
+  Theme.fill(0, 0, W, H, PAL.bg, 0.86)
 
-  local pad = math.floor(14 * s)
-  local modalW = math.floor(math.min(560 * s, W - 20 * s))
-  local modalH = math.floor(math.min(420 * s, H - 20 * s))
+  local pad = math.floor(16 * s)
+  local gap = math.floor(8 * s)
+  local modalW = math.floor(math.min(640 * s, W - 2 * math.floor(10 * s)))
+  local modalH = math.floor(math.min(520 * s, H - 2 * math.floor(10 * s)))
   local px = math.floor((W - modalW) / 2)
   local py = math.floor((H - modalH) / 2)
-
   Kit.card(px, py, modalW, modalH, true)
-
+  local cx, cw = px + pad, modalW - 2 * pad
   local cy = py + pad
-  -- Header
-  Kit.text("button", FileBrowser.title, px + pad, cy, PAL.heading)
-  Kit.tag(px + modalW - pad - math.floor(60 * s), cy, math.floor(60 * s), math.floor(18 * s),
-    FileBrowser.mode:upper(), PAL.blue)
+  local btn = math.max(Kit.tapMin(), math.floor(32 * s))
 
-  cy = cy + Kit.textHeight("button") + math.floor(6 * s)
+  -- title and close
+  Kit.textBold("button", Kit.ellipsize("button", FileBrowser.title, cw - btn - gap), cx,
+    cy + (btn - Kit.textHeight("button")) / 2, PAL.heading)
+  if Kit.button(cx + cw - btn, cy, btn, btn, "", { id = "fb-close", icon = "x", face = "bare" }) then
+    FileBrowser.close(nil)
+    return
+  end
+  cy = cy + btn + gap
 
-  -- Breadcrumb / Current directory bar
-  local pathBarH = math.floor(24 * s)
-  Theme.fillRounded(px + pad, cy, modalW - 2 * pad, pathBarH, PAL.bg, 1)
-  Theme.strokeRounded(px + pad, cy, modalW - 2 * pad, pathBarH, PAL.line, Theme.A.hairline, 1)
-  local pathStr = Kit.ellipsizeLeft("small", FileBrowser.currentDir, modalW - 4 * pad)
-  Kit.text("small", pathStr, px + pad + math.floor(6 * s), cy + math.floor(4 * s), PAL.heading)
+  -- path with Up
+  local upW = math.max(btn, Kit.textWidth("small", "Up") + math.floor(44 * s))
+  if Kit.button(cx, cy, upW, btn, "Up", { id = "fb-up", icon = "arrow-up", fullLabel = true, font = "small",
+      enabled = FileBrowser.currentDir ~= "/" }) then
+    FileBrowser.setDirectory(parentDir(FileBrowser.currentDir))
+  end
+  local barX, barW = cx + upW + gap, cw - upW - gap
+  Theme.fillRounded(barX, cy, barW, btn, PAL.bg, 1)
+  Theme.strokeRounded(barX, cy, barW, btn, PAL.line, Theme.A.hairline, 1)
+  Kit.text("small", Kit.ellipsizeLeft("small", FileBrowser.currentDir, barW - 2 * gap), barX + gap,
+    cy + (btn - Kit.textHeight("small")) / 2, PAL.text)
+  cy = cy + btn + gap
 
-  cy = cy + pathBarH + math.floor(8 * s)
-
-  -- File / Directory List
-  local total = #FileBrowser.entries
-  local perPage = FileBrowser.perPage
-  local startIdx = (FileBrowser.page - 1) * perPage + 1
-  local endIdx = math.min(total, startIdx + perPage - 1)
-  local rowH = math.floor(26 * s)
-  local rowGap = math.floor(3 * s)
-
-  if total == 0 then
-    Theme.fillRounded(px + pad, cy, modalW - 2 * pad, rowH * 4, PAL.bg, 1)
-    Kit.textCenter("small", "No files found in this folder.", px + pad, cy + rowH * 1.5, modalW - 2 * pad, PAL.muted)
-  else
-    for i = startIdx, endIdx do
-      local entry = FileBrowser.entries[i]
-      local isSel = (FileBrowser.selectedIdx == i)
-      local rx = px + pad
-      local rw = modalW - 2 * pad
-
-      if Kit.press(rx, cy, rw, rowH) then
-        FileBrowser.selectedIdx = i
-        if entry.isDir then
-          FileBrowser.setDirectory(entry.path)
-        else
-          FileBrowser.close(entry.path)
-        end
-      end
-
-      if isSel then
-        Theme.fillRounded(rx, cy, rw, rowH, PAL.ink, 1)
-        local icon = entry.isDir and "[DIR] " or "[FILE] "
-        Kit.text("small", icon .. entry.name, rx + math.floor(8 * s), cy + math.floor(4 * s), PAL.inverse)
-      else
-        Theme.fillRounded(rx, cy, rw, rowH, PAL.surface, 1)
-        Theme.strokeRounded(rx, cy, rw, rowH, PAL.line, Theme.A.hairline, 1)
-        local icon = entry.isDir and "[DIR] " or "[FILE] "
-        local col = entry.isDir and PAL.blue or PAL.text
-        Kit.text("small", icon .. entry.name, rx + math.floor(8 * s), cy + math.floor(4 * s), col)
-      end
-
-      cy = cy + rowH + rowGap
+  -- quick places, as chips on one line (as many as fit)
+  local chipH = math.max(Kit.tapMin(), math.floor(28 * s))
+  local chipX = cx
+  for i, pl in ipairs(FileBrowser.places) do
+    local w = Kit.textWidth("micro", pl.label) + math.floor(24 * s)
+    if chipX + w > cx + cw then break end
+    if Kit.button(chipX, cy, w, chipH, pl.label, { id = "fb-place-" .. i, face = "chip",
+        active = FileBrowser.currentDir == normalizePath(pl.path) }) then
+      FileBrowser.setDirectory(pl.path)
     end
+    chipX = chipX + w + gap
+  end
+  if #FileBrowser.places > 0 then cy = cy + chipH + gap end
+
+  -- the listing
+  local footH = btn + gap
+  local listH = py + modalH - pad - footH - cy
+  local rowH = math.max(Kit.tapMin(), math.floor(34 * s))
+  local total = #FileBrowser.entries
+  if total == 0 then
+    Kit.emptyBox(cx, cy, cw, math.min(listH, rowH * 3),
+      "No " .. (MODE_LABEL[FileBrowser.mode] or "matching") .. " files in this folder.")
+  else
+    local contentH = total * rowH
+    local maxAt = Kit.scrollExtent(contentH, listH)
+    -- keyboard / pad selection stays in view
+    local selTop = (FileBrowser.selectedIdx - 1) * rowH
+    local at = FileBrowser.scroll or 0
+    if FileBrowser.followSel then
+      if selTop < at then at = selTop end
+      if selTop + rowH > at + listH then at = selTop + rowH - listH end
+      FileBrowser.followSel = false
+    end
+    at = Kit.scrollInput(Kit.scrollClamp(at, maxAt), maxAt, cx, cy, cw, listH)
+    FileBrowser.scroll = at
+    local top = Kit.scrollBegin(cx, cy, cw, listH, at, maxAt)
+    local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
+    local first = math.max(1, math.floor(at / rowH) + 1)
+    local last = math.min(total, first + math.ceil(listH / rowH) + 1)
+    for i = first, last do
+      local e = FileBrowser.entries[i]
+      local ry = top + (i - 1) * rowH
+      local clicked, ink = Kit.row(cx, ry, rw, rowH - 2, FileBrowser.selectedIdx == i, "fb-row-" .. i)
+      local icon = math.floor(18 * s)
+      local col = ink or (e.isDir and PAL.blue or PAL.text)
+      Icons.draw(e.isDir and "folder" or "file", cx + gap, ry + (rowH - 2 - icon) / 2, icon, col)
+      Kit.text("small", Kit.ellipsize("small", e.name, rw - icon - 3 * gap), cx + 2 * gap + icon,
+        ry + (rowH - 2 - Kit.textHeight("small")) / 2, col)
+      if clicked then
+        FileBrowser.selectedIdx = i
+        if e.isDir then FileBrowser.setDirectory(e.path) else FileBrowser.close(e.path) end
+        break
+      end
+    end
+    Kit.scrollEnd(cx, cy, cw, listH, at, maxAt, PAL.surface)
   end
 
-  -- Pager info & Controls guide
-  local bottomY = py + modalH - pad - math.floor(18 * s)
-  local pageInfo = string.format("Page %d of %d (%d items)", FileBrowser.page, math.max(1, math.ceil(total / perPage)), total)
-  Kit.text("micro", pageInfo, px + pad, bottomY, PAL.muted)
-
-  local guide = "A: Open/Select  B: Parent  X: Shortcut  Start: Confirm  Select: Cancel"
-  Kit.textRight("micro", guide, px + modalW - pad, bottomY, PAL.muted)
-
-  Kit.blockClicks = false
+  -- footer: cancel, and the pad's keys
+  local fy = py + modalH - pad - btn
+  local cancelW = math.max(btn, Kit.textWidth("small", "Cancel") + math.floor(32 * s))
+  if Kit.button(cx + cw - cancelW, fy, cancelW, btn, "Cancel", { id = "fb-cancel", font = "small" }) then
+    FileBrowser.close(nil)
+    return
+  end
+  local hint = "A open   B up   X next place"
+  if Kit.textWidth("micro", hint) < cw - cancelW - gap then
+    Kit.text("micro", hint, cx, fy + (btn - Kit.textHeight("micro")) / 2, PAL.muted)
+  end
 end
 
 return FileBrowser

@@ -43,6 +43,16 @@ local function cacheReady(version)
   return okR and ready or false
 end
 
+-- Imported by an older build: the cache marker is there but no longer
+-- passes (a new cache format).  The game shows "Update needed" and offers
+-- to import again instead of reading as never imported.
+local function cacheStale(version)
+  local ok, CacheContract = pcall(require, "src.import.CacheContract")
+  if not ok or not CacheContract.readMarker then return false end
+  local okM, marker = pcall(CacheContract.readMarker, version)
+  return okM and type(marker) == "string" and marker ~= "" or false
+end
+
 local function visibleGame(version)
   local ok, SecretGames = pcall(require, "src.import.SecretGames")
   if ok and SecretGames.visible then
@@ -131,7 +141,11 @@ function Launcher:refresh()
   for _, v in ipairs(GameVersion.ORDER) do
     if visibleGame(v) then self.games[#self.games + 1] = v end
   end
-  for _, v in ipairs(self.games) do self.ready[v] = cacheReady(v) end
+  self.stale = {}
+  for _, v in ipairs(self.games) do
+    self.ready[v] = cacheReady(v)
+    self.stale[v] = not self.ready[v] and cacheStale(v)
+  end
   self.slots = {}
   self:publishShortcuts()
 end
@@ -372,6 +386,7 @@ end
 
 function Launcher:drawToast(x, y, w, s)
   local m = self.message
+  self.toastRect = nil
   if not m then return end
   local life = m.kind == "error" and Launcher.TOAST_ERROR or Launcher.TOAST_INFO
   local age = now() - (m.at or now())
@@ -394,9 +409,13 @@ function Launcher:drawToast(x, y, w, s)
   Theme.fillRounded(bx, y, math.max(3, math.floor(4 * s)), h, color, alpha, 2)
   Icons.draw(m.kind == "error" and "triangle-alert" or "check", bx + pad, y + pad, icon, color, alpha)
   Kit.textWrapped("small", m.text, bx + 2 * pad + icon, y + pad, textW, PAL.text, lines)
+  self.toastRect = { bx, y, tw, h }
+  local wasOverlay = Kit._overlay
+  Kit._overlay = true
   if Kit.press(bx, y, tw, h) then
     self:queue(function() self.message = nil end, true)
   end
+  Kit._overlay = wasOverlay
 end
 
 -- Verify bytes from a picker or a drop and start importing them.
@@ -405,7 +424,16 @@ function Launcher:importData(data, name)
     return self:say("An import is already running.", "error")
   end
   local rom, err = ImportJob.verify(data, name, visibleGame)
+  local picked = self.pickedRomPath
+  self.pickedRomPath = nil
   if not rom then return self:say(err, "error") end
+  -- a desktop path that verified is where this game comes from next time
+  if picked then
+    local opts = self:options()
+    opts.romSources = type(opts.romSources) == "table" and opts.romSources or {}
+    opts.romSources[rom.version] = picked
+    self:setOption("romSources", opts.romSources)
+  end
   self:selectGame(rom.version)
   self:say(nil)
   self.job = ImportJob.start(rom)
@@ -509,18 +537,40 @@ function Launcher:pollHostPick()
   end
 end
 
-function Launcher:pickRom()
-  if self:requestHostPick("rom") then return end
+-- Pick a file on a desktop or handheld: the system dialog when there is
+-- one, else the in-app browser (a minimal Linux desktop, a handheld).
+-- `onPath(path)` runs from the queue once a file is chosen; a cancel does
+-- nothing.  Returns false when neither can run (say `dropHint` instead).
+function Launcher:pickPath(prompt, kind, browseMode, onPath, dropHint)
   local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    return self:say("Drop a .gb, .gbc or .gba file onto this window to "
-      .. "import it.", "info")
+  if ok and FilePicker.available() and FilePicker.hasDialog() then
+    local path = FilePicker.open(prompt, kind)
+    if path then onPath(path) end
+    return true
   end
-  local path = FilePicker.open("Choose a Pokemon ROM", ROM_KIND)
-  if not path then return end
+  if ok and FilePicker.available() then
+    Kit.FileBrowser.open({ title = prompt, mode = browseMode,
+      onSelect = function(path) self:queue(function() onPath(path) end) end })
+    return true
+  end
+  if dropHint then self:say(dropHint, "info") end
+  return false
+end
+
+-- Read a picked path and hand its bytes on; a read error is said.
+local function readPicked(self, path, use)
+  local FilePicker = require("src.core.FilePicker")
   local data, err = FilePicker.read(path)
   if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
-  self:importData(data, FilePicker.basename(path))
+  use(data, FilePicker.basename(path))
+end
+
+function Launcher:pickRom()
+  if self:requestHostPick("rom") then return end
+  self:pickPath("Choose a Pokemon ROM", ROM_KIND, "rom", function(path)
+    self:rememberRomSource(path)
+    readPicked(self, path, function(data, name) self:importData(data, name) end)
+  end, "Drop a .gb, .gbc or .gba file onto this window to import it.")
 end
 
 -- ------------------------------------------------------------------- mods
@@ -875,6 +925,11 @@ function Launcher:chooseBoxImport()
   if not (ok and FilePicker.available()) then
     return self:importBox(nil, "Drop the Box .gci or .sav onto this window.")
   end
+  if not FilePicker.hasDialog() then
+    return self:pickPath("Choose a Pokemon Box save", BOX_KIND, "box", function(p)
+      readPicked(self, p, function(data) self:importBox(data) end)
+    end)
+  end
   local path = FilePicker.open("Choose a Pokemon Box save", BOX_KIND)
   if not path then return end
   local data, err = FilePicker.read(path)
@@ -982,6 +1037,11 @@ function Launcher:pickSave()
   if not (ok and FilePicker.available()) then
     return self:say("Drop a .sav file onto this window to import it.", "info")
   end
+  if not FilePicker.hasDialog() then
+    return self:pickPath("Choose a save file", SAVE_KIND, "save", function(p)
+      self:importSave(p, FilePicker.basename(p))
+    end)
+  end
   local path = FilePicker.open("Choose a save file", SAVE_KIND)
   if path then self:importSave(path, FilePicker.basename(path)) end
 end
@@ -1077,9 +1137,19 @@ function Launcher:options()
   return self.fallbackOpts
 end
 
+-- The launcher's volumes are for every game: Gen 1 and Gen 3 read the flat
+-- keys, Gen 2 its own block (src/core/gen2/Save.lua OPTIONS_KEY).
+local ALL_GAMES_KEYS = { musicVol = true, sfxVol = true }
+
 function Launcher:setOption(key, value)
   local opts = self:options()
   opts[key] = value
+  if ALL_GAMES_KEYS[key] then
+    local okG, Gen2Save = pcall(require, "src.core.gen2.Save")
+    local block = okG and Gen2Save.OPTIONS_KEY or "gold"
+    opts[block] = type(opts[block]) == "table" and opts[block] or {}
+    opts[block][key] = value
+  end
   local ok, SaveData = pcall(require, "src.core.SaveData")
   if ok then pcall(SaveData.saveOptions, opts) end
   if key == "videoMode" then
@@ -1405,7 +1475,58 @@ function Launcher:handleDrop(file)
   end
   if asMod then return self:installMod(data, name:match("[^/\\]+$") or name) end
   if isCart then return self:installCart(data, name:match("[^/\\]+$") or name) end
+  if name:match("^/") or name:match("^%a:[/\\]") then self:rememberRomSource(name) end
   self:importData(data, name:match("[^/\\]+$") or name)
+end
+
+-- Where a ROM was picked or dropped from, kept once it verifies (above) so
+-- an update that needs a fresh import can read the same file again.  Only
+-- real paths on a desktop: a phone's picked file is a temporary copy.
+function Launcher:rememberRomSource(path)
+  local okP, Platform = pcall(require, "src.core.Platform")
+  if okP and Platform.canSpawnProcess() and type(path) == "string" then
+    self.pickedRomPath = path
+  end
+end
+
+-- The remembered file for a game, when it is still there.
+function Launcher:romSource(version)
+  local sources = self:options().romSources
+  local path = type(sources) == "table" and sources[version]
+  if type(path) ~= "string" then return nil end
+  local f = io.open(path, "rb")
+  if not f then return nil end
+  f:close()
+  return path
+end
+
+function Launcher:reimport(version)
+  local path = self:romSource(version)
+  if not path then return self:pickRom() end
+  self.pickedRomPath = path
+  self:startPath(path)
+end
+
+-- Forget every remembered ROM location (Settings).
+function Launcher:forgetRomSources()
+  self:setOption("romSources", {})
+  self:say("PK:GB no longer remembers where your ROMs are.", "info")
+end
+
+-- How else a ROM can arrive, in this platform's terms.
+function Launcher:importHint()
+  local Inbox = require("src.launcher.Inbox")
+  local okP, Platform = pcall(require, "src.core.Platform")
+  local P = okP and Platform.detect() or {}
+  if Inbox.enabled() then
+    local how = P.inboxTransfer == "mtp" and "Connect by USB and copy it into "
+      or P.inboxTransfer == "ftp" and "Copy it over FTP into "
+      or "Or copy it into "
+    return how .. Inbox.location() .. ", then choose Settings > Scan again."
+  end
+  if P.mobile then return "Choose the file from your device's storage or a cloud drive." end
+  if P.web then return "The file stays in your browser; it is never uploaded." end
+  return "Or drop the .gb / .gbc / .gba file onto this window."
 end
 
 -- An import started from a command line path.
@@ -1438,6 +1559,7 @@ end
 local function statusText(self, version)
   if self.job and self.job.version == version then return "Importing", PAL.yellow end
   if self.ready[version] then return "Ready", PAL.green end
+  if self.stale and self.stale[version] then return "Update needed", PAL.yellow end
   return "Not imported", PAL.muted
 end
 
@@ -1619,13 +1741,19 @@ function Launcher:drawSettings(x, y, w, h, s)
 
   local okV, VideoMode = pcall(require, "src.core.VideoMode")
   if okV and not VideoMode.fixedDisplay() then
-    label("Display", cy)
-    local full = VideoMode.normalize(opts.videoMode) == "borderless"
+    -- the launcher's own window (src/import/LauncherWindow.lua); each game
+    -- keeps its display mode in its OPTIONS menu
+    label("Launcher window", cy)
+    local okW, Window = pcall(require, "src.import.LauncherWindow")
+    local okM, mode = false, nil
+    if okW then okM, mode = pcall(Window.mode) end
+    local full = okM and mode == "fullscreen"
     local bw = math.floor(math.min(cw * 0.5, 300 * s))
     if Kit.button(cx + cw - bw, cy, bw, rowH, full and "Fullscreen" or "Windowed",
-        { id = "video-mode", font = "small" }) then
+        { id = "video-mode", font = "small", enabled = okW }) then
       self:queue(function()
-        self:setOption("videoMode", full and "windowed" or "borderless")
+        local okT, done = pcall(Window.toggle)
+        if not (okT and done) then self:say("The window mode could not be changed here.", "error") end
       end)
     end
     cy = cy + rowH + math.floor(10 * s)
@@ -2205,21 +2333,57 @@ function Launcher:drawGame(x, y, w, h, s)
   end
 
   if not ready then
-    local help = "Import your own " .. info.displayName .. " ROM to play. "
-      .. "It is checked against the original release before anything is "
-      .. "written, read once, and never copied."
-    Kit.textWrapped("small", help, cx, cy, cw, PAL.muted)
+    local stale = self.stale and self.stale[v]
+    local help = stale
+      and ("This game was imported by an older version of PK:GB and has to be imported again. "
+        .. "Your saves are kept.")
+      or ("Import your own " .. info.displayName .. " ROM to play. "
+        .. "It is checked against the original release before anything is "
+        .. "written, read once, and never copied.")
+    Kit.textWrapped("small", help, cx, cy, cw, stale and PAL.text or PAL.muted)
     cy = cy + Kit.wrapHeight("small", help, cw) + Theme.space("m", s)
-    if Kit.button(cx, cy, math.min(cw, math.floor(260 * s)), btnH, "Import ROM",
-        { id = "import", kind = "accent", icon = "download", fullLabel = true }) then
-      self:queue(function() self:pickRom() end)
+    local source = self:romSource(v)
+    local bw = math.min(cw, math.floor(260 * s))
+    if source then
+      -- the file it came from last time is still there: one press
+      if Kit.button(cx, cy, bw, btnH, "Import again",
+          { id = "reimport", kind = "accent", icon = "refresh-cw", fullLabel = true }) then
+        self:queue(function() self:reimport(v) end)
+      end
+      if cw >= 2 * bw + Theme.space("m", s) then
+        if Kit.button(cx + bw + Theme.space("m", s), cy, bw, btnH, "Choose another file",
+            { id = "import", icon = "folder-open", fullLabel = true }) then
+          self:queue(function() self:pickRom() end)
+        end
+      else
+        cy = cy + btnH + Theme.space("s", s)
+        if Kit.button(cx, cy, bw, btnH, "Choose another file",
+            { id = "import", icon = "folder-open", fullLabel = true }) then
+          self:queue(function() self:pickRom() end)
+        end
+      end
+      cy = cy + btnH + Theme.space("s", s)
+      Kit.text("micro", Kit.ellipsize("micro", "From " .. source, cw), cx, cy, PAL.faint)
+      cy = cy + Kit.textHeight("micro") + Theme.space("xs", s)
+    else
+      if Kit.button(cx, cy, bw, btnH, "Import ROM",
+          { id = "import", kind = "accent", icon = "download", fullLabel = true }) then
+        self:queue(function() self:pickRom() end)
+      end
+      cy = cy + btnH + Theme.space("s", s)
     end
-    cy = cy + btnH + Theme.space("s", s)
-    local Inbox = require("src.launcher.Inbox")
-    Kit.text("micro", Kit.ellipsize("micro", Inbox.enabled()
-      and ("Or copy it into " .. Inbox.location() .. " and choose Settings > Scan again.")
-      or "Or drop the .gb / .gbc / .gba file onto this window.", cw), cx, cy, PAL.faint)
-    return cy + Kit.textHeight("micro") + pad - y
+    Kit.textWrapped("micro", self:importHint(), cx, cy, cw, PAL.faint)
+    cy = cy + Kit.wrapHeight("micro", self:importHint(), cw) + Theme.space("m", s)
+    -- which dumps are accepted (each is checked by SHA-1)
+    local revs = {}
+    for _, r in ipairs(info.revisions or {}) do revs[#revs + 1] = r.label end
+    if #revs > 0 then
+      local line = "Accepted: the original " .. tostring(info.label or info.displayName)
+        .. " release, version " .. table.concat(revs, " or ") .. "."
+      Kit.textWrapped("micro", line, cx, cy, cw, PAL.faint)
+      cy = cy + Kit.wrapHeight("micro", line, cw)
+    end
+    return cy + pad - y
   end
 
   -- saves caption, with Import .sav at its right
@@ -2631,6 +2795,10 @@ function Launcher:draw()
     end
   end
   Kit.beginFrame(mx, my, click ~= nil, self.wheel or 0)
+  -- the toast is drawn last; last frame's rect keeps a press on it from
+  -- also landing on the control underneath
+  local tr = self.message and self.toastRect
+  if tr then Kit.occlude(tr[1], tr[2], tr[3], tr[4]) end
   self.click, self.wheel = nil, 0
   Theme.field()
   -- a Box popup or prompt owns the frame: nothing under its scrim takes clicks

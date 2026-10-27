@@ -57,6 +57,9 @@ local editorNames = {
   "sparkles",
   "shuffle",
   "folder-open",
+  "file",
+  "refresh-cw",
+  "monitor-smartphone",
 }
 local atlases = {
   { path = "assets/ui/lucide/icons.png", names = names },

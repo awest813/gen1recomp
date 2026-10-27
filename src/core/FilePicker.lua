@@ -52,6 +52,29 @@ function FilePicker.available()
   return Platform.canSpawnProcess()
 end
 
+-- Whether a native file dialog will actually appear.  Linux has none of
+-- its own: it borrows zenity or kdialog, which a minimal desktop, a
+-- handheld or a container may not have.  Without one, FilePicker.open
+-- returns nil exactly as a cancel does, so callers ask this first and use
+-- the in-app browser (src/ui/kit/FileBrowser.lua) instead.
+local dialogCache
+function FilePicker.hasDialog()
+  if dialogCache ~= nil then return dialogCache end
+  dialogCache = false
+  if not Platform.canSpawnProcess() then return false end
+  if os.getenv("HANDHELD") == "1" or os.getenv("PORTMASTER") == "1" then return false end
+  local platform = love and love.system and love.system.getOS and love.system.getOS()
+  if platform == "OS X" or platform == "Windows" then
+    dialogCache = true
+  elseif platform == "Linux" then
+    local found = commandOutput("command -v zenity || command -v kdialog")
+    dialogCache = found ~= nil
+  end
+  return dialogCache
+end
+
+function FilePicker._resetDialogForTests() dialogCache = nil end
+
 function FilePicker.matches(name, kind)
   local lower = tostring(name or ""):lower()
   for _, ext in ipairs(kind.exts) do
