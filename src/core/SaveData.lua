@@ -3015,7 +3015,9 @@ local function scrubKnownMon(mon, data)
       local base = ppInt(mdef and mdef.pp, 0)
       local ppUps = math.min(3, ppInt(slot.ppUps, 0))
       if slot.ppUps ~= nil then slot.ppUps = ppUps end
-      slot.pp = ppInt(slot.pp, base + ppUps * math.floor(base / 5))
+      local maxPP = require("src.pokemon.MaxPP").of(base, ppUps)
+      -- a stored PP is left as it is: under Mimic it is another move's
+      slot.pp = ppInt(slot.pp, maxPP)
     end
   end
 end

@@ -591,7 +591,9 @@ function Loader:_discover()
         -- setSymlinksEnabled(true) -- PhysFS never resolves the symlink's
         -- own getInfo, only traversal into it. readManifest below still
         -- correctly no-ops on a symlink that isn't a directory.
-        if info and (info.type == "directory" or info.type == "symlink") then
+        -- mods/examples is the gallery the launcher installs from, not a mod
+        if info and (info.type == "directory" or info.type == "symlink")
+            and path ~= "mods/examples" then
           local manifest, err = readManifest(self.fs, path)
           if manifest then
             if self.mods[manifest.id] then

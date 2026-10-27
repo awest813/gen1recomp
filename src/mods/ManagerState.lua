@@ -672,8 +672,13 @@ function ManagerState:adjustOrTab(dir)
     local row = self:focusedRow()
     if row and row.adjust then return row.adjust(dir) end
     -- stops on its last page rather than scrolling into blank lines
-    local lines = self.currentMod and #self:detailBody(self.currentMod) or 0
-    local last = math.max(1, lines - DETAIL_BODY_ROWS + 1)
+    local last
+    if self.currentMod and self.descScrollLast then
+      last = self.descScrollLast(self.currentMod) -- a view with its own window
+    else
+      local lines = self.currentMod and #self:detailBody(self.currentMod) or 0
+      last = math.max(1, lines - DETAIL_BODY_ROWS + 1)
+    end
     self.descScroll = math.max(1, math.min(last, self.descScroll + dir))
   else
     for _ = 1, LIST_ROWS - 1 do self:moveCursor(dir) end

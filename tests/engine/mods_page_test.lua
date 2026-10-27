@@ -198,7 +198,11 @@ eq(zips[#zips].bytes, "ZIP:cool:1.2.0", "the downloaded package is installed")
 check(zips[#zips].opts.upgrade, "as an upgrade")
 eq(installed.cool.version, "1.2.0", "the mod is now the new version")
 check(l.message and l.message.text:find("Updated Cool Mod v1.2.0", 1, true), "and the player is told")
-eq(love.filesystem.read("launcher_download_cool.part"), nil, "the download is cleaned up")
+local leftover
+for _, name in ipairs(love.filesystem.getDirectoryItems("")) do
+  if name:find("^launcher_download_") then leftover = name end
+end
+eq(leftover, nil, "the download is cleaned up")
 
 -- Update all, as main.lua calls it before a shortcut boot
 installed.cool.version = "1.0.0"
@@ -847,6 +851,18 @@ do
   la:handleDrop({ getFilename = function() return "/tmp/cool.zip" end,
     open = function() end, read = function() return "PKzip" end, close = function() end })
   eq(gotMod, true, "a .zip dropped on Examples installs as a mod")
+  -- the importers page takes it as the running importer's source
+  gotMod = false
+  local fedImporter
+  local ui = la:modsUi()
+  local realStart = ui.startImporter
+  ui.startImporter = function(_, bytes) fedImporter = bytes end
+  la.page, la.pendingImporter = "importers", "some_importer"
+  la:handleDrop({ getFilename = function() return "/tmp/assets.zip" end,
+    open = function() end, read = function() return "PKassets" end, close = function() end })
+  eq(gotMod, false, "a .zip dropped on Importers is not installed as a mod")
+  eq(fedImporter, "PKassets", "it goes to the importer that asked for a file")
+  ui.startImporter, la.pendingImporter = realStart, nil
   la.installMod = realInstall
   eq(Launcher.isSaveName("gen1recomp-gold-KRIS.lua"), true, "an exported .lua is a save")
 

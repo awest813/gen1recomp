@@ -595,6 +595,8 @@ function Launcher:scanInbox()
           -- the ROM stays in the imports folder until its import has
           -- finished: a failed one leaves the player's only copy where it was
           if self:importing() then self.inboxRom = item end
+          -- the import says itself how it went, and takes the file then
+          ok = "running"
         else
           self.inboxTried[item.path] = nil -- one ROM at a time; next scan
         end
@@ -1470,7 +1472,9 @@ function Launcher:handleDrop(file)
   local isCart = fname:lower():match("%.g1rcart$") ~= nil
   -- a .zip dropped on any Mods page (the list, a mod, Get mods, Examples...)
   -- is a mod; anywhere else, a zipped ROM
-  local asMod = require("src.launcher.ModsPage").PAGES[self.page or ""] == true and fname:lower():match("%.zip$") ~= nil
+  -- (the importers page takes its importer's source instead: often a .zip)
+  local asMod = require("src.launcher.ModsPage").PAGES[self.page or ""] == true
+    and self.page ~= "importers" and fname:lower():match("%.zip$") ~= nil
   local ok, data = pcall(function()
     file:open("r")
     local bytes = file:read()
@@ -1480,6 +1484,9 @@ function Launcher:handleDrop(file)
   local name = file.getFilename and file:getFilename() or "dropped file"
   if not ok or type(data) ~= "string" then
     return self:say("Could not read the dropped file.", "error")
+  end
+  if self.page == "importers" and self.pendingImporter then
+    return self:modsUi():startImporter(data)
   end
   if asMod then return self:installMod(data, name:match("[^/\\]+$") or name) end
   if isCart then return self:installCart(data, name:match("[^/\\]+$") or name) end

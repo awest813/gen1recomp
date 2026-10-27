@@ -718,8 +718,11 @@ function ModsPage:setOption(id, key, value)
   local values = {}
   for k, v in pairs(self:optionValues(id)) do values[k] = v end
   values[key] = value
-  local ok, err = pcall(require("src.mods.ModLibrary").setModOptions, id, values)
-  if not ok then self.launcher:say("Could not save that option: " .. tostring(err), "error") end
+  local ok, saved, err = pcall(require("src.mods.ModLibrary").setModOptions, id, values)
+  if not ok or not saved then
+    local why = ok and err or (not ok and saved) or "the options file could not be written"
+    self.launcher:say("Could not save that option: " .. tostring(why), "error")
+  end
 end
 
 function ModsPage:resetOptions(row)
@@ -732,8 +735,9 @@ function ModsPage:resetOptions(row)
   end
   local ok, saved, err = pcall(require("src.mods.ModLibrary").setModOptions, row.id, values)
   if not ok or not saved then
+    local why = ok and err or (not ok and saved) or "the options file could not be written"
     return self.launcher:say("Could not reset " .. tostring(row.name) .. "'s options: "
-      .. tostring(ok and err or saved), "error")
+      .. tostring(why), "error")
   end
   self.launcher:say(tostring(row.name) .. "'s options are back to their defaults.", "info")
 end
@@ -1022,7 +1026,10 @@ function ModsPage:pumpInstalls()
     job.stage = "start"
   end
   if job.stage == "start" then
-    job.file = ("launcher_download_%s.part"):format(tostring(job.id):gsub("[^%w%-_]", "_"))
+    -- a stopped download of the same id may still be writing its old file
+    self.jobSerial = (self.jobSerial or 0) + 1
+    job.file = ("launcher_download_%s_%d.part"):format(
+      (tostring(job.id):gsub("[^%w%-_]", "_")), self.jobSerial)
     job.h = ModUpdate.beginDownloadZip(job.url, job.file, job.size)
     job.stage = "download"
   end
@@ -1531,8 +1538,15 @@ function ModsPage:installExample(row)
     l:say(("%s is installed. It does not run on %s, so it stays off here."):format(
       tostring(row.title), gameName(v)), "info")
   else
-    l:say(("%s is installed and on for %s. It applies the next time the game starts."):format(
-      tostring(row.title), gameName(v)), "info")
+    -- a mod the player turned off for this game before stays off
+    local on = true
+    for _, mod in ipairs(l:modsFor(v) or {}) do
+      if mod.id == manifest.id then on = mod.enabled and true or false end
+    end
+    l:say(on and ("%s is installed and on for %s. It applies the next time the game starts."):format(
+        tostring(row.title), gameName(v))
+      or ("%s is installed but off for %s. Turn it on in Mods."):format(tostring(row.title), gameName(v)),
+      "info")
   end
 end
 

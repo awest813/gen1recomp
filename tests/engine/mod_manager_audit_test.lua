@@ -48,6 +48,12 @@ do
   eq(ms.descScroll, math.max(1, lines - 5 + 1), "Right stops on the last page of the text")
   for _ = 1, 50 do ms:adjustOrTab(-1) end
   eq(ms.descScroll, 1, "and Left back at the top")
+  -- a view with its own window (FireRed's) says where its last page is
+  ms.descScrollLast = function() return 9 end
+  for _ = 1, 50 do ms:adjustOrTab(1) end
+  eq(ms.descScroll, 9, "Right stops on the view's last page")
+  ms:adjustOrTab(-1)
+  eq(ms.descScroll, 8, "and one Left moves it straight away")
 end
 
 -- a profile is never saved without a name

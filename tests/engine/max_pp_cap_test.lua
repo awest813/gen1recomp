@@ -24,4 +24,18 @@ local ok, err = pcall(ItemEffects.use, data, { bag = {} }, "PP_UP", mon, nil, 1)
 T.check(ok, "PP UP runs (" .. tostring(err) .. ")")
 T.eq(mon.moves[1].ppUps, 3, "PP UP counts the third use")
 T.eq(mon.moves[1].pp, 47, "and adds 7, not 8")
+
+-- a loaded save gets the capped PP too when a slot has none
+local SaveData = require("src.core.SaveData")
+local sdata = { moves = { GROWL = { name = "GROWL", pp = 40 } },
+  pokemon = { PIKACHU = { name = "PIKACHU", baseStats = { hp = 35, attack = 55, defense = 30, speed = 90, special = 50 } } },
+  items = {}, text = {}, maps = {} }
+local party = { { species = "PIKACHU", level = 5, moves = {
+  { id = "GROWL", ppUps = 3 }, { id = "GROWL", pp = 64, ppUps = 3 }, { id = "GROWL", pp = 12, ppUps = 3 } } } }
+local okV, errV = pcall(SaveData.validate, { party = party, boxes = {} }, sdata)
+if T.check(okV, "validate runs (" .. tostring(errV) .. ")") then
+  T.eq(party[1].moves[1].pp, 61, "a missing PP defaults to the capped max")
+  T.eq(party[1].moves[2].pp, 64, "a stored PP is kept (under Mimic it is another move's)")
+  T.eq(party[1].moves[3].pp, 12, "a spent move keeps what it has left")
+end
 T.finish("max pp cap")

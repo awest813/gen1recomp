@@ -216,6 +216,8 @@ function ModManager.show(opts)
   }, { __index = game })
 
   local m = ManagerState.new(proxy)
+  -- LEFT/RIGHT stop on this window's last page, not the Game Boy one's
+  m.descScrollLast = function(mod) return ModManager.descLast(m, mod) end
   m:enter()
   ModManager._mgr = m
   ModManager._game = game
@@ -323,6 +325,18 @@ end
 local DETAIL_TEXT = 2
 local DETAIL_TEXT_W = 24 * 8
 
+-- What the mod does (or why it failed or is skipped), wrapped to the window.
+local function detailText(m, mod)
+  local body = mod.error and ("FAILED: " .. mod.error)
+    or mod.note and ("SKIPPED: " .. m:skipText(mod))
+    or mod.description or ""
+  return wrapLines({ body }, DETAIL_TEXT_W)
+end
+
+function ModManager.descLast(m, mod)
+  return math.max(1, #detailText(m, mod) - DETAIL_TEXT + 1)
+end
+
 local function drawDetailBody(m)
   local mod = m.currentMod
   if not mod then return end
@@ -339,10 +353,7 @@ local function drawDetailBody(m)
   local y = ROW_Y0
   Window.printPx(truncate(status, 26), LABEL_X, y, { colors = FrlgFont.COLOR.DARK_GRAY })
   y = y + ROW_STEP
-  local body = mod.error and ("FAILED: " .. mod.error)
-    or mod.note and ("SKIPPED: " .. m:skipText(mod))
-    or mod.description or ""
-  local text = wrapLines({ body }, DETAIL_TEXT_W)
+  local text = detailText(m, mod)
   local first = math.max(1, math.min(m.descScroll or 1, #text - DETAIL_TEXT + 1))
   for i = first, first + DETAIL_TEXT - 1 do
     if text[i] then
