@@ -68,7 +68,6 @@ function RomExtractor.new(romData, manifest, progress)
     symbols = manifest.symbols,
     progress = progress,
     stage = 0,
-    weights = require("src.import.StageWeights").new(STAGE_WEIGHTS, 5),
   }, RomExtractor)
 end
 
@@ -80,12 +79,17 @@ end
 
 function RomExtractor:beginStage(name)
   self.stage = self.stage + 1
+  self.weights = self.weights or require("src.import.StageWeights").new(STAGE_WEIGHTS, 5)
   local done, all = self.weights:begin(name)
   if self.progress then self.progress(done, all, name, 0, 1) end
 end
 
 function RomExtractor:tick(name, current, total)
   if self.progress then
+    if not self.weights then
+      return self.progress(self.stage - 1 + current / total, STAGE_COUNT,
+        name, current, total)
+    end
     local done, all = self.weights:at(current / total)
     self.progress(done, all, name, current, total)
   end
