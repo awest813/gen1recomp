@@ -215,6 +215,10 @@ function BindingsMenu:captureKey(key)
   self.pending = { slot = "key", value = key }
 end
 
+-- The buttons a speed shortcut never takes from the game.
+local CORE = { a = true, b = true, start = true, select = true,
+  up = true, down = true, left = true, right = true }
+
 function BindingsMenu:capturePad(button)
   if self.pending then return self:endCapture() end
   -- the pad's B backs out, as it does everywhere else on a console: a
@@ -223,6 +227,15 @@ function BindingsMenu:capturePad(button)
   local name = GamepadMap.normalizePad and GamepadMap.normalizePad(button) or button
   if self.capture and self.capture.button.id ~= "b"
       and Input.padBindings and Input.padBindings[name] == "b" then
+    return self:endCapture()
+  end
+  -- a speed shortcut takes only a spare button (a shoulder, a trigger, a
+  -- stick click): taking A swapped A onto LB, and with bindings shared that
+  -- left FireRed, where LB is L, without a working A
+  -- (FireRed's L and R may still swap with it: L moving to a trigger loses
+  -- nothing, while A moving to LB clashed with L once bindings are shared)
+  local owner = Input.padBindings and Input.padBindings[name]
+  if self.capture and self.capture.button.action and CORE[owner] then
     return self:endCapture()
   end
   self.pending = { slot = "pad", value = button }
@@ -445,8 +458,10 @@ function BindingsMenu:draw()
   if self.capture then
     Font.drawBox(1, 6, 18, 8)
     love.graphics.setColor(0, 0, 0, 1)
-    Font.draw(Strings("PRESS A BUTTON"), 24, 60)
-    Font.draw(Strings("RELEASE TO SET"), 24, 72)
+    -- the box sits over the list, so it names the row it is setting
+    local label = self.capture.label or (self.capture.button and self.capture.button.label) or ""
+    Font.draw(Strings("SET") .. " " .. label, 24, 60)
+    Font.draw(Strings("PRESS, RELEASE"), 24, 72)
     -- a keyboard's X stays bindable (it has Esc); a pad or touch B cancels
     Font.draw(Strings("ESC, PAD B OR"), 24, 84)
     Font.draw(Strings("TOUCH B CANCELS"), 24, 96)

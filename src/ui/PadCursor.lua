@@ -105,8 +105,11 @@ function PadCursor.update(dt)
     local ox, oy, w, h = SafeArea.rect()
     local nx = cursor.x + dx * speed * dt
     local ny = cursor.y + dy * speed * dt
-    cursor.x = math.max(ox, math.min(ox + w, nx))
-    cursor.y = math.max(oy, math.min(oy + h, ny))
+    -- and inside the window: a safe area reported for a bigger screen than
+    -- the window let the pointer run off the bottom and vanish
+    local gw, gh = love.graphics.getDimensions()
+    cursor.x = math.max(ox, math.min(math.min(ox + w, gw - 1), nx))
+    cursor.y = math.max(oy, math.min(math.min(oy + h, gh - 1), ny))
   end
 
   local ry = axis.righty or 0

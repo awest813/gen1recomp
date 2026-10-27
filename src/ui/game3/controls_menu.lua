@@ -157,8 +157,12 @@ end
 local function drawCapture()
   Chrome.stdFrame(5, 9, 20, 6)
   local x, y = 5 * 8 + 4, 9 * 8 + 2
-  Window.printPx(Strings("PRESS A BUTTON"), x, y, { colors = FrlgFont.COLOR.NORMAL })
-  Window.printPx(Strings("RELEASE TO SET"), x, y + 15, { colors = FrlgFont.COLOR.NORMAL })
+  -- the box sits over the list, so it names the row it is setting
+  local bm = Controls._bm
+  local cap = bm and bm.capture
+  local label = cap and (cap.label or (cap.button and cap.button.label)) or ""
+  Window.printPx(Strings("SET") .. " " .. label, x, y, { colors = FrlgFont.COLOR.NORMAL })
+  Window.printPx(Strings("PRESS, THEN RELEASE"), x, y + 15, { colors = FrlgFont.COLOR.NORMAL })
   Window.printPx(Strings("ESC OR PAD B CANCELS"), x, y + 30, { colors = FrlgFont.COLOR.NORMAL })
 end
 

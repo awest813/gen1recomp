@@ -324,7 +324,12 @@ function Launcher:slotsFor(version)
 end
 
 function Launcher:queue(fn, keepArmed)
-  if not keepArmed then self.armedDelete = nil end
+  if not keepArmed and self.armedDelete then
+    self.armedDelete = nil
+    -- its "Press ... again" prompt goes with it, not on for seconds after
+    local m = self.message
+    if m and tostring(m.text):match("^Press .* again") then self.message = nil end
+  end
   self.actions[#self.actions + 1] = fn
 end
 
@@ -1214,7 +1219,13 @@ function Launcher:mousereleased(x, y, button)
   end
 end
 
-function Launcher:mousemoved(x, y) showcase(self, "pointerMoved", "mouse", x, y) end
+function Launcher:mousemoved(x, y, dx, dy, istouch)
+  -- a real move of the mouse hands the screen back to the pointer: the
+  -- pad / keyboard ring hides and hover shows again (both at once read as
+  -- two highlights)
+  if not istouch and (math.abs(dx or 0) + math.abs(dy or 0)) > 2 then Kit.pointerUsed() end
+  showcase(self, "pointerMoved", "mouse", x, y)
+end
 -- A finger drags lists (Kit.dragBegin/dragAdd feed every scroll area); one
 -- that moved further than a tap is a drag, not a press.
 local DRAG_SLOP = 12
@@ -1748,6 +1759,22 @@ function Launcher:drawGameList(x, y, w, h, s)
   local contentH = 0
   for _, it in ipairs(items) do contentH = contentH + (it.header and headH or rowH + gap) end
   local maxAt = Kit.scrollExtent(contentH, h)
+  -- the first frame opens with the chosen game in view: it is where the
+  -- ring starts, and a game scrolled out of sight left a pad player's first
+  -- press moving from a row they never saw
+  if not self.listShownSelected and self.selected then
+    self.listShownSelected = true
+    local at = 0
+    for _, it in ipairs(items) do
+      if it.version == self.selected then
+        if at + rowH > (self.listScroll or 0) + h then
+          self.listScroll = Kit.scrollClamp(at + rowH - h + headH, maxAt)
+        end
+        break
+      end
+      at = at + (it.header and headH or rowH + gap)
+    end
+  end
   self.listScroll = Kit.scrollInput(self.listScroll, maxAt, x, y, w, h)
   local py = Kit.scrollBegin(x, y, w, h, self.listScroll, maxAt)
   local rw = w - Kit.scrollGutter(s)

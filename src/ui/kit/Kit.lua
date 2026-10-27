@@ -610,8 +610,11 @@ function Kit._resolveColumns(cur, dir, n)
         local forward = dir == "down" and dy or -dy
         local gap = math.max(0, c.x - (cur.x + cur.w), cur.x - (c.x + c.w))
         -- into another column only straight down/up (a stacked phone layout,
-        -- the tab bar), never sideways into the next column over
-        if forward > 1 and (sameColumn or gap == 0) then
+        -- the tab bar), never sideways into the next column over, and never
+        -- onto a row that column has scrolled out of view: the game list's
+        -- hidden rows sit "below" Continue and pulled the ring back up there
+        local hiddenByClip = c.clipH and (c.y + c.h <= c.clipY or c.y >= c.clipY + c.clipH)
+        if forward > 1 and (sameColumn or (gap == 0 and not hiddenByClip)) then
           cands[#cands + 1] = { c = c, forward = forward, gap = gap }
           if not nearest or forward < nearest then nearest = forward end
         end
@@ -888,6 +891,9 @@ function Kit.hover(x, y, w, h)
   -- Shielded widgets (drawn while a modal owns the frame) must not glow
   -- either: a hover highlight under the scrim reads as "still clickable".
   if Kit.blockClicks then return false end
+  -- while the pad / keyboard ring is up, a parked pointer does not glow:
+  -- the ring is the one highlight
+  if Kit._ringShown then return false end
   return Kit.hit(x, y, w, h)
 end
 
@@ -1151,7 +1157,9 @@ function Kit.textfield(id, x, y, w, h, value, placeholder, opts)
       digits = opts and opts.digits or nil,
       maxLen = opts and opts.maxLen or nil,
       force = fromPad,
-      text = value,
+      -- a field opened to be replaced (Rename selects the old name) starts
+      -- the keyboard empty, as typing on a real keyboard would replace it
+      text = Kit.selectAll == id and "" or value,
       targetId = id,
       title = placeholder or "Enter Text",
       onDone = function(newText, confirmed)
@@ -1167,6 +1175,7 @@ function Kit.textfield(id, x, y, w, h, value, placeholder, opts)
         end
       end
     })
+    if Kit.selectAll == id then Kit.selectAll = nil end
   end
 
   if VirtualKeyboard.active and VirtualKeyboard.targetId == id then

@@ -216,4 +216,23 @@ do
   eq(Input.keyBindings.z, "a", "with no rebinds Z is A again")
 end
 
+-- ---- a speed shortcut takes only a spare button, never A
+do
+  Input:init()
+  local game = newGame()
+  local bm = BindingsMenu.new(game)
+  game.stack:push(bm)
+  bm.index = 9 -- SLOWER
+  press(bm, "a")
+  bm:onGamepadPressed("a")
+  eq(bm.capture, nil, "pressing A on SLOWER backs out")
+  eq(game.save.options.bindings, nil, "and A stays A")
+  bm.index = 9
+  press(bm, "a")
+  bm:onGamepadPressed("leftstick")
+  bm:onGamepadReleased("leftstick")
+  local b = game.save.options.bindings
+  eq(b and b.speedDown and b.speedDown.pad, "leftstick", "a stick click is fine")
+end
+
 T.finish("rebind controls audit")
