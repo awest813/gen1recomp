@@ -171,6 +171,25 @@ local function copyTree(fs, out, from, to)
   end
 end
 
+-- Copy what `from`/<sub> has and `to`/<sub> does not, recursively: the new
+-- archive wins any file it ships, the player keeps the rest.
+local function carryOver(fs, out, from, to, sub)
+  local src, dst = from .. "/" .. sub, to .. "/" .. sub
+  local info = fs.getInfo(src)
+  if not info then return end
+  if info.type == "directory" then
+    out.mkdir(dst)
+    for _, name in ipairs(fs.getDirectoryItems(src) or {}) do
+      carryOver(fs, out, src, dst, name)
+    end
+  elseif not fs.getInfo(dst) then
+    local body = fs.read(src)
+    if type(body) ~= "string" then error("could not read " .. src, 0) end
+    local ok, err = out.write(dst, body)
+    if not ok then error("could not write " .. dst .. ": " .. tostring(err), 0) end
+  end
+end
+
 local function removeTree(fs, path, out)
   out = out or sink(fs, true)
   local info = fs.getInfo(path)
@@ -286,6 +305,10 @@ function ModLibrary.installZip(bytes, name, opts)
       local staging = STAGING .. "/" .. manifest.id
       removeTree(fs, staging, out)
       local okS, stageErr = pcall(copyTree, fs, out, root, staging)
+      -- baseroms/ holds the files the player supplied for required_imports
+      -- (src/mods/RequiredImports.lua) and their validation receipts; an
+      -- update must carry them over or the mod asks for the ROM again
+      if okS then okS, stageErr = pcall(carryOver, fs, out, target, staging, "baseroms") end
       if not okS then
         removeTree(fs, staging, out)
         error(stageErr, 0)

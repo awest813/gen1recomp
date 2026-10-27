@@ -309,6 +309,23 @@ check(not okU, "an upgrade whose copy fails reports it")
 eq(files["mods/cool/main.lua"], "v2", "and the old version still works")
 eq(fs.getInfo(ModLibrary.STAGING .. "/cool"), nil, "with no staged copy left over")
 
+-- ------------------- an update keeps the files the player supplied
+fs.write("mods/romuser/manifest.json", manifest("romuser"))
+fs.write("mods/romuser/main.lua", "v1")
+fs.write("mods/romuser/baseroms/game.n64", "player's rom")
+fs.write("mods/romuser/baseroms/.required-import-game.validated", "receipt")
+fs.write("mods/romuser/baseroms/shipped.txt", "old shipped")
+local romV2 = "PK\3\4romv2"
+archives[romV2] = { ["manifest.json"] = manifest("romuser"):gsub('"1.0.0"', '"1.1.0"'),
+  ["main.lua"] = "v2", ["baseroms/shipped.txt"] = "new shipped" }
+check(ModLibrary.installZip(romV2, "romuser.zip", { upgrade = true }), "the update installs")
+eq(files["mods/romuser/main.lua"], "v2", "with the new code")
+eq(files["mods/romuser/baseroms/game.n64"], "player's rom",
+  "and the ROM the player supplied for required_imports survives")
+eq(files["mods/romuser/baseroms/.required-import-game.validated"], "receipt",
+  "with its validation receipt")
+eq(files["mods/romuser/baseroms/shipped.txt"], "new shipped", "but a file the update ships wins")
+
 -- ------------------------------------- translations are data, never bytecode
 fs.write("mods/zeta/lang/strings.lua", string.dump(function() return { Hello = "Bytecode" } end))
 ModLibrary.setEnabled("zeta", true, "gold")
