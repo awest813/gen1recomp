@@ -164,6 +164,20 @@ end
 function ModsPage:changed()
   local l = self.launcher
   l.modRows, l.cartPlans = nil, nil
+  self.importerStates = nil
+end
+
+-- An asset importer's state (missing / partial / ready) reads its packs'
+-- manifests from disk: kept until something changes them, not per frame.
+function ModsPage:importerState(id)
+  self.importerStates = self.importerStates or {}
+  local st = self.importerStates[id]
+  if st == nil then
+    local okS, state = pcall(require("src.import.Importers").state, id)
+    st = okS and state or "missing"
+    self.importerStates[id] = st
+  end
+  return st
 end
 
 function ModsPage:rowByFolder(version, folder)
@@ -399,11 +413,11 @@ function ModsPage:stepImporter(budget)
   repeat
     local ok, info = coroutine.resume(job.co)
     if not ok then
-      l.assetJob = nil
+      l.assetJob, self.importerStates = nil, nil
       return l:say(tostring(job.name) .. " import failed: " .. tostring(info), "error")
     end
     if coroutine.status(job.co) == "dead" then
-      l.assetJob, l.modRows = nil, nil
+      l.assetJob, l.modRows, self.importerStates = nil, nil, nil
       return l:say(tostring(job.name) .. " assets imported.", "info")
     end
     if type(info) == "table" then
@@ -416,7 +430,7 @@ end
 -- ------------------------------------------------------- safe mode, all on
 
 function ModsPage:safeMode()
-  local opts = self.launcher:options()
+  local opts = self.launcher:peekOptions()
   local SaveData = saveData()
   if SaveData and SaveData.isSafeMode then return SaveData.isSafeMode(opts) end
   return type(opts) == "table" and opts.safeMode == true
@@ -1793,8 +1807,7 @@ function ModsPage:drawImporters(x, y, w, h, s)
   local entryH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(64 * s))
   local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Import") + math.floor(28 * s))
   for _, desc in ipairs(Importers.all()) do
-    local okS, state = pcall(Importers.state, desc.id)
-    state = okS and state or "missing"
+    local state = self:importerState(desc.id)
     Kit.row(cx, cy, cw, entryH, false, "importer-" .. desc.id)
     local textW = cw - bw - math.floor(36 * s)
     local line = (IMPORTER_STATE[state] or state) .. "  -  " .. tostring(desc.summary or "")

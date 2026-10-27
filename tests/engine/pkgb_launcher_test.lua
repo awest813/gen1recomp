@@ -1299,6 +1299,7 @@ do
   m:reimport("silver")
   check(m.message and m.message.kind == "error", "a file that no longer verifies is refused with a reason")
   os.remove(tmp)
+  m.sourceSeen = nil -- the disk is looked at again after a moment
   eq(m:romSource("silver"), nil, "a file that is gone is not offered")
   m:forgetRomSources()
   eq(next(savedOptions.romSources or {}), nil, "Forget clears the remembered files")

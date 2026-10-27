@@ -89,7 +89,9 @@ function Net.relaySetting()
   if Net.relayOverride then return Net.relayOverride, "launch" end
   local ok, SaveData = pcall(require, "src.core.SaveData")
   if ok and type(SaveData) == "table" and SaveData.loadOptions then
-    local okL, opts = pcall(SaveData.loadOptions)
+    -- read only: the shared copy where there is one (asked every frame by
+    -- the launcher's Settings and Online pages)
+    local okL, opts = pcall(SaveData.peekOptions or SaveData.loadOptions)
     local saved = okL and type(opts) == "table" and opts.relayAddress or nil
     if type(saved) == "string" then
       local address = Net.normalizeRelayAddress(saved)

@@ -68,7 +68,15 @@ function Window.apply(mode)
     w = math.min(w, math.max(100, math.floor(dw * 0.94)))
     h = math.min(h, math.max(100, math.floor(dh * 0.88)))
   end
-  flags.fullscreen, flags.fullscreentype = mode == "fullscreen", "desktop"
+  local curW, curH = love.window.getMode()
+  local want = mode == "fullscreen"
+  -- already the window we want: recreating it costs ~50 ms (and a flash)
+  if (flags.fullscreen == true) == want and flags.resizable
+      and (want or (curW == w and curH == h)) then
+    st.mode = mode
+    return true
+  end
+  flags.fullscreen, flags.fullscreentype = want, "desktop"
   flags.resizable = true
   flags.minwidth = math.min(flags.minwidth or 0, w)
   flags.minheight = math.min(flags.minheight or 0, h)

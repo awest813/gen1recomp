@@ -613,7 +613,7 @@ function Launcher:pickMod() return self:modsUi():pickMod() end
 -- The on-screen controller skin in use (src/core/TouchSkin.lua), or nil for
 -- the built-in pad.
 function Launcher:activeSkin()
-  local tc = self:options().touchControls
+  local tc = self:peekOptions().touchControls
   if type(tc) ~= "table" or tc.enabled == false then return nil end
   return tc.skin
 end
@@ -929,6 +929,17 @@ end
 -- Read fresh every time (SaveData caches the file by revision): SaveData's
 -- own writes -- a new save slot, a mod switch -- replace its table, and
 -- writing back a copy held from before would undo them.
+-- For reading only (drawing): the shared copy SaveData.peekOptions keeps
+-- until the options change.  Never write to it; use options() + setOption.
+function Launcher:peekOptions()
+  local ok, SaveData = pcall(require, "src.core.SaveData")
+  if ok and SaveData.peekOptions then
+    local okL, opts = pcall(SaveData.peekOptions)
+    if okL and type(opts) == "table" then return opts end
+  end
+  return self:options()
+end
+
 function Launcher:options()
   local ok, SaveData = pcall(require, "src.core.SaveData")
   local okL, opts = false, nil
@@ -1392,13 +1403,20 @@ end
 
 -- The remembered file for a game, when it is still there.
 function Launcher:romSource(version)
-  local sources = self:options().romSources
+  local sources = self:peekOptions().romSources
   local path = type(sources) == "table" and sources[version]
   if type(path) ~= "string" then return nil end
-  local f = io.open(path, "rb")
-  if not f then return nil end
-  f:close()
-  return path
+  -- the panel asks every frame: look at the disk at most every 2 seconds
+  self.sourceSeen = self.sourceSeen or {}
+  local seen = self.sourceSeen[path]
+  local t = now()
+  if not seen or t - seen.at > 2 then
+    local f = io.open(path, "rb")
+    if f then f:close() end
+    seen = { at = t, there = f ~= nil }
+    self.sourceSeen[path] = seen
+  end
+  return seen.there and path or nil
 end
 
 function Launcher:reimport(version)
@@ -1625,7 +1643,7 @@ function Launcher:drawSettings(x, y, w, h, s)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
   cy = self:pageHeader(cx, cy, cw, s, { title = "Settings" })
-  local opts = self:options()
+  local opts = self:peekOptions()
   local rowH = math.max(Kit.tapMin(), math.floor(40 * s))
   local stepW = math.max(Kit.tapMin(), math.floor(40 * s))
   -- a label never runs under its control (which takes up to half the row)

@@ -1062,6 +1062,22 @@ function SaveData.loadOptions(fs)
   return applyCartOverlay(deepCopy(slot.tree))
 end
 
+-- The same answer as loadOptions for a caller that only READS: one copy is
+-- kept until the options change (a save, invalidateOptionsCache) or the
+-- active cart moves, instead of a fresh deep copy per call.  The launcher
+-- reads options several times a frame; each copy was ~12 KB of garbage.
+-- Never mutate what this returns: load (copy), change, then saveOptions.
+function SaveData.peekOptions(fs)
+  fs = persistFs(fs)
+  local slot = optionsCacheSlot(fs)
+  if slot.peek and slot.peekRev == slot.rev and slot.peekCart == activeCart then
+    return slot.peek
+  end
+  local copy = SaveData.loadOptions(fs)
+  slot.peek, slot.peekRev, slot.peekCart = copy, slot.rev, activeCart
+  return copy
+end
+
 -- ------- per-game mod enablement
 --
 -- One installed mod, one id, one enable flag per game that wants to differ.
