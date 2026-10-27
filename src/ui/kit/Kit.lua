@@ -403,7 +403,7 @@ function Kit.endFrame()
   if Kit.focus and ((Kit.mouseClicked and not Kit._fieldHit) or not Kit._focusDrawn) then Kit.blur() end
   for i = #edits, 1, -1 do edits[i] = nil end
   Kit.wheelY = 0
-  Kit._activateId = nil
+  Kit._activateId, Kit._padActivate = nil, nil
   -- This frame's focusables become next frame's navigation graph.
   local n = Kit._navN or 0
   Kit._navPrevN = n
@@ -759,7 +759,13 @@ function Kit.gamepadpressed(button)
   elseif action == "dpdown" then Kit.navigate("down") return true
   elseif action == "dpleft" then Kit.navigate("left") return true
   elseif action == "dpright" then Kit.navigate("right") return true
-  elseif action == "a" then Kit.activateFocused() return true end
+  elseif action == "a" then
+    Kit.activateFocused()
+    -- a text field opened from the pad gets the on-screen keyboard, wherever
+    -- it runs: there may be no keyboard to type with (a Steam Deck)
+    Kit._padActivate = true
+    return true
+  end
   return false
 end
 
@@ -1084,9 +1090,11 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
     or os.getenv("POKEPORT_SBC") == "1" or os.getenv("ANBERNIC") == "1"
 
   local clickedOrActivated = (Kit._activateId == id) or (isHandheld and Kit.press(x, y, w, h))
-  if isHandheld and clickedOrActivated and not mobile() then
+  local fromPad = Kit._activateId == id and Kit._padActivate
+  if (isHandheld or fromPad) and clickedOrActivated and not mobile() then
     local before = value
     VirtualKeyboard.open({
+      force = fromPad,
       text = value,
       targetId = id,
       title = placeholder or "Enter Text",

@@ -72,8 +72,9 @@ function VirtualKeyboard.isSupported()
   return isLinuxHandheld()
 end
 
+-- opts.force: open anywhere (a field activated from a gamepad, Kit.textfield)
 function VirtualKeyboard.open(opts)
-  if not isLinuxHandheld() then return false end
+  if not (isLinuxHandheld() or (opts and opts.force)) then return false end
   opts = opts or {}
   VirtualKeyboard.active = true
   VirtualKeyboard.text = tostring(opts.text or "")

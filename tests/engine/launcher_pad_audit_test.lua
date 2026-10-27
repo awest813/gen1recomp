@@ -132,4 +132,21 @@ l:stickRepeat(0.5)
 eq(FB.selectedIdx, 5, "a release the launcher missed (the button is up) does not repeat")
 FB.active = false
 
+-- ---- A from the pad on a text field opens the on-screen keyboard, even off
+-- a handheld (a Steam Deck, a desktop with a controller)
+l.page = "settings"; frame(12)
+local field
+for i = 1, Kit._navPrevN do
+  local id = tostring(Kit._nav[i].id)
+  if id:match("relay") or id:match("name") then field = Kit._nav[i].id break end
+end
+if check(field ~= nil, "Settings has a text field") then
+  Kit.setFocus(field); frame(2)
+  pad("a")
+  check(Kit.VirtualKeyboard.active, "A on it opens the on-screen keyboard")
+  Kit.VirtualKeyboard.text = "typed"
+  Kit.VirtualKeyboard.close(false); frame(2)
+  check(not Kit.VirtualKeyboard.active, "cancel closes it")
+end
+
 T.finish("launcher pad audit")
