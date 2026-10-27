@@ -7,6 +7,18 @@ local check, eq = T.check, T.eq
 love = love or require("tests.love_stub")
 
 local Input = require("src.core.Input")
+-- This suite pins the SDL button names in CONTROLS' key-first "Z/R2" form.
+-- A controller press would list the pad first ("R2/Z", BindingsMenu after
+-- Input.lastDevice); that ordering has its own check in
+-- tests/engine/rebind_controls_audit_test.lua, so it is held off here.
+for _, name in ipairs({ "gamepadpressed", "joystickpressed" }) do
+  local real = Input[name]
+  Input[name] = function(self, ...)
+    local r = real(self, ...)
+    Input.lastDevice = nil
+    return r
+  end
+end
 local GamepadMap = require("src.core.GamepadMap")
 local BindingsMenu = require("src.ui.BindingsMenu")
 local Game = require("src.core.Game")

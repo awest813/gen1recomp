@@ -1252,7 +1252,18 @@ end
 
 function Launcher:wheelmoved(_, dy) self.wheel = (self.wheel or 0) + dy end
 
+local ARROW_DIRS = { up = "up", down = "down", left = "left", right = "right" }
+
 function Launcher:keypressed(key)
+  -- a held arrow repeats like a held d-pad (stickRepeat), on pages and in the
+  -- file browser and on-screen keyboard; the Box and a text field keep
+  -- single steps, and any other key ends a repeat
+  local arrow = ARROW_DIRS[key]
+  if arrow and not Kit.focus and self.page ~= "box" and not (self._boxPopup or self._boxPrompt) then
+    self.dpadDir, self.dpadHeld, self.dpadPad, self.dpadButton, self.dpadKey = arrow, 0, nil, nil, key
+  elseif self.dpadKey then
+    self.dpadDir, self.dpadKey = nil, nil
+  end
   if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then return Kit.keypressed(key) end
   if self._boxPrompt then
     if key == "escape" then
@@ -1312,6 +1323,7 @@ function Launcher:gamepadpressed(joystick, button)
     local dir = DPAD_DIRS[okM and GM.mapLauncherButton and GM.mapLauncherButton(button) or button]
     if dir and not (self._boxPopup or self._boxPrompt) then
       self.dpadDir, self.dpadHeld, self.dpadPad, self.dpadButton = dir, 0, joystick, button
+      self.dpadKey = nil
     elseif not dir then
       -- any other button ends a repeat (its release may never come: the
       -- press that opened a page or launched a game)
@@ -1455,6 +1467,12 @@ function Launcher:stickRepeat(dt)
     local pad = self.dpadPad
     if pad and pad.isGamepadDown and not pad:isGamepadDown(self.dpadButton) then
       self.dpadDir = nil
+      return
+    end
+    -- an arrow key: the launcher never sees key releases, so ask
+    local kb = love.keyboard
+    if self.dpadKey and kb and kb.isDown and not kb.isDown(self.dpadKey) then
+      self.dpadDir, self.dpadKey = nil, nil
       return
     end
     self.dpadHeld = (self.dpadHeld or 0) + dt

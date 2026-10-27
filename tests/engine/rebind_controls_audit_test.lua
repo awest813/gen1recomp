@@ -187,4 +187,17 @@ do
   eq(Input.padBindings.b, "b", "RESET gives B back straight away")
 end
 
+-- ---- the device in hand is listed first
+do
+  Input:init()
+  Input.lastDevice = "pad"
+  local bm = BindingsMenu.new(newGame())
+  eq(bm.items[5].right, "A/Z", "after a controller press, A reads A/Z")
+  eq(bm.items[9].right, "LB/0", "and the speed shortcut its shoulder first")
+  Input.lastDevice = "key"
+  bm = BindingsMenu.new(newGame())
+  eq(bm.items[5].right, "Z/A", "after a key press, the key first")
+  Input.lastDevice = nil
+end
+
 T.finish("rebind controls audit")

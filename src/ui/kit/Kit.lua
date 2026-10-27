@@ -569,8 +569,25 @@ function Kit._resolveColumns(cur, dir, n)
     while order[i] do
       local target = order[i]
       local anchor = Kit.navAnchor and Kit.navAnchor(target)
+      -- a column with no anchor of its own (the Settings page) is entered at
+      -- its first control, top left, not whichever sits level with the rail
+      -- button (Sound volume "-")
+      local hasAnchor = false
+      if anchor then
+        each(function(c, col) if col == target and c.id == anchor then hasAnchor = true end end)
+      end
       each(function(c, col)
-        if col == target then offer(c, c.id == anchor and -1 or math.abs(c.y + c.h / 2 - cy)) end
+        if col == target then
+          local score
+          if hasAnchor then
+            score = c.id == anchor and -1 or math.abs(c.y + c.h / 2 - cy)
+          elseif target == "content" then
+            score = c.y * 4096 + c.x
+          else
+            score = math.abs(c.y + c.h / 2 - cy)
+          end
+          offer(c, score)
+        end
       end)
       if best then Kit.focusId = best.id return end
       i = i + step
@@ -1110,7 +1127,9 @@ function Kit.progress(x, y, w, h, frac, label)
 end
 
 -- --------------------------------------------------------------- text field
-function Kit.textfield(id, x, y, w, h, value, placeholder)
+-- opts (optional): { digits = true, maxLen = n } opens the on-screen
+-- keyboard on its number pad with that limit (a room PIN).
+function Kit.textfield(id, x, y, w, h, value, placeholder, opts)
   audit("control", x, y, w, h, id)
   local focusRing = Kit.focusable(id, x, y, w, h)
   value = tostring(value or "")
@@ -1125,6 +1144,8 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
   if (isHandheld or fromPad) and clickedOrActivated and not mobile() then
     local before = value
     VirtualKeyboard.open({
+      digits = opts and opts.digits or nil,
+      maxLen = opts and opts.maxLen or nil,
       force = fromPad,
       text = value,
       targetId = id,

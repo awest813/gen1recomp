@@ -487,14 +487,23 @@ end
 -- Custom positions (normalized 0..1 within the safe rect) override centers
 -- while sizes stay derived from the short edge, times the orientation's
 -- size setting (#633).
+-- The top a control may reach: the safe rect's, or in the layout editor the
+-- bottom of its header bar (TouchControls.previewTop), so the "..." key-bar
+-- button is not drawn under Done where it could not be grabbed.
+function TouchControls:topLimit(oy)
+  if self.preview and tonumber(self.previewTop) then return math.max(oy, self.previewTop) end
+  return oy
+end
+
 function TouchControls:layout()
   local ox, oy, sw, sh = SafeArea.windowRect()
+  local top = self:topLimit(oy)
   if self.layoutW == sw and self.layoutH == sh
-     and self.layoutOx == ox and self.layoutOy == oy and self.L then
+     and self.layoutOx == ox and self.layoutOy == oy and self.layoutTop == top and self.L then
     return self.L
   end
   self.layoutW, self.layoutH = sw, sh
-  self.layoutOx, self.layoutOy = ox, oy
+  self.layoutOx, self.layoutOy, self.layoutTop = ox, oy, top
   -- orientation picks which saved layout applies; rotating swaps buckets
   -- because sw/sh swapped, which is already the cache key above (#633)
   local bucket = self:currentBucket()
@@ -508,6 +517,12 @@ function TouchControls:layout()
         zone.cy = oy + p.y * sh
         clampZone(zone, ox, oy, ox + sw, oy + sh)
       end
+    end
+  end
+  if top > oy then
+    for _, name in ipairs(self:controls()) do
+      local zone = self.L[name]
+      if zone then clampZone(zone, ox, top, ox + sw, oy + sh) end
     end
   end
   local ssW = self.L.start.w
@@ -527,7 +542,7 @@ function TouchControls:setControlCenter(name, cx, cy)
   local zone = L[name]
   if not zone then return end
   zone.cx, zone.cy = cx, cy
-  clampZone(zone, ox, oy, ox + sw, oy + sh)
+  clampZone(zone, ox, self:topLimit(oy), ox + sw, oy + sh)
   -- writes land in the orientation on screen only (#633)
   local bucket = self:currentBucket()
   bucket.positions = bucket.positions or {}
@@ -815,10 +830,12 @@ function TouchControls:touchpressed(id, x, y)
   if not (self.active and self.enabled ~= false
           and (TouchSkin.active or self.img)) then return end
   -- a controller hid the overlay; the first touch only brings it back
-  -- (uncaptured: it began on no control, so mods may still see it)
+  -- (uncaptured: it began on no control, so mods may still see it).  A skin
+  -- stays on screen through controller play (visible), so a tap on it is a
+  -- press like any other, not a wasted reveal.
   if self.controllerHidden then
     self.controllerHidden = false
-    return
+    if not TouchSkin.active then return end
   end
   if TouchSkin.active then
     local set = skinHitSet(self, x, y, nil)

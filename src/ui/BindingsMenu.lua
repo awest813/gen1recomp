@@ -124,9 +124,12 @@ local function boundRight(overlay, def)
   local pad = boundPad(overlay, def)
   if def.action then
     local p = pad and shortName(pad, PAD_SHORT) or Strings("OFF")
+    if def.key and Input.lastDevice == "pad" then return p .. "/" .. def.key end
     return def.key and (def.key .. "/" .. p) or p
   end
   local key = shortName(boundKey(overlay, def), KEY_SHORT)
+  -- the device in hand first: a controller player reads "A/Z", not "Z/A"
+  if pad and Input.lastDevice == "pad" then return shortName(pad, PAD_SHORT) .. "/" .. key end
   if pad then return key .. "/" .. shortName(pad, PAD_SHORT) end
   return key
 end

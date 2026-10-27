@@ -253,10 +253,9 @@ function Editor.draw()
   col(PAL.bgTop, 0.85)
   love.graphics.circle("fill", ox + ww * 0.5, oy + wh * 0.15, math.max(ww, wh) * 0.55)
 
-  if TouchSkin.active then TouchControls:draw() end
-
   local pad = 18 * s
   local barH = 56 * s
+  if TouchSkin.active then TouchControls:draw() end
   local btnH = 40 * s
   local btnW = 100 * s
 
@@ -399,9 +398,17 @@ function Editor.draw()
   elseif TouchSkin.active then
     hint = "This skin owns its own art, hitboxes and screen position, so size and dragging are off. Drop a RetroArch overlay folder or .zip into the skins folder of your save directory to add more."
   else
-    hint = "Drag each button to reposition, -/+ to resize. Portrait and landscape are saved separately when you tap Done."
+    hint = PadCursor.isActive()
+      and "Move the pointer with the d-pad or stick, hold A on a button and move to drag it, LB/RB to resize, B for Done. Portrait and landscape are saved separately."
+      or "Drag each button to reposition, -/+ to resize. Portrait and landscape are saved separately when you tap Done."
   end
-  love.graphics.printf(hint, ox + pad, sizeY + cardH + 12 * s, ww - 2 * pad, "left")
+  local hintY = sizeY + cardH + 12 * s
+  love.graphics.printf(hint, ox + pad, hintY, ww - 2 * pad, "left")
+  -- the controls keep clear of everything above: the header's Done and the
+  -- cards (TouchControls:topLimit), so the "..." button can still be grabbed
+  local font = love.graphics.getFont()
+  local _, lines = font:getWrap(hint, ww - 2 * pad)
+  TouchControls.previewTop = hintY + #lines * font:getHeight() + 8 * s
 
   if not TouchSkin.active then TouchControls:draw() end
 

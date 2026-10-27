@@ -301,6 +301,8 @@ local function release(self, btn, source)
 end
 
 function Input:keypressed(key)
+  -- the device the player last pressed on (CONTROLS lists its buttons first)
+  Input.lastDevice = "key"
   noteCapture(self, "key", "pressed", key)
   local btn = self.keyBindings[key]
   if btn then
@@ -503,6 +505,8 @@ end
 -- buttons directly by name -- not through a keyboard alias -- so a player
 -- rebind can never detach or shadow the overlay.
 function Input:overlayPressed(btn)
+  -- the device the player last pressed on (CONTROLS lists its buttons first)
+  Input.lastDevice = "touch"
   noteCapture(self, "touch", "pressed", btn)
   press(self, btn, "touch:" .. btn)
 end
@@ -528,6 +532,8 @@ function Input:sourceRelease(btn, source)
 end
 
 function Input:gamepadpressed(joystick, button)
+  -- the device the player last pressed on (CONTROLS lists its buttons first)
+  Input.lastDevice = "pad"
   button = GamepadMap.normalizePad and GamepadMap.normalizePad(button) or GamepadMap.TRIGGER_AXES[button] or button
   if self.padSuppress then self.padSuppress[button] = nil end
   noteCapture(self, "pad", "pressed", button)
@@ -560,6 +566,8 @@ end
 -- Gate: GamepadMap.ignoreRawForJoystick (pcall-safe isGamepad check).
 
 function Input:joystickpressed(joystick, button)
+  -- the device the player last pressed on (CONTROLS lists its buttons first)
+  Input.lastDevice = "pad"
   if GamepadMap.ignoreRawForJoystick(joystick) then return end
   if GamepadMap.isAccelerometer(joystick) then return end
   noteCapture(self, "joy", "pressed", button)

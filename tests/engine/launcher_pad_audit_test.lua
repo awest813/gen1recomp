@@ -196,4 +196,51 @@ pad("leftshoulder"); frame(30)
 eq(Kit.focusId, "nav-online", "a shoulder press ends a d-pad repeat; the ring stays on Online")
 l:gamepadreleased(held, "dpdown")
 
+-- ---- a held arrow key repeats too, and stops when the key is up
+do
+  local down = {}
+  local realIsDown = love.keyboard.isDown
+  love.keyboard.isDown = function(k) return down[k] == true end
+  local FB2 = Kit.FileBrowser
+  FB2.active = true; FB2.entries = {}
+  for i = 1, 20 do FB2.entries[i] = { name = "f" .. i, path = "/f" .. i } end
+  FB2.selectedIdx = 1; FB2.page = 1
+  down.down = true
+  l:keypressed("down")
+  eq(FB2.selectedIdx, 2, "one press, one step")
+  l:stickRepeat(0.41)
+  eq(FB2.selectedIdx, 3, "held, it repeats")
+  down.down = nil
+  l:stickRepeat(0.5)
+  eq(FB2.selectedIdx, 3, "let go, it stops")
+  FB2.active = false
+  love.keyboard.isDown = realIsDown
+end
+
+-- ---- Right from the rail enters Settings at its first control
+l.page = "settings"; frame(12)
+Kit.setFocus("nav-settings"); frame(2)
+pad("dpright"); frame(2)
+local first
+for i = 1, Kit._navPrevN do
+  local n = Kit._nav[i]
+  if not tostring(n.id):match("^nav%-") and (not first or n.y < first.y or (n.y == first.y and n.x < first.x)) then
+    first = n
+  end
+end
+eq(Kit.focusId, first and first.id, "the top control, not the one level with the rail button")
+
+-- ---- a PIN field opened from the pad gets the number pad and its limit
+do
+  local VK = Kit.VirtualKeyboard
+  Kit.beginFrame(0, 0, false, 0)
+  Kit._activateId, Kit._padActivate = "pin-probe", true
+  Kit.textfield("pin-probe", 10, 10, 120, 30, "", "PIN", { digits = true, maxLen = 4 })
+  check(VK.active, "A on a PIN field opens the keyboard")
+  eq(VK.mode, 4, "on its number pad")
+  eq(VK.maxLen, 4, "limited to four digits")
+  VK.close(false)
+  Kit.endFrame()
+end
+
 T.finish("launcher pad audit")

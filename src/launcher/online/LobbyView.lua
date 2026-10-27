@@ -195,7 +195,8 @@ function LobbyView.install(P)
     cy = cy + m.smallH + small
     if o.private then
       local fieldW = math.min(cw, math.max(Kit.tapMin() * 3, math.floor(140 * s)))
-      local value = Kit.textfield("online-pin", cx, cy, fieldW, m.smallH, o.pin, "PIN")
+      local value = Kit.textfield("online-pin", cx, cy, fieldW, m.smallH, o.pin, "PIN",
+        { digits = true, maxLen = 4 })
       o.pin = tostring(value or ""):gsub("%D", ""):sub(1, 4)
       if fieldW + gap < cw then
         Kit.text("micro", Kit.ellipsize("micro", "Share it with the trainers you want in.",
@@ -237,7 +238,8 @@ function LobbyView.install(P)
     local fieldW = cw - goW - noW - 2 * gap
     local stacked = fieldW < Kit.tapMin() * 3
     if stacked then fieldW = cw end
-    local value, ended = Kit.textfield("online-join-pin", cx, cy, fieldW, m.rowH, prompt.text, "4-digit PIN")
+    local value, ended = Kit.textfield("online-join-pin", cx, cy, fieldW, m.rowH, prompt.text, "4-digit PIN",
+      { digits = true, maxLen = 4 })
     prompt.text = tostring(value or ""):gsub("%D", ""):sub(1, 4)
     local by = stacked and (cy + m.rowH + gap) or cy
     local bx = stacked and cx or (cx + fieldW + gap)

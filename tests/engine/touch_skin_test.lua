@@ -117,6 +117,13 @@ check(Input:isDown("a"), "skin A presses GB a")
 TouchControls:touchreleased("f1", at(0.80, 0.75))
 check(not Input:isDown("a"), "lifting releases GB a")
 
+-- a skin stays on screen through controller play, so the first tap after
+-- it presses at once instead of only bringing the overlay back
+TouchControls.controllerHidden = true
+check(TouchControls:touchpressed("fh", at(0.80, 0.75)), "first tap after a controller is captured")
+check(Input:isDown("a"), "and presses A")
+TouchControls:touchreleased("fh", at(0.80, 0.75))
+
 -- one finger inside a combined desc holds both directions
 TouchControls:touchpressed("f2", at(0.20, 0.90))
 check(Input:isDown("left") and Input:isDown("down"), "combined desc holds both buttons")
