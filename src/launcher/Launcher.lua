@@ -1301,8 +1301,18 @@ function Launcher:keypressed(key)
 end
 
 local POPUP_KEYS = { dpup = "up", dpdown = "down", a = "return", b = "escape" }
+local DPAD_DIRS = { dpup = "up", dpdown = "down", dpleft = "left", dpright = "right" }
 
-function Launcher:gamepadpressed(_, button)
+function Launcher:gamepadpressed(joystick, button)
+  -- a held d-pad repeats (stickRepeat), on pages and in the file browser and
+  -- on-screen keyboard alike; the Box's popups take single steps
+  do
+    local okM, GM = pcall(require, "src.core.GamepadMap")
+    local dir = DPAD_DIRS[okM and GM.mapLauncherButton and GM.mapLauncherButton(button) or button]
+    if dir and not (self._boxPopup or self._boxPrompt) then
+      self.dpadDir, self.dpadHeld, self.dpadPad, self.dpadButton = dir, 0, joystick, button
+    end
+  end
   -- the on-screen keyboard and the file browser own the pad while they are
   -- up (B there is "delete" / "up a folder", not Back); Kit maps the button
   if Kit.VirtualKeyboard.active or Kit.FileBrowser.active then
@@ -1327,7 +1337,9 @@ function Launcher:gamepadpressed(_, button)
   if Kit.gamepadpressed(button) then return true end
   if action == "start" then
     -- Start plays: Continue on the game screen, else whatever is focused
-    if not self.page and self.selected and self.ready[self.selected]
+    -- not past a "..." menu, the Rename row or an import question
+    local busy = self.saveMenu or self.gameMenu or self.saveConfirm or self.renaming or Kit.focus
+    if not self.page and not busy and self.selected and self.ready[self.selected]
         and #self:slotsFor(self.selected) > 0 then
       local v = self.selected
       -- the save the player picked, as Continue does
@@ -1345,6 +1357,11 @@ end
 -- the emulator-footer question -- close on Escape / B like any page does.
 -- True when one was open.
 function Launcher:closeGamesPopup()
+  -- the save Rename row, with the focus ring on its buttons, not the field
+  if self.renaming then
+    self:queue(function() self.renaming = nil end)
+    return true
+  end
   if self.saveMenu or self.gameMenu then
     self:queue(function() self.saveMenu, self.gameMenu = nil, nil end)
     return true
@@ -1397,18 +1414,42 @@ function Launcher:gamepadaxis(_, axis, value)
   return true
 end
 
+local function stepRing(dir)
+  if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then
+    Kit.gamepadpressed("dp" .. dir)
+  else Kit.navigate(dir) end
+end
+
+-- A held stick or d-pad repeats: once after 0.4 s, then every 0.12 s.
 function Launcher:stickRepeat(dt)
-  if not self.stickDir then return end
-  self.stickHeld = (self.stickHeld or 0) + dt
-  if self.stickHeld >= 0.4 then
-    self.stickHeld = 0.4 - 0.12
-    if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then
-      Kit.gamepadpressed("dp" .. self.stickDir)
-    else Kit.navigate(self.stickDir) end
+  if self.stickDir then
+    self.stickHeld = (self.stickHeld or 0) + dt
+    if self.stickHeld >= 0.4 then
+      self.stickHeld = 0.4 - 0.12
+      stepRing(self.stickDir)
+    end
+  end
+  if self.dpadDir then
+    -- a release the launcher never saw (it handed the window to a game)
+    -- must not leave the ring running away
+    local pad = self.dpadPad
+    if pad and pad.isGamepadDown and not pad:isGamepadDown(self.dpadButton) then
+      self.dpadDir = nil
+      return
+    end
+    self.dpadHeld = (self.dpadHeld or 0) + dt
+    if self.dpadHeld >= 0.4 then
+      self.dpadHeld = 0.4 - 0.12
+      stepRing(self.dpadDir)
+    end
   end
 end
 
-function Launcher:gamepadreleased() end
+function Launcher:gamepadreleased(_, button)
+  local okG, GamepadMap = pcall(require, "src.core.GamepadMap")
+  local action = okG and GamepadMap.mapLauncherButton and GamepadMap.mapLauncherButton(button) or button
+  if DPAD_DIRS[action] == self.dpadDir then self.dpadDir = nil end
+end
 -- A controller SDL has no mapping for arrives only as raw buttons (some
 -- handhelds without a gamecontrollerdb entry): translated here so A, B and
 -- Start still work.  A mapped pad's raw buttons are ignored -- its
@@ -1422,8 +1463,21 @@ function Launcher:joystickpressed(joystick, index)
   return self:gamepadpressed(joystick, button)
 end
 function Launcher:joystickreleased() end
-function Launcher:joystickaxis() end
-function Launcher:joystickhat(_, _, direction)
+-- An unmapped stick's first two axes steer like a left stick, as they do
+-- in the game (Input:joystickaxis); a mapped pad's arrive as gamepadaxis.
+function Launcher:joystickaxis(joystick, axis, value)
+  local okG, GamepadMap = pcall(require, "src.core.GamepadMap")
+  if not okG or GamepadMap.ignoreRawForJoystick(joystick) then return end
+  if GamepadMap.isAccelerometer and GamepadMap.isAccelerometer(joystick) then return end
+  if axis == 1 or axis == 2 then
+    self:gamepadaxis(joystick, axis == 1 and "leftx" or "lefty", value)
+  end
+end
+function Launcher:joystickhat(joystick, _, direction)
+  -- a mapped pad's hat is its d-pad, already sent as gamepadpressed: taking
+  -- both moved the file browser and the on-screen keyboard two steps
+  local okG, GamepadMap = pcall(require, "src.core.GamepadMap")
+  if okG and GamepadMap.ignoreRawForJoystick(joystick) then return end
   local map = { u = "up", d = "down", l = "left", r = "right" }
   if not map[direction] then return end
   if Kit.FileBrowser.active or Kit.VirtualKeyboard.active then
@@ -2816,6 +2870,17 @@ function Launcher:draw()
       Kit.focusId = nil
     end
     self:notePageEntry(self.lastPage, self.page)
+    -- Back lands the ring on the control that opened the page (the "Save
+    -- sync" row), not wherever the vanished Back button sat
+    self.openers = self.openers or {}
+    local prevKey = self.lastPageKey
+    local opener = prevKey and self.openers[prevKey]
+    if opener and opener.from == pageKey then
+      self.openers[prevKey] = nil
+      if Kit._ringShown and opener.id then Kit.focusId = opener.id end
+    elseif prevKey then
+      self.openers[pageKey] = { from = prevKey, id = Kit.focusId }
+    end
     -- an unsaved relay address is not kept for the next visit, where it
     -- would read as the saved one
     if self.lastPage == "settings" and self.page ~= "settings" then self.relayDraft = nil end

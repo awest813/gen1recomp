@@ -420,6 +420,24 @@ function Kit.endFrame()
         if id and Kit._navSeen[id] then chosen = id break end
       end
     end
+    -- 0b. The control that held the ring went away under it (a "-" that
+    --     disabled itself at 0, a row that closed): the nearest one left on
+    --     the same side of the rail, not the rail's first button
+    local gone = Kit._lastFocusRect
+    if not chosen and gone and Kit.focusId and gone.id == Kit.focusId then
+      local gx, gy = gone.x + gone.w / 2, gone.y + gone.h / 2
+      local rail = tostring(gone.id):match("^nav%-") ~= nil
+      local best
+      for i = 1, n do
+        local slot = Kit._nav[i]
+        if slot and slot.id and (tostring(slot.id):match("^nav%-") ~= nil) == rail then
+          local dx, dy = slot.x + slot.w / 2 - gx, slot.y + slot.h / 2 - gy
+          -- the same row first: "-" at 0 hands the ring to its own "+"
+          local d = dx * dx + 9 * dy * dy
+          if not best or d < best then best, chosen = d, slot.id end
+        end
+      end
+    end
     -- 1. Prefer ROM Action (Layer 3)
     for i = 1, chosen and 0 or n do
       local slot = Kit._nav[i]
@@ -464,6 +482,11 @@ function Kit.focusable(id, x, y, w, h)
   local clip = Kit._clipRect
   slot.clipX, slot.clipY, slot.clipH = clip and clip.x, clip and clip.y, clip and clip.h
   Kit._navSeen[id] = true
+  if id == Kit.focusId then
+    local r = Kit._lastFocusRect or {}
+    r.id, r.x, r.y, r.w, r.h = id, x, y, w, h
+    Kit._lastFocusRect = r
+  end
   if Kit.focusId == nil and tostring(id):match("^rom%-") then
     Kit.focusId = id
   end
@@ -729,7 +752,9 @@ function Kit.gamepadpressed(button)
   if FileBrowser.active then
     return FileBrowser.gamepadpressed(action)
   end
-  if Kit.focus and action == "b" then Kit.blur() return true end
+  -- B leaves a text field the way Escape does: the field ends "cancel", so
+  -- its owner closes it too (a bare blur left the save Rename row open)
+  if Kit.focus and action == "b" then edits[#edits + 1] = "\27" return true end
   if action == "dpup" then Kit.navigate("up") return true
   elseif action == "dpdown" then Kit.navigate("down") return true
   elseif action == "dpleft" then Kit.navigate("left") return true
@@ -1060,6 +1085,7 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
 
   local clickedOrActivated = (Kit._activateId == id) or (isHandheld and Kit.press(x, y, w, h))
   if isHandheld and clickedOrActivated and not mobile() then
+    local before = value
     VirtualKeyboard.open({
       text = value,
       targetId = id,
@@ -1067,6 +1093,10 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
       onDone = function(newText, confirmed)
         if confirmed then
           edits[#edits + 1] = "\r"
+        else
+          -- cancelled: the text goes back to what it was, and the field ends
+          Kit._restore = { id = id, value = before }
+          edits[#edits + 1] = "\27"
         end
       end
     })
@@ -1074,6 +1104,9 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
 
   if VirtualKeyboard.active and VirtualKeyboard.targetId == id then
     value = VirtualKeyboard.text
+  elseif Kit._restore and Kit._restore.id == id then
+    value = Kit._restore.value
+    Kit._restore = nil
   end
 
   if Kit.press(x, y, w, h) then Kit._fieldHit = true end
