@@ -2228,7 +2228,10 @@ function Game2:hotkey(key)
   end
   local hk = Input.hotkeyKey(key)
   if key == "f1" then
-    if not self:quickSaveAllowed() then return true end
+    if not self:quickSaveAllowed() then
+      require("src.ui.HostToast").say("CAN'T SAVE RIGHT NOW")
+      return true
+    end
     local wrote = self:writeSave()
     require("src.ui.HostToast").say(wrote and "SAVED" or "COULD NOT SAVE")
     return true
@@ -2239,14 +2242,20 @@ function Game2:hotkey(key)
     require("src.ui.HostToast").say(loaded and "LOADED" or "NO SAVE TO LOAD")
     return true
   elseif hk == "1" then
-    if self:speedLocked() then return true end
+    if self:speedLocked() then
+      require("src.ui.HostToast").say("SPEED IS FIXED HERE")
+      return true
+    end
     local GameSpeed = require("src.core.GameSpeed")
     options.speed = GameSpeed.cycle(options.speed, 1)
     require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(options.speed))
     persist()
     return true
   elseif hk == "0" then
-    if self:speedLocked() then return true end
+    if self:speedLocked() then
+      require("src.ui.HostToast").say("SPEED IS FIXED HERE")
+      return true
+    end
     local GameSpeed = require("src.core.GameSpeed")
     options.speed = GameSpeed.cycle(options.speed, -1)
     require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(options.speed))
@@ -2266,7 +2275,12 @@ function Game2:hotkey(key)
     return true
   end
   if not (self.world and self.world.map) then
-    return self:pipelineHotkey(key, options, persist)
+    local claimed = self:pipelineHotkey(key, options, persist)
+    if not claimed and (hk == "4" or key == "-" or key == "=" or key == "kp-" or key == "kp+") then
+      require("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
+      return true
+    end
+    return claimed
   end
   if key == "-" or key == "kp-" then
     self:zoomStep(-1)
@@ -2293,7 +2307,10 @@ function Game2:storeZoom()
 end
 
 function Game2:zoomStep(delta)
-  if not (self.world and self.world.map) then return end
+  if not (self.world and self.world.map) then
+    require("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
+    return
+  end
   self.world:zoomStep(delta)
   self:storeZoom()
 end
@@ -2595,7 +2612,10 @@ function Game2:applyOptions()
 end
 
 function Game2:_cycleSpeed(dir)
-  if self:speedLocked() then return end
+  if self:speedLocked() then
+    require("src.ui.HostToast").say("SPEED IS FIXED HERE")
+    return
+  end
   local GameSpeed = require("src.core.GameSpeed")
   self.options.speed = GameSpeed.cycle(self.options.speed, dir)
   require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(self.options.speed))

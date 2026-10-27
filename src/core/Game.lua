@@ -784,7 +784,10 @@ end
 -- overworld survey zoom: wheel up / '=' zooms in, wheel down / '-' out
 function Game:zoomStep(delta)
   local Zoom = require("src.render.Zoom")
-  if not Zoom.gateOK(self.stack:top(), self.overworld) then return end
+  if not Zoom.gateOK(self.stack:top(), self.overworld) then
+    require("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
+    return
+  end
   local offset = Zoom.step(delta, Renderer:fitScale())
   require("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(offset))
   if self.save and self.save.options then
@@ -810,7 +813,10 @@ end
 
 function Game:_cycleSpeed(dir)
   if not (self.save and self.save.options) then return end
-  if self:speedLocked() then return end
+  if self:speedLocked() then
+    require("src.ui.HostToast").say("SPEED IS FIXED HERE")
+    return
+  end
   local busy
   local ow = self.overworld
   if ow then
@@ -878,7 +884,11 @@ function Game:keypressed(key)
     end
     local hk = Input.hotkeyKey(key)
     if key == "f1" then
-      if not self:quickSaveAllowed() then return end
+      if not self:quickSaveAllowed() then
+        -- said, not silent: F1 during a cutscene or a menu looked broken
+        require("src.ui.HostToast").say("CAN'T SAVE RIGHT NOW")
+        return
+      end
       local wrote = self:writeSave()
       require("src.ui.HostToast").say(wrote and "SAVED" or "COULD NOT SAVE")
       return
@@ -942,6 +952,8 @@ function Game:keypressed(key)
         self.save.options.zoom = Zoom.cycle(Renderer:fitScale())
         require("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(self.save.options.zoom))
         self:writeOptions()
+      else
+        require("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
       end
       return
     end

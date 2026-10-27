@@ -306,4 +306,31 @@ if moved and require("src.core.GameVersion").VERSIONS[moved] then
   eq(l.selected, moved, "moving down the list selects the game under the ring")
 end
 
+-- ---- Page Down / Home walk the ring a screenful / to the top
+do
+  l.page = "settings"; frame(12)
+  Kit.setFocus("nav-settings"); frame(2)
+  pad("dpright"); frame(2)
+  local top = Kit.focusId
+  local function yOf(id)
+    for i = 1, Kit._navPrevN do if Kit._nav[i].id == id then return Kit._nav[i].y end end
+  end
+  local y0 = yOf(top)
+  l:keypressed("pagedown"); frame(10)
+  check(yOf(Kit.focusId) and y0 and yOf(Kit.focusId) > y0, "Page Down moves the ring down the page")
+  l:keypressed("home"); frame(70)
+  eq(Kit.focusId, top, "Home walks it back to the first control")
+end
+
+-- ---- a finger drag scrolls the game list and is not a tap
+do
+  l.page = nil; l.listScroll = 0; frame(12)
+  local before = l.selected
+  l:touchpressed("f", 400, 600)
+  for yy = 580, 300, -20 do l:touchmoved("f", 400, yy); frame(1) end
+  l:touchreleased("f", 400, 300); frame(3)
+  check((l.listScroll or 0) > 0, "dragging up scrolls the list down")
+  eq(l.selected, before, "and the lift does not pick a game")
+end
+
 T.finish("launcher pad audit")

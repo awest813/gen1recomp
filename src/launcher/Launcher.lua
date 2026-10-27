@@ -1310,6 +1310,13 @@ function Launcher:keypressed(key)
     Kit.navigate(shift and "up" or "down")
     return true
   end
+  -- Page Up / Down move the ring a screenful (six rows), Home / End to the
+  -- ends; walked a row a frame (stickRepeat) so lists scroll along with it
+  if not Kit.focus and not ctrl and (key == "pagedown" or key == "pageup" or key == "home" or key == "end") then
+    local down = key == "pagedown" or key == "end"
+    self.pageWalk = { dir = down and "down" or "up", left = (key == "home" or key == "end") and 60 or 6 }
+    return true
+  end
   if Kit.keypressed(key) then return true end
   if key == "escape" and self.page and not self.renaming then
     self:queue(function() self:back() end)
@@ -1465,6 +1472,18 @@ end
 
 -- A held stick or d-pad repeats: once after 0.4 s, then every 0.12 s.
 function Launcher:stickRepeat(dt)
+  -- Page Up / Down / Home / End: a row a frame until done or stuck at the end
+  local walk = self.pageWalk
+  if walk then
+    if walk.left <= 0 or (walk.last ~= nil and walk.last == Kit.focusId) then
+      self.pageWalk = nil
+    else
+      walk.last = walk.started and Kit.focusId or nil
+      walk.started = true
+      walk.left = walk.left - 1
+      stepRing(walk.dir)
+    end
+  end
   if self.stickDir then
     self.stickHeld = (self.stickHeld or 0) + dt
     if self.stickHeld >= 0.4 then

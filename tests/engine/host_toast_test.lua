@@ -29,4 +29,13 @@ local g3 = setmetatable({ options = {}, speedLocked = function() return false en
 Game3._cycleSpeed(g3, 1)
 eq(HostToast.text(), "SPEED 2X", "FireRed's speed up says SPEED 2X")
 
+-- a key that is refused says so instead of doing nothing
+local Game = require("src.core.Game")
+local g1 = setmetatable({ save = { options = {} }, speedLocked = function() return true end },
+  { __index = Game })
+Game._cycleSpeed(g1, 1)
+eq(HostToast.text(), "SPEED IS FIXED HERE", "a pinned speed says so")
+Game2.zoomStep(setmetatable({}, { __index = Game2 }), 1)
+eq(HostToast.text(), "ZOOM WORKS WHILE WALKING", "zoom with no map says when it works")
+
 T.finish("host toast")

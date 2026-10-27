@@ -715,7 +715,10 @@ end
 
 function Game3:_cycleSpeed(dir)
   if type(self.options) ~= "table" then return end
-  if self:speedLocked() then return end
+  if self:speedLocked() then
+    lazyReq("src.ui.HostToast").say("SPEED IS FIXED HERE")
+    return
+  end
   local GameSpeed = lazyReq("src.core.GameSpeed")
   local key = GameSpeed.optionKey(self:speedCategory())
   local nextSpeed = GameSpeed.cycle(self.options[key], dir)
@@ -738,7 +741,10 @@ function Game3:zoomGateOK()
 end
 
 function Game3:zoomStep(delta)
-  if not self:zoomGateOK() then return end
+  if not self:zoomGateOK() then
+    lazyReq("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
+    return
+  end
   local Zoom = lazyReq("src.render.Zoom")
   local Renderer = lazyReq("src.render.Renderer")
   local offset = Zoom.step(delta, Renderer:fitScale())
@@ -881,6 +887,8 @@ function Game3:_hotkey(key)
   if key == "f1" then
     if self:quickSaveAllowed() then
       lazyReq("src.ui.HostToast").say(self:saveGame() and "SAVED" or "COULD NOT SAVE")
+    else
+      lazyReq("src.ui.HostToast").say("CAN'T SAVE RIGHT NOW")
     end
     return true
   elseif key == "f2" then
@@ -922,6 +930,8 @@ function Game3:_hotkey(key)
         self.options.zoom = offset
         self:writeOptions()
       end
+    else
+      lazyReq("src.ui.HostToast").say("ZOOM WORKS WHILE WALKING")
     end
     return true
   elseif key == "-" or key == "kp-" then

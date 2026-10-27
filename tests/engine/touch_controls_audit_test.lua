@@ -108,4 +108,25 @@ do
   Editor.keypressed("escape")
 end
 
+-- ---- a key-bar key whose action resets input (Gold's LOAD) leaves the bar open
+do
+  Input:init(false)
+  TC:init(); TC.active = true; TC.img = {}
+  TC:applyOptions({ generation = 2 })
+  TC:setHotkeyHandler(function(action, pressed)
+    if pressed and action == "key:f2" then TC:reset() end
+  end)
+  TC.hotbarOpen = true
+  local load
+  for _, ctl in ipairs(TC:hotbarItems()) do if ctl.label == "LOAD" then load = ctl end end
+  local strip = TC:hotbarStrip()
+  local cell
+  for _, c in ipairs(strip or {}) do if c.ctl == load then cell = c end end
+  if check(cell ~= nil, "the bar has a LOAD cell") then
+    TC:touchpressed("bar", cell.x + cell.w / 2, cell.y + cell.h / 2)
+    check(TC.hotbarOpen, "LOAD leaves the bar open")
+    TC:touchreleased("bar", cell.x + cell.w / 2, cell.y + cell.h / 2)
+  end
+end
+
 T.finish("touch controls audit")

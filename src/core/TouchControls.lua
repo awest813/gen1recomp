@@ -858,6 +858,9 @@ function TouchControls:touchpressed(id, x, y)
     if cell then
       self.touches[id] = { control = "hotkey", ctl = cell.ctl }
       enterControl(self, cell.ctl)
+      -- its own key may reset input (Gold's LOAD does), which folds the bar
+      -- away under the player; the bar was open for this press, so it stays
+      self.hotbarOpen = true
       return true
     end
     if inCircle(L.hotbar, x, y, HOTBAR_SLOP) then
@@ -1062,6 +1065,12 @@ function TouchControls:draw()
   local function label(text, zone)
     local ly = zone.cy + zone.w * 0.66
     local w = self.labelFont:getWidth(text)
+    -- a dark backing: white letters with a one-pixel shadow all but vanished
+    -- over Gold's white title and intro screens
+    local fh = self.labelFont:getHeight()
+    local px, py = fh * 0.35, fh * 0.1
+    love.graphics.setColor(0, 0, 0, 0.45 * alphaMul)
+    love.graphics.rectangle("fill", zone.cx - w / 2 - px, ly - py, w + 2 * px, fh + 2 * py, fh * 0.5, fh * 0.5)
     love.graphics.setColor(0, 0, 0, 0.6 * alphaMul)
     love.graphics.print(text, zone.cx - w / 2 + 1, ly + 1)
     love.graphics.setColor(1, 1, 1, (ALPHA + 0.2) * alphaMul)
