@@ -135,9 +135,18 @@ function Game:load(opts)
     -- field.boot.screens so a total conversion owns the whole boot
     local splash = require("src.core.GameVersion").isYellow()
       and "YellowIntro" or "IntroMovie"
-    Screens.push(self, bootScreens(self).splash or splash, function()
+    -- launched from the launcher: straight to the title (a total
+    -- conversion's own boot screens still play, they are its game)
+    local own = bootScreens(self).splash
+    local skip = opts and opts.skipIntro
+      and (own == nil or own == "IntroMovie" or own == "YellowIntro")
+    if skip then
       StateStack:push(titleState)
-    end)
+    else
+      Screens.push(self, bootScreens(self).splash or splash, function()
+        StateStack:push(titleState)
+      end)
+    end
   end
 
   Logger.info("game loaded")

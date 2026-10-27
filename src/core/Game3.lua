@@ -236,6 +236,13 @@ function Game3:load(opts)
   end
   Boot.setSaveStatus(self.boot, saveStatus)
   Boot.setTextSpeed(self.boot, Options.block(self.options).textSpeed)
+  -- launched from the launcher: the title screen, not the copyright and
+  -- intro in front of it (a total conversion's own boot still plays)
+  if opts and opts.skipIntro and not self.boot.custom then
+    self.boot.phase = Boot.PHASE.TITLE
+    self.boot.timer = 0
+    Boot.enterTitle(self.boot)
+  end
   self.phase = "boot"
   self.session = nil
 

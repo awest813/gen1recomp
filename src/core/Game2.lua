@@ -1306,6 +1306,11 @@ function Game2:load(opts)
   elseif os.getenv("POKEPORT_DRIVER")
       and os.getenv("POKEPORT_BOOT_CINEMA") ~= "1" then
     self:startWorld()
+  elseif opts and opts.skipIntro then
+    -- launched from the launcher: the title, not the copyright splash,
+    -- GAME FREAK and the intro movie in front of it (a title left alone
+    -- still times out into them, as on the cart)
+    self:showTitle()
   else
     self:showCopyright()
   end

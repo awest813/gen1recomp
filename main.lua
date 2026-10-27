@@ -531,6 +531,10 @@ local function makeLauncher(launcherOpts)
     Importer = nil
     local onBoot = launcherOpts and launcherOpts.onBoot
     if onBoot and onBoot(version, cartId, opts) then return end
+    -- the player already chose the game and the save: open on its title
+    -- screen, not the copyright splash and attract movie in front of it
+    opts = opts or {}
+    if opts.skipIntro == nil then opts.skipIntro = true end
     bootGame(version, cartId, opts)
   end, {
     initialGame = launcherOpts and launcherOpts.initialTab or nil,
@@ -676,7 +680,8 @@ function bootGame(version, cartId, opts)
   -- connections) and the Gen 2 screens instead of src/core/Game.lua's Gen 1
   -- wiring.
   local arena = opts.arena
-  local loadOpts = { arena = arena, cartId = cartId, onExit = opts.onExit }
+  local loadOpts = { arena = arena, cartId = cartId, onExit = opts.onExit,
+    skipIntro = opts.skipIntro == true }
   if GameVersion.generation() == 3 then
     Game = require("src.core.Game3").new()
     Game.returnToLauncher = function(o) pendingLauncherReturn = o or {} end
