@@ -954,7 +954,7 @@ function love.load(args)
         Importer = nil
         bootGame(version or scriptedVersion, nil, scriptedOpts)
       end })
-      if importPath then Importer:startPath(importPath) end
+      if importPath then Importer:startPath(importPath, nil, true) end
       return
     end
     local scriptedCart = os.getenv("POKEPORT_CART")

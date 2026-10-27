@@ -298,7 +298,7 @@ function ModsPage:pickMod()
   l:pickPath("Choose a mod .zip", MOD_KIND, "mod", function(path)
     local FilePicker = require("src.core.FilePicker")
     local data, err = FilePicker.read(path)
-    if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
+    if not data then return l:say(tostring(err), "error") end
     self:installMod(data, FilePicker.basename(path))
   end, "Drop a mod .zip onto this window to install it.")
 end

@@ -837,6 +837,33 @@ function OptionsMenu:drawPanel()
   -- 18 prints over the border: 17 characters from the label's column 2,
   -- 8 from the value's column 11.  Anything longer scrolls under the cursor.
   local rows = self:visible()
+  -- the value a row shows on the line under its label, or nil for a row
+  -- that opens a page (VIDEO, AUDIO...)
+  local function valueText(row)
+    if row.frame then return nil end
+    if row.text then return row.text(self.options) end
+    if row.values then
+      local value = self.options[row.key]
+      return row.display and Strings(row.display[value]) or tostring(value)
+    end
+    if type(row.value) == "function" then
+      -- the Gen 1 row's value reader (src/ui/OptionRows.lua:4), so a mod row
+      -- shows its setting here instead of drawing a bare label
+      local ok, text = pcall(row.value, self.game)
+      return ok and tostring(text) or "?"
+    end
+  end
+  -- A list that mixes page rows with value rows (the top OPTION list:
+  -- PERFORMANCE, MENU ACCOUNT among VIDEO, AUDIO...) has no blank line
+  -- under a page row, so a value on its own line ran into the next label.
+  -- There a value that fits goes on its label's line instead.
+  -- (a page of cart rows ending in BACK keeps the cart's two-line rows)
+  local mixed, valued = false, false
+  for _, row in ipairs(rows) do
+    if row.group then mixed = true
+    elseif row.frame or valueText(row) then valued = true end
+  end
+  mixed = mixed and valued
   for slot = 1, math.min(VISIBLE_ROWS, #rows) do
     local i = slot + self.scroll
     local row = rows[i]
@@ -849,24 +876,20 @@ function OptionsMenu:drawPanel()
         if hot then return Marquee.scroll(text, room, key) end
         return Marquee.clip(text, room)
       end
-      Chrome.print(fit(Strings(row.label), 2), 2, labelY)
-      if row.frame then
-        Chrome.print(Strings(":TYPE"), 10, labelY + 1)
-        Chrome.print(tostring(self.options.frame or 1), 16, labelY + 1)
-      elseif row.text then
-        Chrome.print(":", 10, labelY + 1)
-        Chrome.print(fit(row.text(self.options), 11), 11, labelY + 1)
-      elseif row.values then
-        Chrome.print(":", 10, labelY + 1)
-        local value = self.options[row.key]
-        local text = row.display and Strings(row.display[value]) or tostring(value)
-        Chrome.print(fit(text, 11), 11, labelY + 1)
-      elseif type(row.value) == "function" then
-        -- the Gen 1 row's value reader (src/ui/OptionRows.lua:4), so a mod row
-        -- shows its setting here instead of drawing a bare label
-        local ok, text = pcall(row.value, self.game)
-        Chrome.print(":", 10, labelY + 1)
-        Chrome.print(fit(ok and tostring(text) or "?", 11), 11, labelY + 1)
+      local label = Strings(row.label)
+      local value = valueText(row)
+      if mixed and value and #label + 1 + #value <= 17 then
+        Chrome.print(label, 2, labelY)
+        Chrome.print(":" .. value, 19 - 1 - #value, labelY)
+      else
+        Chrome.print(fit(label, 2), 2, labelY)
+        if row.frame then
+          Chrome.print(Strings(":TYPE"), 10, labelY + 1)
+          Chrome.print(tostring(self.options.frame or 1), 16, labelY + 1)
+        elseif value then
+          Chrome.print(":", 10, labelY + 1)
+          Chrome.print(fit(value, 11), 11, labelY + 1)
+        end
       end
     end
   end

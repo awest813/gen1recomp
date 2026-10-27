@@ -376,6 +376,9 @@ Save.OPTIONS_KEY = "gold"
 
 local SHARED_KEYS = {
   audioMode = true,
+  -- one volume for every game: the launcher's rows say "all games", and a
+  -- change in Red's or FireRed's OPTION reaches Gold too (same 0-7 scale)
+  musicVol = true, sfxVol = true,
   touchControls = true, haptics = true, screenPos = true,
   videoMode = true, faithfulRes = true, orientation = true,
   mods = true, modsByVersion = true, modsGen2 = true,

@@ -257,7 +257,7 @@ window(1280, 720)
 l.page = "settings"
 local stext = drawText(l)
 check(stext:find("Music volume", 1, true) and stext:find("Sound volume", 1, true)
-  and stext:find("Launcher window", 1, true), "the settings page draws its rows")
+  and stext:find("Launcher full screen", 1, true), "the settings page draws its rows")
 l:setOption("musicVol", 3)
 eq(savedOptions.musicVol, 3, "a volume is saved for Gen 1 and Gen 3")
 eq(type(savedOptions.gold) == "table" and savedOptions.gold.musicVol, 3,

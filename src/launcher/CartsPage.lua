@@ -47,8 +47,12 @@ function CartsPage:installCart(data, name)
   if not ok then cart, err = nil, cart end
   l.cartRows, l.cartPlans = nil, nil
   if not cart then
-    return l:say("Could not install " .. tostring(name or "that cart") .. ": "
-      .. tostring(err), "error")
+    -- the cart reader's short codes, as sentences
+    local why = ({
+      ["EMPTY FILE"] = "the file is empty",
+      ["BAD FILE"] = "it is not a custom cart (a .g1rcart file)",
+    })[tostring(err)] or tostring(err)
+    return l:say("Could not install " .. tostring(name or "that cart") .. ": " .. why .. ".", "error")
   end
   if cart.base and l.ready[cart.base] ~= nil then
     l:selectGame(cart.base)
@@ -85,7 +89,7 @@ function CartsPage:pickCart()
   l:pickPath("Choose a custom cart", CART_KIND, "cart", function(path)
     local FilePicker = require("src.core.FilePicker")
     local data, err = FilePicker.read(path)
-    if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
+    if not data then return l:say(tostring(err), "error") end
     self:installCart(data, FilePicker.basename(path))
   end, "Drop a .g1rcart file onto this window to install it.")
 end

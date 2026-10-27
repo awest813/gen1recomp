@@ -124,13 +124,15 @@ local function scanDirectory(dir, mode)
   dir = normalizePath(dir)
   local entries = {}
 
-  local ok, handle = pcall(io.popen, string.format("ls -1ap %s 2>/dev/null", shQuote(dir)))
+  local ok, handle = pcall(io.popen, string.format("ls -1apL %s 2>/dev/null", shQuote(dir)))
   if ok and handle then
     local output = handle:read("*a")
     handle:close()
     if output and #output > 0 then
       for line in output:gmatch("[^\r\n]+") do
         if line ~= "./" and line ~= "../" and line ~= "." and line ~= ".." then
+          -- (-L: a linked folder, as handhelds set up for their ROM
+          -- folders, gets its "/" too, so it is listed and can be opened)
           local isDir = (line:sub(-1) == "/")
           local cleanName = isDir and line:sub(1, -2) or line
           if isMatchingFilter(cleanName, isDir, mode) then
@@ -187,7 +189,12 @@ function FileBrowser.open(opts)
   local initPath = opts.initialPath or FileBrowser._startDir()
   FileBrowser.currentDir = initPath
   FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
-  if #FileBrowser.entries == 0 and initPath ~= "/" then
+  -- a remembered folder that is gone (an unplugged drive): the usual start
+  if #FileBrowser.entries == 0 and opts.initialPath then
+    FileBrowser.currentDir = FileBrowser._startDir()
+    FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
+  end
+  if #FileBrowser.entries == 0 and FileBrowser.currentDir ~= "/" then
     FileBrowser.currentDir = "/"
     FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   end
@@ -223,10 +230,14 @@ function FileBrowser.setDirectory(dir)
   FileBrowser.page = 1
 end
 
+-- X: the next quick jump that exists on this machine (the fixed list held
+-- folders a desktop never has, and "Game Dir" resolved to the disk root)
 function FileBrowser.cycleShortcut()
-  FileBrowser.shortcutIdx = (FileBrowser.shortcutIdx % #SHORTCUTS) + 1
-  local target = SHORTCUTS[FileBrowser.shortcutIdx]
-  FileBrowser.setDirectory(target.path)
+  FileBrowser.places = FileBrowser.places or FileBrowser._places()
+  local list = FileBrowser.places
+  if #list == 0 then return FileBrowser.setDirectory("/") end
+  FileBrowser.shortcutIdx = (FileBrowser.shortcutIdx % #list) + 1
+  FileBrowser.setDirectory(list[FileBrowser.shortcutIdx].path)
 end
 
 function FileBrowser.gamepadpressed(button)
@@ -342,6 +353,7 @@ local function places()
   end
   return out
 end
+FileBrowser._places = places
 
 local MODE_LABEL = { rom = "ROM", save = "Save", box = "Box save", mod = "Mod", cart = "Cart", all = "File" }
 

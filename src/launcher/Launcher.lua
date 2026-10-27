@@ -153,7 +153,7 @@ function Launcher.new(onLaunch, opts)
   end
   -- Dev harness: import a ROM from a path at startup, so a scripted run can
   -- exercise the whole import flow without a picker or a drag and drop.
-  if opts.importPath then self:startPath(opts.importPath) end
+  if opts.importPath then self:startPath(opts.importPath, nil, true) end
   return self
 end
 
@@ -376,7 +376,8 @@ function Launcher:drawToast(x, y, w, s)
   local actH = math.max(Kit.tapMin(), math.floor(30 * s))
   local textW = tw - 3 * pad - icon - (actW > 0 and actW + pad or 0)
   local th = Kit.wrapHeight("small", m.text, textW)
-  local lines = math.min(3, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
+  -- an error may need the room (a ROM that is not the release, with its hash)
+  local lines = math.min(m.kind == "error" and 5 or 3, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
   local h = math.max(lines * Kit.textHeight("small"), m.action and actH or 0) + 2 * pad
   local bx = x + (w - tw) / 2
   -- "notice": a heads-up or a confirm-again prompt, not a success
@@ -404,15 +405,36 @@ function Launcher:drawToast(x, y, w, s)
   Kit._overlay = wasOverlay
 end
 
+-- An error caught from the launcher's own code: the full text goes to the
+-- log for a bug report, the player gets a sentence without file and line.
+function Launcher:sayFailure(err)
+  local text = tostring(err)
+  print("launcher error: " .. text)
+  local short = text:match("^[^\n]*"):gsub("^[^:]*%.lua:%d+: ", "")
+  self:say("Something went wrong: " .. short .. ". Try again; if it keeps happening, restart PK:GB.", "error")
+end
+
 -- Verify bytes from a picker or a drop and start importing them.
-function Launcher:importData(data, name)
-  if self.job and self.job.state == "working" then
-    return self:say("An import is already running.", "error")
-  end
-  local rom, err = ImportJob.verify(data, name, visibleGame)
+-- `force`: import again over a game that is already ready (its menu's
+-- "Import ROM again", an update); a plain drop or pick of a game already
+-- imported only selects it, since an import starts by clearing the old copy.
+function Launcher:importData(data, name, force)
   local picked = self.pickedRomPath
   self.pickedRomPath = nil
+  force = force or self.forceNextImport
+  self.forceNextImport = nil
+  if self.job and self.job.state == "working" then
+    return self:say(("An import is already running, so %s was not imported. Try it again when this one finishes.")
+      :format(tostring(name or "that file")), "error")
+  end
+  local rom, err = ImportJob.verify(data, name, visibleGame)
   if not rom then return self:say(err, "error") end
+  if self.ready[rom.version] and not force then
+    self:selectGame(rom.version)
+    self.page = nil
+    return self:say(GameVersion.info(rom.version).displayName
+      .. " is already imported and ready to play. To import it again, use the … button beside its name and choose Import ROM again.", "info")
+  end
   -- a desktop path that verified is where this game comes from next time
   if picked then
     local opts = self:options()
@@ -422,6 +444,8 @@ function Launcher:importData(data, name)
   end
   self:selectGame(rom.version)
   self:say(nil)
+  -- the progress is on the game's panel: leave Settings or Mods for it
+  self.page = nil
   self.job = ImportJob.start(rom)
   -- an accepted quirk of the dump (a copier header, an overdump) is said
   if rom.note and self.job.state ~= "error" then self:say("Importing: " .. tostring(rom.note) .. ".", "info") end
@@ -537,8 +561,19 @@ function Launcher:pickPath(prompt, kind, browseMode, onPath, dropHint)
     return true
   end
   if ok and FilePicker.available() then
-    Kit.FileBrowser.open({ title = prompt, mode = browseMode,
-      onSelect = function(path) self:queue(function() onPath(path) end) end })
+    -- it opens where the last file of this kind came from
+    local dirs = self:options().browseDirs
+    dirs = type(dirs) == "table" and dirs or {}
+    local last = type(dirs[browseMode]) == "string" and dirs[browseMode] or nil
+    Kit.FileBrowser.open({ title = prompt, mode = browseMode, initialPath = last,
+      onSelect = function(path)
+        local dir = tostring(path):match("^(.*)/[^/]+$")
+        if dir and dir ~= "" then
+          dirs[browseMode] = dir
+          self:setOption("browseDirs", dirs)
+        end
+        self:queue(function() onPath(path) end)
+      end })
     return true
   end
   if dropHint then self:say(dropHint, "info") end
@@ -549,11 +584,14 @@ end
 local function readPicked(self, path, use)
   local FilePicker = require("src.core.FilePicker")
   local data, err = FilePicker.read(path)
-  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
+  if not data then return self:say(tostring(err), "error") end
   use(data, FilePicker.basename(path))
 end
 
-function Launcher:pickRom()
+-- `force`: the file picked replaces a game already imported (its menu's
+-- Import ROM again, with no remembered file to read).
+function Launcher:pickRom(force)
+  self.forceNextImport = force or nil
   if self:requestHostPick("rom") then return end
   self:pickPath("Choose a Pokemon ROM", ROM_KIND, "rom", function(path)
     self:rememberRomSource(path)
@@ -596,7 +634,12 @@ function Launcher:scanInbox()
       self.inboxTried[item.path] = true
       local ok
       if item.kind == "save" then
-        if self.ready[item.version] then
+        if not self.ready[item.version] then
+          -- its game is not imported yet (perhaps importing now): the
+          -- scan after that import takes it
+          self.inboxTried[item.path] = nil
+          ok = "waiting"
+        else
           local was = self.selected
           self.selected = item.version
           ok = self:importSave(lfs.getSaveDirectory() .. "/" .. item.path, item.name, nil,
@@ -609,8 +652,9 @@ function Launcher:scanInbox()
           -- the ROM stays in the imports folder until its import has
           -- finished: a failed one leaves the player's only copy where it was
           if self:importing() then self.inboxRom = item end
-          -- the import says itself how it went, and takes the file then
-          ok = "running"
+          -- the import says itself how it went, and takes the file then;
+          -- a ROM that did not verify keeps its reason on screen
+          ok = self:importing() and "running" or nil
         else
           self.inboxTried[item.path] = nil -- one ROM at a time; next scan
         end
@@ -1092,11 +1136,11 @@ function Launcher:update(dt)
   local okP, errP = pcall(self.pollHostPick, self)
   if not okP then
     self.pendingPick = nil
-    self:say(tostring(errP), "error")
+    self:sayFailure(errP)
   end
   if self.page == "box" then
     local ok, err = pcall(require("src.import.BoxPanel").update, self, dt)
-    if not ok then self:say(tostring(err), "error") end
+    if not ok then self:sayFailure(err) end
   end
   -- device save sync keeps running while the launcher is up
   local eng = require("src.launcher.SyncPage").pump(dt)
@@ -1110,11 +1154,11 @@ function Launcher:update(dt)
   end
   if self.online then
     local ok, err = pcall(self.online.update, self.online, dt)
-    if not ok then self:say(tostring(err), "error") end
+    if not ok then self:sayFailure(err) end
   end
   if self.modsPage then
     local ok, err = pcall(self.modsPage.update, self.modsPage, dt)
-    if not ok then self:say(tostring(err), "error") end
+    if not ok then self:sayFailure(err) end
   end
   if self.job then
     local state = self.job:step(0.008)
@@ -1130,6 +1174,9 @@ function Launcher:update(dt)
       self:say(GameVersion.info(version).displayName .. " is ready to play.", "info")
       -- more games waiting on an automatic re-import go next
       if self:options().autoReimport and self:autoReimport() then return end
+      -- the imports folder may hold the next ROM, or a save that waited
+      -- for this game to be imported
+      if require("src.launcher.Inbox").enabled() then self:queue(function() self:scanInbox() end) end
       -- scripted runs (main.lua: POKEPORT_IMPORT_ROM / IMPORT_ONLY) go on
       -- from here on their own
       if self.opts.onImported then return self.opts.onImported(version) end
@@ -1143,6 +1190,7 @@ function Launcher:update(dt)
       end
       self.job = nil
       self:refresh(true)
+      if require("src.launcher.Inbox").enabled() then self:queue(function() self:scanInbox() end) end
     end
   end
   if #self.actions > 0 then
@@ -1150,7 +1198,7 @@ function Launcher:update(dt)
     self.actions = {}
     for _, fn in ipairs(pending) do
       local ok, err = pcall(fn)
-      if not ok then self:say(tostring(err), "error") end
+      if not ok then self:sayFailure(err) end
       if self.launched then return end
     end
   end
@@ -1683,17 +1731,21 @@ end
 
 function Launcher:reimport(version)
   local path = self:romSource(version)
-  if not path then return self:pickRom() end
+  if not path then return self:pickRom(true) end
   self.pickedRomPath = path
-  self:startPath(path)
+  self:startPath(path, version)
 end
 
 -- Settings > Import again after updates: the first game that needs it and
 -- still has its file is imported again.  Returns true when one started.
 function Launcher:autoReimport()
   if self:importing() then return false end
+  -- each game is tried once a session: a remembered file that now holds
+  -- another game, or an import that never comes out ready, looped forever
+  self.autoTried = self.autoTried or {}
   for _, v in ipairs(self.games) do
-    if self.stale and self.stale[v] and self:romSource(v) then
+    if self.stale and self.stale[v] and self:romSource(v) and not self.autoTried[v] then
+      self.autoTried[v] = true
       self:reimport(v)
       return self:importing()
     end
@@ -1724,14 +1776,25 @@ function Launcher:importHint()
 end
 
 -- An import started from a command line path.
-function Launcher:startPath(path)
+-- `expect`: the game this path is meant to be (an import again); a file
+-- that now holds another game is refused rather than imported in its place.
+-- `force`: import even over a ready game (scripted runs ask for that).
+function Launcher:startPath(path, expect, force)
   local ok, FilePicker = pcall(require, "src.core.FilePicker")
   local data, why
   if ok then data, why = FilePicker.read(path) end
   if not data then
     return self:say(why and tostring(why) or ("Could not read " .. tostring(path)), "error")
   end
-  self:importData(data, ok and FilePicker.basename(path) or path)
+  if expect then
+    local rom = ImportJob.verify(data, path, visibleGame)
+    if rom and rom.version ~= expect then
+      self.pickedRomPath = nil
+      return self:say(("%s no longer holds %s, so it was not imported again. Drop or choose the right file instead."):format(
+        ok and FilePicker.basename(path) or path, GameVersion.info(expect).displayName), "error")
+    end
+  end
+  self:importData(data, ok and FilePicker.basename(path) or path, force or expect ~= nil)
 end
 
 -- Hooks main.lua calls on any launcher when another screen hands control
@@ -1754,6 +1817,7 @@ function Launcher:autoUpdateAll(done, opts) return self:modsUi():autoUpdateAll(d
 local function statusText(self, version)
   if self.job and self.job.version == version then return "Importing", PAL.yellow end
   if self.ready[version] then return "Ready", PAL.green end
+  if self.stale and self.stale[version] == "interrupted" then return "Import stopped", PAL.yellow end
   if self.stale and self.stale[version] then return "Update needed", PAL.yellow end
   return "Not imported", PAL.muted
 end
@@ -1944,7 +2008,7 @@ function Launcher:drawSettings(x, y, w, h, s)
       self:queue(function() self:setOption(key, math.min(hi, value + 1)) end)
     end
     local mid = math.floor(60 * s)
-    Kit.textCenter("button", tostring(value), vx - mid, ry
+    Kit.textCenter("button", value == 0 and "Off" or tostring(value), vx - mid, ry
       + (rowH - Kit.textHeight("button")) / 2, mid, PAL.heading)
     if Kit.button(vx - mid - stepW, ry, stepW, rowH, "-",
         { id = key .. "-down", enabled = value > lo }) then
@@ -1977,14 +2041,16 @@ function Launcher:drawSettings(x, y, w, h, s)
   if okV and not VideoMode.fixedDisplay() then
     -- the launcher's own window (src/import/LauncherWindow.lua); each game
     -- keeps its display mode in its OPTIONS menu
-    label("Launcher window", cy)
+    label("Launcher full screen", cy)
     local okW, Window = pcall(require, "src.import.LauncherWindow")
     local okM, mode = false, nil
     if okW then okM, mode = pcall(Window.mode) end
     local full = okM and mode == "fullscreen"
     local bw = math.floor(math.min(cw * 0.5, 300 * s))
-    if Kit.button(cx + cw - bw, cy, bw, rowH, full and "Fullscreen" or "Windowed",
-        { id = "video-mode", font = "small", enabled = okW }) then
+    -- On / Off like the other rows: "Fullscreen" read as either the state
+    -- or what a press would do
+    if Kit.button(cx + cw - bw, cy, bw, rowH, full and "On" or "Off",
+        { id = "video-mode", font = "small", enabled = okW, kind = full and "primary" or nil }) then
       self:queue(function()
         local okT, done = pcall(Window.toggle)
         if not (okT and done) then self:say("The window mode could not be changed here.", "error") end
@@ -1992,13 +2058,18 @@ function Launcher:drawSettings(x, y, w, h, s)
     end
     cy = cy + rowH + math.floor(10 * s)
   end
+  -- one volume for every game (gen2/Save.lua shares the keys); the games'
+  -- OPTION menus change the same value
   stepper("musicVol", "Music volume", 0, 7, cy)
   cy = cy + rowH + math.floor(10 * s)
   stepper("sfxVol", "Sound volume", 0, 7, cy)
-  cy = cy + rowH + math.floor(10 * s)
+  cy = cy + rowH + math.floor(4 * s)
+  local volNote = "For every game, from Off to 7. Each game's OPTION menu changes the same setting."
+  Kit.textWrapped("micro", volNote, cx, cy, cw, PAL.faint)
+  cy = cy + Kit.wrapHeight("micro", volNote, cw) + math.floor(10 * s)
   toggle("reduce-motion", "Reduce motion", opts.reduceMotion == true, function()
     self:setOption("reduceMotion", self:options().reduceMotion ~= true)
-  end)
+  end, "Fewer slides and fades in this launcher. The games are not changed.")
   section("CONTROLS")
   if self.opts.onOpenSkinStudio then
     label("Controller skin", cy)
@@ -2774,7 +2845,7 @@ function Launcher:drawBoxOverlays(s)
   pcall(BoxUI.drawToast, self, m, m.H - math.floor(12 * s))
   if self._boxPopup then
     local ok, err = pcall(BoxUI.drawPopup, self, m)
-    if not ok then self:say(tostring(err), "error") BoxUI.close(self) end
+    if not ok then self:sayFailure(err) BoxUI.close(self) end
     return
   end
   local prompt = self._boxPrompt
