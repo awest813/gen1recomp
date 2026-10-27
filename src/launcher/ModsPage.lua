@@ -643,9 +643,8 @@ function ModsPage:optionValues(id)
 end
 
 function ModsPage:optionValue(id, row)
-  local v = self:optionValues(id)[row.key]
-  if v == nil then v = row.default end
-  return v
+  -- what the mod will read (src/mods/OptionValue.lua), not raw storage
+  return require("src.mods.OptionValue").coerce(row, self:optionValues(id)[row.key])
 end
 
 function ModsPage:setOption(id, key, value)

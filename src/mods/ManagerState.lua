@@ -19,6 +19,7 @@ local OptionRows = require("src.ui.OptionRows")
 local Strings = require("src.core.Strings")
 local ModProfile = require("src.mods.ModProfile")
 local LoadOrder = require("src.mods.LoadOrder")
+local OptionValue = require("src.mods.OptionValue")
 
 local ManagerState = {}
 ManagerState.__index = ManagerState
@@ -1123,9 +1124,9 @@ end
 function ManagerState:optionValue(modId, row)
   local loader = self.game.mods
   local stored = loader and loader.modOptions and loader.modOptions[modId]
-  local v = stored and stored[row.key]
-  if v == nil then v = row.default end
-  return v
+  -- the same check mod.options:get applies, so the menu shows what the mod
+  -- actually reads
+  return OptionValue.coerce(row, stored and stored[row.key])
 end
 
 function ManagerState:setOption(modId, key, value)
