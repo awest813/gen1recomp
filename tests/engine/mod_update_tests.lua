@@ -346,4 +346,4 @@ do
   eq(datesOnly.first, "2024-05-31", "but keep the date")
 end
 
-print("ok mod_update_tests")
+T.finish("mod update")
