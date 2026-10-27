@@ -195,11 +195,26 @@ love = {
   filesystem = {
     getRealDirectory = function(path) return sourceFiles[path] end,
     getSource = function() return "/source" end,
-    getInfo = function(path)
-      return sourceFiles[path] and { type = "file" } or nil
+    getInfo = function(path, kind)
+      if sourceFiles[path] then
+        return (kind == nil or kind == "file") and { type = "file" } or nil
+      end
+      if kind == "file" then return nil end
+      for file in pairs(sourceFiles) do
+        if file:sub(1, #path + 1) == path .. "/" then return { type = "directory" } end
+      end
+      return nil
     end,
   },
 }
+-- a game with no data/generated folder at all is answered before its
+-- required list is even built (Emerald's loads its whole extract plan)
+local realRequired = CacheContract.requiredFilesFor
+local builtList = false
+CacheContract.requiredFilesFor = function(...) builtList = true return realRequired(...) end
+check(not CacheContract.sourceTreeHasData("emerald"), "no folder, no source data")
+check(not builtList, "and the required list is never built for it")
+CacheContract.requiredFilesFor = realRequired
 for _, path in ipairs(CacheContract.REQUIRED_FILES) do sourceFiles[path] = "/source" end
 check(CacheContract.sourceTreeHasData("red"),
   "Red source tree uses the shared required set")

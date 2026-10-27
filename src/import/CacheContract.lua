@@ -1034,6 +1034,13 @@ function CacheContract.sourceTreeHasData(version)
     return false
   end
   local prefix = version == "red" and "" or GameVersion.cachePrefix(version)
+  -- Every required list has files under data/generated.  Without that folder
+  -- nothing below can pass, and requiredFilesFor() of a plan-composed game
+  -- (Emerald) loads its whole extract plan -- 160 ms per launcher open for a
+  -- game that is not even imported.
+  if love.filesystem.getInfo(prefix .. "data/generated", "directory") == nil then
+    return false
+  end
   local required, isOverride = CacheContract.requiredFilesFor(version)
   local source = love.filesystem.getSource()
   for _, path in ipairs(required) do
