@@ -369,16 +369,20 @@ end
 -- ------------------------------------------------------------ progress
 
 -- Extractor stage names that mean nothing to a player, and what to show.
+-- Extractor stage names that mean nothing to a player, and what to show
+-- instead; `false` keeps the caption that is up (bookkeeping steps, or one
+-- of several parallel tasks finishing while the others still run).
 local STAGE_WORDS = {
   { "^Initializing Markers", "Getting ready" },
-  { "^Markers Ready", "Getting ready" },
-  { "^Finalizing (.+)", "Finishing up" },
+  { "^Markers Ready", false },
+  { "^Finalizing ", false },
+  { " Ready$", false },
+  { "^World Maps: done", false },
   { "^Std scripts", "Scripts" },
   { "^Remaining data %(stubs%)", "Finishing up" },
   { "^World Maps: open_rom", "World maps" },
   { "^World Maps: census", "World maps" },
   { "^World Maps: native_pack", "World maps" },
-  { "^World Maps: done", "World maps" },
   { "^World Maps: (%a+)", "World maps: %1" },
   { "^Scripts & OW: (.+)", "Scripts and characters" },
   { "^Audio & Intro: Initializing", "Music and intro" },
@@ -387,18 +391,26 @@ local STAGE_WORDS = {
 }
 
 -- Make a stage caption readable: known technical names are replaced, and
--- snake_case or "(12/200)" counters are tidied.
+-- snake_case is tidied.  nil means "keep the caption that is up".
 function ImportJob.stageText(stage)
   if type(stage) ~= "string" or stage == "" then return nil end
   local text = stage
   for _, row in ipairs(STAGE_WORDS) do
-    local replaced, n = text:gsub(row[1], row[2], 1)
-    if n > 0 then text = replaced break end
+    if text:find(row[1]) then
+      if row[2] == false then return nil end
+      text = text:gsub(row[1], row[2], 1)
+      break
+    end
   end
   text = text:gsub("(%a)_(%a)", "%1 %2")
   text = text:gsub("^%l", string.upper)
   return text
 end
+
+-- A parallel import (Gen 3) reports from several tasks at once; switching
+-- the caption on every message made it flicker between them.  A caption
+-- stays up at least this long unless the import moves on to "Saving".
+ImportJob.CAPTION_HOLD = 0.4
 
 function ImportJob:_mark(stage)
   local t = now()
@@ -422,12 +434,18 @@ function ImportJob:_progress(fraction, stage)
   fraction = math.max(0, math.min(1, tonumber(fraction) or 0))
   -- a parallel extractor's tasks finish out of order; the bar only goes on
   if fraction > (self.progress or 0) then self.progress = fraction end
+  if type(stage) ~= "string" then return end
+  -- the per-stage timing keys on the extractor's own name, minus counters
+  self:_mark((stage:gsub("%s*%(%d+/%d+%)$", "")))
   local text = ImportJob.stageText(stage)
-  if text then
-    self.stage = text
-    -- the per-stage timing keys on the extractor's own name, minus counters
-    self:_mark((stage:gsub("%s*%(%d+/%d+%)$", "")))
+  if not text then return end
+  local t = now()
+  if self.captionAt and t - self.captionAt < ImportJob.CAPTION_HOLD
+      and text:gsub("%s*%(%d+/%d+%)$", "") ~= (self.stage or ""):gsub("%s*%(%d+/%d+%)$", "") then
+    return
   end
+  if text ~= self.stage then self.captionAt = t end
+  self.stage = text
 end
 
 -- The slowest stages, for POKEPORT_IMPORT_TIMING=1.

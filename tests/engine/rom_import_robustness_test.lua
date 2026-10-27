@@ -192,17 +192,30 @@ end
 
 -- ------------------------------------------------------- progress text
 
-eq(ImportJob.stageText("Finalizing pokemon_gfx"), "Finishing up", "worker ids never reach the player")
+eq(ImportJob.stageText("Finalizing pokemon_gfx"), nil, "a worker finishing never reaches the player")
+eq(ImportJob.stageText("Audio & Intro Ready"), nil, "nor do bookkeeping steps")
 eq(ImportJob.stageText("World Maps: tilesets (3/20)"), "World maps: tilesets (3/20)", "map stages keep their counter")
 eq(ImportJob.stageText("Scripts & OW: trainers_map_tree"), "Scripts and characters", "OW is spelled out")
 eq(ImportJob.stageText("Game Data: region_map"), "Region map", "snake_case is tidied")
 eq(ImportJob.stageText("Maps"), "Maps", "plain names pass through")
 
+local clock = 0
+local realGetTime = love.timer.getTime
+love.timer.getTime = function() return clock end
 local job = setmetatable({ progress = 0, timings = {} }, ImportJob)
 job:_progress(0.5, "Pokemon")
 job:_progress(0.3, "Finalizing aux")
 eq(job.progress, 0.5, "progress never moves backwards when parallel tasks report out of order")
-eq(job.stage, "Finishing up", "but the caption follows the newest stage")
+eq(job.stage, "Pokemon", "and a task finishing keeps the caption that is up")
+clock = 0.1
+job:_progress(0.55, "Game Data: Teachy TV")
+eq(job.stage, "Pokemon", "a caption from another task waits out the hold instead of flickering")
+job:_progress(0.56, "Pokemon (3/10)")
+eq(job.stage, "Pokemon (3/10)", "the same stage's counter still moves")
+clock = 1
+job:_progress(0.6, "Game Data: Teachy TV")
+eq(job.stage, "Teachy TV", "after the hold the newest stage shows")
+love.timer.getTime = realGetTime
 
 -- ------------------------------------------------------- the import itself
 

@@ -8,6 +8,17 @@ RomExtractor.__index = RomExtractor
 
 local STAGE_COUNT = 17
 
+-- Each stage's share of an import, in milliseconds of a desktop Yellow
+-- import (POKEPORT_IMPORT_TIMING=1), so the progress bar moves at an even
+-- pace instead of one seventeenth per stage.
+local STAGE_WEIGHTS = {
+  ["Game constants"] = 20, ["World tiles"] = 21, ["Maps"] = 44, ["Fonts"] = 5,
+  ["Overworld sprites"] = 24, ["Moves"] = 5, ["Battle animations"] = 16,
+  ["Items"] = 3, ["Types"] = 2, ["Color palettes"] = 2, ["Party icons"] = 5,
+  ["Pokemon"] = 358, ["Trainers"] = 111, ["Wild Pokemon"] = 8,
+  ["Dialogue"] = 90, ["Interface artwork"] = 94, ["Sound programs"] = 160,
+}
+
 local function copy(value, seen)
   if type(value) ~= "table" then return value end
   seen = seen or {}
@@ -57,6 +68,7 @@ function RomExtractor.new(romData, manifest, progress)
     symbols = manifest.symbols,
     progress = progress,
     stage = 0,
+    weights = require("src.import.StageWeights").new(STAGE_WEIGHTS, 5),
   }, RomExtractor)
 end
 
@@ -68,13 +80,14 @@ end
 
 function RomExtractor:beginStage(name)
   self.stage = self.stage + 1
-  if self.progress then self.progress(self.stage - 1, STAGE_COUNT, name, 0, 1) end
+  local done, all = self.weights:begin(name)
+  if self.progress then self.progress(done, all, name, 0, 1) end
 end
 
 function RomExtractor:tick(name, current, total)
   if self.progress then
-    self.progress(self.stage - 1 + current / total, STAGE_COUNT,
-      name, current, total)
+    local done, all = self.weights:at(current / total)
+    self.progress(done, all, name, current, total)
   end
 end
 
@@ -2360,6 +2373,18 @@ function RomExtractor:extractPikachuCries()
     if v < 0 then v = v + 65536 end
     return string.char(v % 256, math.floor(v / 256) % 256)
   end
+  -- each ROM byte is always the same 8 stereo frames: build those 32 bytes
+  -- once per byte value instead of once per sample (2 string.char and a
+  -- concatenation for every one of ~600 000 samples)
+  local frames = {}
+  for byte = 0, 255 do
+    local samples = {}
+    for _, level in ipairs(lut[byte]) do
+      local s = i16le(level)
+      samples[#samples + 1] = s .. s -- identical L/R (#626)
+    end
+    frames[byte] = table.concat(samples)
+  end
   local CacheFs = require("src.import.CacheFs")
   local pointers = self:symbol("PikachuCriesPointerTable")
   for index = 0, NUM - 1 do
@@ -2369,12 +2394,7 @@ function RomExtractor:extractPikachuCries()
     local length = header[1] + header[2] * 256
     local raw = self.rom:bytes(bank, address + 2, length)
     local parts = {}
-    for _, byte in ipairs(raw) do
-      for _, level in ipairs(lut[byte]) do
-        local s = i16le(level)
-        parts[#parts + 1] = s .. s -- identical L/R (#626)
-      end
-    end
+    for i, byte in ipairs(raw) do parts[i] = frames[byte] end
     local pcm = table.concat(parts)
     local wav = "RIFF" .. u32(36 + #pcm) .. "WAVEfmt " .. u32(16)
       .. u16(1) .. u16(2) .. u32(RATE) .. u32(RATE * 4) .. u16(4) .. u16(16)
