@@ -281,7 +281,9 @@ Every chunk a mod runs (its entry file, `options_schema`, anything it
   `package`, `ffi`, `jit.util`, `setfenv`/`getfenv`, `string.dump` and
   `jit.attach` are absent; `love.filesystem`, `love.system`, `love.event`
   and `love.thread` are blocked or replaced (see the compat section below).
-  Network modules need the `network` permission.
+  Network modules need the `network` permission. `collectgarbage` only
+  answers `collect`, `count`, `step` and `isrunning`: the collector is the
+  engine's.
 - Mods ship Lua source. Precompiled bytecode is refused everywhere a mod
   supplies code, including `lang/strings.lua` and `assets_transforms`.
 
