@@ -82,15 +82,12 @@ end
 function CartsPage:pickCart()
   local l = self.launcher
   if l:requestHostPick("cart") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    return l:say("Drop a .g1rcart file onto this window to install it.", "info")
-  end
-  local path = FilePicker.open("Choose a custom cart", CART_KIND)
-  if not path then return end
-  local data, err = FilePicker.read(path)
-  if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
-  self:installCart(data, FilePicker.basename(path))
+  l:pickPath("Choose a custom cart", CART_KIND, "cart", function(path)
+    local FilePicker = require("src.core.FilePicker")
+    local data, err = FilePicker.read(path)
+    if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
+    self:installCart(data, FilePicker.basename(path))
+  end, "Drop a .g1rcart file onto this window to install it.")
 end
 
 -- The save the active cart would start on, and whether its seal is broken.

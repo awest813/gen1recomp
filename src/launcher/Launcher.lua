@@ -1482,15 +1482,6 @@ end
 
 -- The game list, grouped by generation: a colour stripe per game, and for
 -- an imported one its trainer and play time; the rest offer Import.
--- A list row's name over its detail line, centred as a pair in the row.
-local function twoLines(title, detail, x, y, h, w, titleInk, detailInk, s)
-  local th, dh = Kit.textHeight("button"), Kit.textHeight("micro")
-  local top = y + (h - th - dh - Theme.space("xxs", s)) / 2
-  Kit.text("button", Kit.ellipsize("button", tostring(title), w), x, top, titleInk)
-  Kit.text("micro", Kit.ellipsize("micro", tostring(detail or ""), w), x, top + th + Theme.space("xxs", s),
-    detailInk)
-end
-
 function Launcher:drawGameList(x, y, w, h, s)
   local rowH = math.max(Kit.tapMin(), math.floor(50 * s))
   local gap = Theme.space("xs", s)

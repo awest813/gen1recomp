@@ -226,15 +226,12 @@ end
 function ModsPage:pickMod()
   local l = self.launcher
   if l:requestHostPick("mod") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    return l:say("Drop a mod .zip onto this window to install it.", "info")
-  end
-  local path = FilePicker.open("Choose a mod .zip", MOD_KIND)
-  if not path then return end
-  local data, err = FilePicker.read(path)
-  if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
-  self:installMod(data, FilePicker.basename(path))
+  l:pickPath("Choose a mod .zip", MOD_KIND, "mod", function(path)
+    local FilePicker = require("src.core.FilePicker")
+    local data, err = FilePicker.read(path)
+    if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
+    self:installMod(data, FilePicker.basename(path))
+  end, "Drop a mod .zip onto this window to install it.")
 end
 
 -- What a mod still needs before it can load: a file the player supplies
@@ -282,15 +279,12 @@ function ModsPage:addModFile(row, spec)
   local l = self.launcher
   l.pendingModFile = { manifest = row.manifest, spec = spec, name = row.name }
   if l:requestHostPick("required_import", "modfile") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
+  local started = l:pickPath("Choose " .. tostring(spec.name), { label = spec.name, exts = {} }, "all",
+    function(path) self:storeModFile(require("src.core.FilePicker").read(path)) end)
+  if not started then
     l.pendingModFile = nil
-    return l:say("This platform has no file picker for mod files.", "error")
+    l:say("This platform has no file picker for mod files.", "error")
   end
-  local path = FilePicker.open("Choose " .. tostring(spec.name), { label = spec.name, exts = {} })
-  if not path then l.pendingModFile = nil return end
-  local data, err = FilePicker.read(path)
-  self:storeModFile(data, err)
 end
 
 function ModsPage:storeModFile(data, err)
@@ -358,17 +352,14 @@ function ModsPage:runImporter(id)
   if l.assetJob then return l:say("An import is already running.", "error") end
   l.pendingImporter = id
   if l:requestHostPick("required_import", "importer") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    l.pendingImporter = nil
-    return l:say("This platform has no file picker for importer sources.", "error")
-  end
   local desc = require("src.import.Importers").get(id)
-  local path = FilePicker.open("Choose " .. tostring(desc and desc.source and desc.source.name or id),
-    { label = desc and desc.name or id, exts = desc and desc.source and desc.source.formats or {} })
-  if not path then l.pendingImporter = nil return end
-  local data, err = FilePicker.read(path)
-  self:startImporter(data, err)
+  local started = l:pickPath("Choose " .. tostring(desc and desc.source and desc.source.name or id),
+    { label = desc and desc.name or id, exts = desc and desc.source and desc.source.formats or {} }, "all",
+    function(path) self:startImporter(require("src.core.FilePicker").read(path)) end)
+  if not started then
+    l.pendingImporter = nil
+    l:say("This platform has no file picker for importer sources.", "error")
+  end
 end
 
 function ModsPage:startImporter(data, err)
