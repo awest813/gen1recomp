@@ -36,11 +36,13 @@ for _, gen in ipairs({ 1, 2, 3 }) do
   caught, detail = Runtime.call("catch.rate", throw, "POKE_BALL", {}, {}, {})
   T.eq(caught, false, tag .. "two misses is a miss at the default setting")
   T.eq(detail, 2, tag .. "reporting the last roll's shakes")
+  T.eq(calls(), 2, tag .. "and no third roll")
 
   run.loader.modOptions.example_lucky_ball = { tries = "3" }
   throw, calls = scripted({ false, false, true })
   caught = Runtime.call("catch.rate", throw, "POKE_BALL", {}, {}, {})
   T.eq(caught, true, tag .. "ROLLS PER BALL 3 allows a third")
+  T.eq(calls(), 3, tag .. "and stops there")
   run.release()
 end
 
