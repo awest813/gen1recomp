@@ -3123,7 +3123,7 @@ do
   local qbox = qstack:top()
   check(qbox ~= qmenu and qbox ~= nil and qbox.pages ~= nil,
         "QUIT pushes a confirmation textbox")
-  eq(qbox.pages[1][1], "RETURN TO MAIN", "confirm asks RETURN TO MAIN MENU?")
+  eq(qbox.pages[1][1], "QUIT? UNSAVED", "confirm warns that unsaved progress is lost")
   -- opts.choice: the box pushes the YES/NO itself once the last page has
   -- typed out, so pump it rather than reaching for the old onDone hook
   for _ = 1, 600 do

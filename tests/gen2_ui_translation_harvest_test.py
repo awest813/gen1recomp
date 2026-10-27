@@ -61,7 +61,7 @@ REQUIRED = {
     "POKéMON\ndatabase", "Party <PK><MN>\nstatus", "Contains\nitems",
     "Trainer's\nkey device", "Your own\nstatus", "Save your\nprogress",
     "Change\nsettings", "Installed\nadd-ons", "Return to\nthe title",
-    "Return to the\ntitle screen?",
+    "Quit? Unsaved\nprogress is lost.",
     # Bill's storage list, including complete prompts and refusals.
     "MOVE", "STATS", "RELEASE", "PARTY <PK><MN>", "BOX%d",
     "Choose a <PK><MN>.", "What's up?", "Move to where?",

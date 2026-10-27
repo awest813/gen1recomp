@@ -148,7 +148,7 @@ StartMenu.show({ session = session })
 for _ = 1, 6 do StartMenu.move(1) end
 check(StartMenu.ENTRIES[StartMenu.cursor].id == "exit", "cursor on EXIT")
 StartMenu.confirm()
-check(StartMenu._confirmExit == true, "confirm opens the RETURN TO MAIN MENU? prompt")
+check(StartMenu._confirmExit == true, "confirm opens the quit prompt")
 check(StartMenu.isOpen() == true, "the menu has not closed yet")
 StartMenu.move(1)
 check(StartMenu._confirmCursor == 1, "inside the prompt, move flips the YES/NO choice")

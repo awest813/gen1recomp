@@ -162,7 +162,7 @@ function StartMenu.new(game)
   -- to the title after a confirm (defaultNo guards accidental quits)
   table.insert(items, { label = Strings("QUIT"), onSelect = function()
     local TextBox = require("src.render.TextBox")
-    game.stack:push(TextBox.new(game, Strings("RETURN TO MAIN\nMENU?"), nil, {
+    game.stack:push(TextBox.new(game, Strings("QUIT? UNSAVED\nPROGRESS IS LOST."), nil, {
       defaultNo = true,
       choice = function(yes)
         if yes then game:returnToTitle() end

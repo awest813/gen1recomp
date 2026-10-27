@@ -429,7 +429,7 @@ function StartMenu.draw()
   if StartMenu._confirmExit then
     -- Bottom Dialogue Window
     Chrome.dialogueFrame()
-    local prompt = Strings("RETURN TO MAIN\nMENU?")
+    local prompt = Strings("QUIT? UNSAVED\nPROGRESS IS LOST.")
     FrlgFont.draw(prompt, 2 * 8 + 4, 15 * 8 + 2, { linePitch = 15, colors = FrlgFont.COLOR.NORMAL })
 
     -- Right YES/NO Window

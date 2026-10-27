@@ -404,7 +404,8 @@ function StartMenu:draw()
 
   if self.phase == "confirm" then
     Chrome.textbox(0, 12, 18, 4)
-    twoRowPrompt(Strings(Strings.source("Return to the\ntitle screen?")),
+    -- QUIT discards play since the last SAVE (Game:returnToTitle): say so
+    twoRowPrompt(Strings(Strings.source("Quit? Unsaved\nprogress is lost.")),
       "title screen")
     Chrome.box(YESNO_X, YESNO_Y, YESNO_W, YESNO_H)
     Chrome.print(Strings("YES"), YESNO_X + 2, YESNO_Y + 1)
