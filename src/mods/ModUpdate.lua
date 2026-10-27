@@ -6,6 +6,9 @@
 local ModUpdate = {}
 
 ModUpdate.CACHE_TTL = 6 * 60 * 60  -- six hours
+-- 100 releases with long changelogs is well under this; anything bigger is
+-- not GitHub's answer, and decoding it would stall the launcher's frame
+ModUpdate.MAX_RELEASES_BYTES = 8 * 1024 * 1024
 
 local Strings = require("src.core.Strings")
 
@@ -143,6 +146,9 @@ function ModUpdate.parseReleases(jsonText, modId, Json)
   Json = Json or require("src.link.Json")
   local notJson = Json.describeUnexpected(jsonText)
   if notJson then return nil, notJson end
+  if #jsonText > ModUpdate.MAX_RELEASES_BYTES then
+    return nil, "the release list was too large to read"
+  end
   local ok, result, err = pcall(function()
     local doc, decodeErr = Json.decode(jsonText)
     if type(doc) ~= "table" then
@@ -540,7 +546,14 @@ function ModUpdate.fetchReleases(repo, modId, opts)
     return nil, curlErr
   end
   local list, parseErr = ModUpdate.parseReleases(body, modId)
-  if not list then return nil, parseErr end
+  if not list then
+    -- a rate-limit answer or a captive-portal page: keep showing what we had
+    local cached = ModUpdate.readCache(repo)
+    if cached and cached.releases then
+      return cached.releases, nil, { fromCache = true, stale = true, err = parseErr }
+    end
+    return nil, parseErr
+  end
   ModUpdate.writeCache(repo, list)
   return list, nil, { fromCache = false }
 end
@@ -603,6 +616,14 @@ function ModUpdate.pumpFetchReleases(h)
       ModUpdate.writeCache(h.repo, list)
       h.releases, h.meta = list, { fromCache = false }
       return true, list, nil, h.meta
+    end
+    -- GitHub's rate-limit message or a captive portal's page: the stale
+    -- cache beats an error, same as offline
+    local rel, _, meta = staleReleases(h.repo)
+    if rel then
+      meta.err = parseErr
+      h.releases, h.meta = rel, meta
+      return true, rel, nil, meta
     end
     h.err = parseErr
     return true, nil, parseErr

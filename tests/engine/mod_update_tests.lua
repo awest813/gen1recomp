@@ -300,6 +300,29 @@ do
   check(fetched == nil, "current cache is served without refetch")
   check(list[1].downloads == 0, "cached zero stays zero")
 
+  -- GitHub's rate-limit answer is JSON but not a release list: the stale
+  -- cache keeps the MODS tab populated instead of turning into an error
+  HostShell.httpGet = function()
+    return '{"message":"API rate limit exceeded for 1.2.3.4."}'
+  end
+  local meta, err
+  list, err, meta = ModUpdate.fetchReleases("acme/mod", "demo", { force = true })
+  check(list and list[1].version == "1.0.0" and err == nil,
+    "a rate-limited refresh falls back to the cached releases")
+  check(meta and meta.stale and tostring(meta.err):find("rate limit", 1, true),
+    "and says why the list is stale")
+  cached = nil
+  list, err = ModUpdate.fetchReleases("acme/mod", "demo", { force = true })
+  check(list == nil and tostring(err):find("rate limit", 1, true),
+    "with no cache the GitHub message is the error")
+
+  local savedMax = ModUpdate.MAX_RELEASES_BYTES
+  ModUpdate.MAX_RELEASES_BYTES = 16
+  local huge, hugeErr = ModUpdate.parseReleases('[{"tag_name":"v1.0.0","assets":[]}]', "demo")
+  ModUpdate.MAX_RELEASES_BYTES = savedMax
+  check(huge == nil and tostring(hugeErr):find("too large", 1, true),
+    "an oversized release list is refused before decoding")
+
   ModUpdate.readCache, ModUpdate.writeCache = realRead, realWrite
   HostShell.canFetch, HostShell.httpGet = realCanFetch, realHttpGet
 end

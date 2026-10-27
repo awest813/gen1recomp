@@ -122,15 +122,55 @@ local function str(v)
   return type(v) == "string" and v or nil
 end
 
-local function strArray(v)
+-- A feed is anybody's JSON.  Text the launcher draws loses control bytes (a
+-- NUL, an escape sequence, a bell) and is cut to a length a row can hold,
+-- never mid UTF-8 sequence; a megabyte "title" otherwise costs a text
+-- layout every frame it is on screen.
+local function cutUtf8(s, maxBytes)
+  if #s <= maxBytes then return s end
+  s = s:sub(1, maxBytes)
+  -- back off to the start of the last (possibly partial) sequence
+  local i = #s
+  while i > 0 do
+    local b = s:byte(i)
+    if b < 0x80 then break end
+    if b >= 0xC0 then
+      local need = b >= 0xF0 and 4 or b >= 0xE0 and 3 or 2
+      if #s - i + 1 < need then s = s:sub(1, i - 1) end
+      break
+    end
+    i = i - 1
+  end
+  return s
+end
+
+local function text(v, maxBytes, multiline)
+  if type(v) ~= "string" then return nil end
+  v = v:gsub("\r\n?", "\n"):gsub("\t", " ")
+  v = v:gsub(multiline and "[%z\1-\9\11-\31\127]" or "[%z\1-\31\127]", "")
+  return cutUtf8(v, maxBytes)
+end
+ModIndex._text = text
+
+local MAX_LIST = 32
+local function strArray(v, maxBytes)
   local out = {}
   if type(v) == "table" then
     for _, entry in ipairs(v) do
-      if type(entry) == "string" then out[#out + 1] = entry end
+      if #out >= MAX_LIST then break end
+      local s = text(entry, maxBytes or 64)
+      if s and s ~= "" then out[#out + 1] = s end
     end
   end
   return out
 end
+
+-- The same rule Manifest.validate applies: an id that could never name an
+-- installed mod is not one the launcher can match, update or install.
+local function validId(v)
+  return type(v) == "string" and #v <= 64 and v:match("^[%w_%-]+$") ~= nil
+end
+ModIndex.MAX_FEED_BYTES = 8 * 1024 * 1024
 
 -- Decode one release blob from the feed's `latest` field into the same shape
 -- ModUpdate.parseRelease produces, so a release consumer takes it without a
@@ -190,18 +230,19 @@ function ModIndex.releaseDates(entry)
 end
 
 local function parseEntry(raw)
-  if type(raw) ~= "table" or not str(raw.id) then return nil end
+  if type(raw) ~= "table" or not validId(raw.id) then return nil end
+  local title = text(raw.title, 120)
   return {
     folder = str(raw.folder),
     id = raw.id,
-    title = str(raw.title) or raw.id,
-    author = str(raw.author),
-    version = str(raw.version),
-    summary = str(raw.summary) or "",
+    title = (title and title ~= "") and title or raw.id,
+    author = text(raw.author, 80),
+    version = text(raw.version, 32),
+    summary = text(raw.summary, 2000, true) or "",
     categories = strArray(raw.categories),
     tags = strArray(raw.tags),
     games = strArray(raw.games),
-    license = str(raw.license),
+    license = text(raw.license, 64),
     repo = str(raw.repo),
     github = str(raw.github),
     downloadURL = str(raw.downloadURL),
@@ -279,12 +320,12 @@ local function parseCartEntry(raw)
     kind = "cart",
     folder = str(raw.folder),
     id = raw.id,
-    title = raw.title,
-    author = raw.author,
-    version = raw.version,
+    title = text(raw.title, 120),
+    author = text(raw.author, 80),
+    version = text(raw.version, 32),
     base = raw.base,
     seal = raw.seal,
-    summary = str(raw.summary) or "",
+    summary = text(raw.summary, 2000, true) or "",
     shell = str(raw.shell),
     finish = str(raw.finish),
     speeds = numArray(raw.speeds),
@@ -322,6 +363,13 @@ function ModIndex.parse(jsonText, Json)
   Json = Json or require("src.link.Json")
   local notJson = Json.describeUnexpected(jsonText)
   if notJson then return nil, notJson end
+  -- decoding runs on the frame that received it; a runaway feed is refused
+  -- before it can stall the launcher
+  if #jsonText > ModIndex.MAX_FEED_BYTES then
+    return nil, ("the index is %d MB, more than the %d MB a feed may be; "
+      .. "ask its author to trim it"):format(math.ceil(#jsonText / 1048576),
+        math.floor(ModIndex.MAX_FEED_BYTES / 1048576))
+  end
   local ok, result, err = pcall(function()
     local doc, decodeErr = Json.decode(jsonText)
     if type(doc) ~= "table" then
