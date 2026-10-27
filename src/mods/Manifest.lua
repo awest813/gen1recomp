@@ -300,6 +300,19 @@ function Manifest.validate(raw, path)
   raw.category = scrubUtf8(raw.category)
   assert(type(raw.id) == "string" and raw.id:match("^[%w_%-]+$"),
     "manifest id must contain only letters, numbers, _ or -")
+  -- Display-only fields the UIs sort and lay out as strings: a number or an
+  -- object here once crashed the in-game manager's category sort ("attempt
+  -- to compare number with string") for every installed mod, so a wrong
+  -- type falls back to the default with a warning rather than failing a
+  -- mod over its label.
+  if raw.category ~= nil and (type(raw.category) ~= "string" or raw.category == "") then
+    Logger.warn("[%s] category must be a non-empty string; using OTHER", raw.id)
+    raw.category = nil
+  end
+  if raw.description ~= nil and type(raw.description) ~= "string" then
+    Logger.warn("[%s] description must be a string; ignored", raw.id)
+    raw.description = nil
+  end
   assert(type(raw.name) == "string" and raw.name ~= "", "manifest name is required")
   assert(type(raw.version) == "string" and raw.version ~= "", "manifest version is required")
   assert(type(raw.entry) == "string" and raw.entry ~= "", "manifest entry is required")
