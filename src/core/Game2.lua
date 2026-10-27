@@ -2229,23 +2229,27 @@ function Game2:hotkey(key)
   local hk = Input.hotkeyKey(key)
   if key == "f1" then
     if not self:quickSaveAllowed() then return true end
-    self:writeSave()
+    local wrote = self:writeSave()
+    require("src.ui.HostToast").say(wrote and "SAVED" or "COULD NOT SAVE")
     return true
   elseif key == "f2" then
     if not self:quickLoadAllowed() then return true end
     local loaded = Save.load()
     if loaded then self:continueGame(loaded) end
+    require("src.ui.HostToast").say(loaded and "LOADED" or "NO SAVE TO LOAD")
     return true
   elseif hk == "1" then
     if self:speedLocked() then return true end
     local GameSpeed = require("src.core.GameSpeed")
     options.speed = GameSpeed.cycle(options.speed, 1)
+    require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(options.speed))
     persist()
     return true
   elseif hk == "0" then
     if self:speedLocked() then return true end
     local GameSpeed = require("src.core.GameSpeed")
     options.speed = GameSpeed.cycle(options.speed, -1)
+    require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(options.speed))
     persist()
     return true
   elseif hk == "2" then
@@ -2281,7 +2285,9 @@ end
 function Game2:storeZoom()
   local options = self.options or {}
   self.options = options
-  options.zoom = require("src.render.Zoom").offset
+  local Zoom = require("src.render.Zoom")
+  options.zoom = Zoom.offset
+  require("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(Zoom.offset))
   if self.save then self.save.options = options end
   require("src.core.DeferredWrite").schedule("options", function() self:persistOptions() end)
 end
@@ -2592,6 +2598,7 @@ function Game2:_cycleSpeed(dir)
   if self:speedLocked() then return end
   local GameSpeed = require("src.core.GameSpeed")
   self.options.speed = GameSpeed.cycle(self.options.speed, dir)
+  require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(self.options.speed))
   if self.save then self.save.options = self.options end
   self:persistOptions()
 end

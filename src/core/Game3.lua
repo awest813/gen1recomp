@@ -722,6 +722,7 @@ function Game3:_cycleSpeed(dir)
   for _, c in ipairs(GameSpeed.CATEGORIES) do
     self.options[GameSpeed.optionKey(c)] = nextSpeed
   end
+  lazyReq("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(nextSpeed))
   self:writeOptions()
 end
 
@@ -741,6 +742,7 @@ function Game3:zoomStep(delta)
   local Zoom = lazyReq("src.render.Zoom")
   local Renderer = lazyReq("src.render.Renderer")
   local offset = Zoom.step(delta, Renderer:fitScale())
+  lazyReq("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(offset))
   if type(self.options) == "table" then
     self.options.zoom = offset
     lazyReq("src.core.DeferredWrite").schedule("options", function() self:writeOptions() end)
@@ -877,7 +879,9 @@ end
 function Game3:_hotkey(key)
   local hk = Input.hotkeyKey(key)
   if key == "f1" then
-    if self:quickSaveAllowed() then self:saveGame() end
+    if self:quickSaveAllowed() then
+      lazyReq("src.ui.HostToast").say(self:saveGame() and "SAVED" or "COULD NOT SAVE")
+    end
     return true
   elseif key == "f2" then
     local okLoad, saved = pcall(SaveData.load)
@@ -889,6 +893,7 @@ function Game3:_hotkey(key)
       end)
       pcall(function() lazyReq("src.core.game3.ghosts").clear() end)
       self:_handleBootAction({ action = "continue" })
+      lazyReq("src.ui.HostToast").say("LOADED")
     end
     return true
   elseif hk == "1" then
@@ -912,6 +917,7 @@ function Game3:_hotkey(key)
       local Zoom = lazyReq("src.render.Zoom")
       local Renderer = lazyReq("src.render.Renderer")
       local offset = Zoom.cycle(Renderer:fitScale())
+      lazyReq("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(offset))
       if type(self.options) == "table" then
         self.options.zoom = offset
         self:writeOptions()

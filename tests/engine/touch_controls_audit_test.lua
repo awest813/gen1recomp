@@ -83,4 +83,29 @@ do
   check(labels.COLOR, "Red keeps COLOR")
 end
 
+-- ---- Arrange will not drop one button on top of another
+do
+  local Editor = require("src.ui.TouchControlsEditor")
+  love.mouse = love.mouse or {}
+  love.mouse.isDown = love.mouse.isDown or function() return true end
+  Editor.load({ version = "gold" })
+  local L = TC:layout()
+  local sx, sy = L.start.cx, L.start.cy
+  local ax, ay = L.a.cx, L.a.cy
+  Editor.mousepressed(sx, sy, 1)
+  Editor.mousemoved(ax, ay)
+  Editor.mousereleased(ax, ay, 1)
+  L = TC:layout()
+  check(math.abs(L.start.cx - sx) < 1 and math.abs(L.start.cy - sy) < 1, "START dropped on A goes back")
+  check(Editor.exportMsg and Editor.exportMsg:find("cover another button", 1, true), "and the editor says why")
+  -- a clear spot is fine
+  local W, H = love.graphics.getDimensions()
+  Editor.mousepressed(L.start.cx, L.start.cy, 1)
+  Editor.mousemoved(W * 0.5, H * 0.55)
+  Editor.mousereleased(W * 0.5, H * 0.55, 1)
+  L = TC:layout()
+  check(math.abs(L.start.cx - W * 0.5) < 2, "a drop in open space stays")
+  Editor.keypressed("escape")
+end
+
 T.finish("touch controls audit")

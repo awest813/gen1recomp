@@ -1152,6 +1152,8 @@ function love.draw()
 
   HostDisplay.beginFrame("game", Game)
   Game:draw()
+  -- the host's own keys (quick save, speed, zoom) say what they did
+  require("src.ui.HostToast").draw()
   -- frame capture requested by a driver
   if Game.capturePath then
     local path = Game.capturePath

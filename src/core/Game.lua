@@ -786,6 +786,7 @@ function Game:zoomStep(delta)
   local Zoom = require("src.render.Zoom")
   if not Zoom.gateOK(self.stack:top(), self.overworld) then return end
   local offset = Zoom.step(delta, Renderer:fitScale())
+  require("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(offset))
   if self.save and self.save.options then
     self.save.options.zoom = offset
     DeferredWrite.schedule("options", function() self:writeOptions() end)
@@ -827,6 +828,7 @@ function Game:_cycleSpeed(dir)
   for _, c in ipairs(GameSpeed.CATEGORIES) do
     self.save.options[GameSpeed.optionKey(c)] = nextSpeed
   end
+  require("src.ui.HostToast").say("SPEED " .. GameSpeed.levelLabel(nextSpeed))
   self:writeOptions()
 end
 
@@ -877,7 +879,8 @@ function Game:keypressed(key)
     local hk = Input.hotkeyKey(key)
     if key == "f1" then
       if not self:quickSaveAllowed() then return end
-      self:writeSave()
+      local wrote = self:writeSave()
+      require("src.ui.HostToast").say(wrote and "SAVED" or "COULD NOT SAVE")
       return
     elseif key == "f2" then
       if not self:quickLoadAllowed() then return end
@@ -887,6 +890,9 @@ function Game:keypressed(key)
         -- walking transition -- a hard state teleport like Continue, not a
         -- smooth warp -- whether pressed at the title screen or mid-session.
         self:restoreSave(loaded, recovered, { freshBoot = true })
+        require("src.ui.HostToast").say("LOADED")
+      else
+        require("src.ui.HostToast").say("NO SAVE TO LOAD")
       end
       return
     elseif key == "-" then
@@ -934,6 +940,7 @@ function Game:keypressed(key)
       local Zoom = require("src.render.Zoom")
       if Zoom.gateOK(self.stack:top(), self.overworld) then
         self.save.options.zoom = Zoom.cycle(Renderer:fitScale())
+        require("src.ui.HostToast").say("ZOOM " .. Zoom.offsetLabel(self.save.options.zoom))
         self:writeOptions()
       end
       return

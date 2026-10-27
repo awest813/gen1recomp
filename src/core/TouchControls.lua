@@ -266,6 +266,13 @@ function TouchControls.defaultLayout(ww, wh, ox, oy, scale, shoulders)
       y = math.min(y, out.a.cy - abW * 0.5 - ssW * 0.95)
       out.select = { cx = out.dpad.cx, cy = y, w = ssW }
       out.start = { cx = ox + ww - margin - abW * 1.1, cy = y, w = ssW }
+    elseif side >= ssW * 1.3 then
+      -- a wider picture (FireRed's 3:2) leaves strips too narrow for the
+      -- d-pad but not for SELECT and START: up there, above the shoulders,
+      -- clear of the text box at the picture's foot
+      local y = shoulderY - lrH * 0.5 - ssW * 1.4
+      out.select = { cx = ox + side / 2, cy = y, w = ssW }
+      out.start = { cx = ox + ww - side / 2, cy = y, w = ssW }
     end
   else
     -- Portrait: Place L and R in the control deck above D-pad and A/B clusters with ample clearance (+ 9% height clearance)

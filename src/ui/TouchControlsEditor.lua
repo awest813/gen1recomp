@@ -238,6 +238,15 @@ function Editor.update(dt)
   end
 end
 
+-- ": Gold" for the game the layout is for (each generation keeps its own)
+local function gameSuffix()
+  local GameVersion = require("src.core.GameVersion")
+  local info = GameVersion.VERSIONS[Editor.version] and GameVersion.info and GameVersion.info(Editor.version)
+  local name = info and info.displayName
+  if not name then return "" end
+  return ": " .. tostring(name):gsub("^Pok[eé]mon ", "")
+end
+
 function Editor.draw()
   local SafeArea = require("src.core.SafeArea")
   local fullW, fullH = love.graphics.getDimensions()
@@ -252,6 +261,26 @@ function Editor.draw()
   love.graphics.rectangle("fill", 0, 0, fullW, fullH)
   col(PAL.bgTop, 0.85)
   love.graphics.circle("fill", ox + ww * 0.5, oy + wh * 0.15, math.max(ww, wh) * 0.55)
+
+  -- where the game picture sits (fit to its aspect, centred, as the game
+  -- draws it), so a button is not parked over the text box without knowing
+  do
+    local GameVersion = require("src.core.GameVersion")
+    local gen = GameVersion.VERSIONS[Editor.version] and GameVersion.generation(Editor.version) or 1
+    local aspect = gen == 3 and 1.5 or 10 / 9
+    local pw = math.min(ww, wh * aspect)
+    local ph = pw / aspect
+    local px, py = ox + (ww - pw) / 2, oy + (wh - ph) / 2
+    col(PAL.white, 0.05)
+    love.graphics.rectangle("fill", px, py, pw, ph)
+    col(PAL.white, 0.25)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", px + 0.5, py + 0.5, pw - 1, ph - 1)
+    love.graphics.setFont(Editor.fonts.body)
+    col(PAL.white, 0.35)
+    local label = "Game picture"
+    love.graphics.print(label, px + (pw - Editor.fonts.body:getWidth(label)) / 2, py + ph - Editor.fonts.body:getHeight() - 6 * s)
+  end
 
   local pad = 18 * s
   local barH = 56 * s
@@ -275,7 +304,7 @@ function Editor.draw()
   love.graphics.setFont(Editor.fonts.title)
   col(PAL.white)
   love.graphics.print(
-    fitText(Editor.fonts.title, "Touch Controls", reset.x - 10 * s - (ox + pad)),
+    fitText(Editor.fonts.title, "Touch Controls" .. gameSuffix(), reset.x - 10 * s - (ox + pad)),
     ox + pad, oy + pad + 4 * s)
 
   local function chromeBtn(r, label, fill)
@@ -453,12 +482,35 @@ local function beginDrag(id, x, y)
   local name = TouchControls:hitTest(x, y)
   if not name then return end
   local zone = TouchControls:layout()[name]
+  Editor.exportMsg = nil
   Editor.drag = {
     name = name,
     touchId = id,
     offX = x - zone.cx,
     offY = y - zone.cy,
+    fromX = zone.cx,
+    fromY = zone.cy,
   }
+end
+
+-- True when the dropped control sits on another one: a button covering
+-- another hides it from every tap (only the top one ever fires).
+local function overlapsAnother(name)
+  local L = TouchControls:layout()
+  local z = L[name]
+  if not z then return false end
+  local hw, hh = z.w * 0.5, (z.h or z.w) * 0.5
+  for _, other in ipairs(TouchControls:controls()) do
+    local o = other ~= name and L[other]
+    if o then
+      local ow, oh = o.w * 0.5, (o.h or o.w) * 0.5
+      -- a little give: edges may touch, bodies may not overlap
+      if math.abs(z.cx - o.cx) < (hw + ow) * 0.8 and math.abs(z.cy - o.cy) < (hh + oh) * 0.8 then
+        return true
+      end
+    end
+  end
+  return false
 end
 
 local function moveDrag(id, x, y)
@@ -473,6 +525,10 @@ local function endDrag(id)
   if not d then return end
   if d.touchId ~= nil and id ~= nil and d.touchId ~= id then return end
   Editor.drag = nil
+  if d.fromX and overlapsAnother(d.name) then
+    TouchControls:setControlCenter(d.name, d.fromX, d.fromY)
+    Editor.exportMsg = "That would cover another button, so it went back. Drop it somewhere clear."
+  end
 end
 
 function Editor.pollHostPointers()
