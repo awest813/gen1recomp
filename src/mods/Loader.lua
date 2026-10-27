@@ -2026,9 +2026,13 @@ function Loader:load(data, opts)
   if not self.arenaMode then
     local options = SaveData.loadOptions(self.fs)
     local scope = self:_enableScope()
+    -- Read after the migration above: on a first boot it has just written
+    -- each experimental mod's "off" into the per-game buckets, so the answer
+    -- is false rather than nil and _loadState (which ran before) missed it.
     for id, mod in pairs(self.mods) do
-      if not self.disabled[id] and SaveData.modEnabled(options, id, scope) == nil
-          and mod.manifest.experimental then
+      local enabled = SaveData.modEnabled(options, id, scope)
+      if not self.disabled[id] and (enabled == false
+          or (enabled == nil and mod.manifest.experimental)) then
         self.disabled[id] = true
       end
     end

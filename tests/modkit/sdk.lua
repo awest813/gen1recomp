@@ -139,6 +139,11 @@ function Sdk.loadMods(paths, opts)
     local alias = {}
     for _, path in ipairs(paths) do alias[basename(path)] = path end
     fs = aliasFs(FsIo.new(opts.root or "."), alias)
+    -- the mods a case names are the ones it means to run, experimental ones
+    -- included (those start off for a player); ids are their folder names
+    local on = {}
+    for name in pairs(alias) do on[#on + 1] = ("[%q] = true"):format(name) end
+    fs.write("options.lua", "return { mods = { " .. table.concat(on, ", ") .. " } }")
   end
 
   Sdk.captureRuntime()
