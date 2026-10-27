@@ -54,7 +54,11 @@ function PresentSync.hardwarePacesCap(cap)
   cap = tonumber(cap)
   if not cap or cap <= 0 then return false end
   if not PresentSync.displaySyncConfirmed() then return false end
-  local hz = require("src.core.RefreshRate").hz()
+  -- only vsync paces presents, and only at a rate the display reports: with
+  -- no reported rate the measured one is the cap itself (Xvfb, VMs, remote
+  -- desktops), and skipping the cap there ran the launcher at 130 fps
+  if not require("src.core.VSync").isOn() then return false end
+  local hz = require("src.core.RefreshRate").reportedHz()
   if not hz or hz <= 0 then return false end
   return cap >= hz
 end

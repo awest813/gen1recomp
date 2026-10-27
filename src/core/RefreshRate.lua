@@ -95,6 +95,20 @@ function RefreshRate.hz()
   return hz
 end
 
+-- The rate SDL reports for the display, never the measured fallback: a
+-- loop's own measured rate is whatever cap is already pacing it, so it
+-- cannot answer whether the display paces that cap.
+function RefreshRate.reportedHz()
+  local time = now()
+  if queried == nil or not time or not queriedAt or time - queriedAt > 1 then
+    queried = sdlHz() or false
+    queriedAt = time or 0
+  end
+  local hz = queried and quantize(queried) or nil
+  if not hz or hz <= 20 or hz >= 1000 then return nil end
+  return hz
+end
+
 function RefreshRate.period()
   local hz = RefreshRate.hz()
   return hz and 1 / hz or nil

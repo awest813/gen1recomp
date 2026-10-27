@@ -1844,8 +1844,18 @@ function love.run()
     local cap = FrameCap.current
     if not visible then
       cap = 10
-    elseif Importer and (not focused or idleFor > 30) then
-      cap = 15
+    elseif Importer then
+      -- the launcher steps down while nothing moves on it: 15fps after 5s
+      -- untouched, 6fps after 30s; anything animating (an import, a toast, a
+      -- slide, online play, a text cursor) keeps the normal rate
+      local busy = Importer.isAnimating and Importer:isAnimating()
+      if not focused then
+        cap = 15
+      elseif not busy and idleFor > 30 then
+        cap = 6
+      elseif not busy and idleFor > 5 then
+        cap = 15
+      end
     else
       local idleCap = idlePresentationCap(idleFor)
       if idleCap then cap = idleCap end

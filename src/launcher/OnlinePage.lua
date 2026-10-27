@@ -997,6 +997,13 @@ function OnlinePage:finished(pending)
   self:say(pending.error, "error")
 end
 
+-- Signed in or signing in: rooms, players and timers change on their own,
+-- so the launcher keeps its normal frame rate (Launcher:isAnimating).
+function OnlinePage:isActive()
+  local ok, state = pcall(function() return Connect().state() end)
+  return ok and state ~= nil and state ~= "offline" and state ~= "error" and state ~= "idle"
+end
+
 function OnlinePage:update(dt)
   pcall(function() require("src.online.Trade").pumpPending(dt) end)
   self:watchConnection()

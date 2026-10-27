@@ -960,6 +960,21 @@ function Launcher:setOption(key, value)
   end
 end
 
+-- Whether anything on screen is moving, so the host keeps full frame rate
+-- (main.lua's idle governor drops a still launcher to a few frames a second).
+function Launcher:isAnimating()
+  if self.job or self.assetJob or self.pendingPick or self.pendingExport then return true end
+  if self.message or (self.pageAt and (self.pageFrames or 0) < 10) then return true end
+  if Kit.focus or Kit.FileBrowser.active then return true end
+  if self.online and self.online.isActive and self.online:isActive() then return true end
+  local SyncEngine = package.loaded["src.sync.SyncEngine"]
+  local eng = SyncEngine and SyncEngine._shared
+  if type(eng) == "table" and eng.busy and eng:busy() then return true end
+  local ok, mods = pcall(self.modsUi, self)
+  if ok and mods and mods.busy and mods:busy() then return true end
+  return false
+end
+
 -- Reduce motion: no page slide here, no screen transitions in the kit.
 function Launcher:applyMotion(reduce)
   self.reduceMotion = reduce == true
@@ -2640,7 +2655,6 @@ function Launcher:draw()
     if self.lastPageKey ~= nil and not self.reduceMotion then self.pageAt, self.pageFrames = now(), 0 end
     self.lastPageKey = pageKey
   end
-  local slide = 0
   local t = 1
   if self.pageAt then
     -- by time, or by frames when the clock stalls (a hitch, a headless run)
@@ -2652,7 +2666,7 @@ function Launcher:draw()
   -- LOVE's transform stack overflowed (~128 changes)
   local pushed = false
   if t < 1 then
-    slide = math.floor((1 - t) * (1 - t) * Theme.space("xl", s))
+    local slide = math.floor((1 - t) * (1 - t) * Theme.space("xl", s))
     pushed = true
     love.graphics.push()
     love.graphics.translate(slide, 0)

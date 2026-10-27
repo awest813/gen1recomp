@@ -56,11 +56,21 @@ measure(60)
 FrameCap.apply(60)
 PresentProbe._testSetState({ osLinux = true, ready = true, gated = true,
   needsSoftwareCap = false, nest = "kmsdrm" })
+-- the display reports 60Hz (SDL_GetCurrentDisplayMode)
+local realReported = RefreshRate.reportedHz
+RefreshRate.reportedHz = function() return 60 end
 T.check(PresentSync.hardwarePacesCap(60),
   "60 on 60Hz with working vsync skips the software pacer")
 FrameCap.apply(30)
 T.check(not PresentSync.hardwarePacesCap(30),
   "30 on 60Hz still needs software pacing")
+-- no reported rate (Xvfb, a VM, a remote desktop): the measured 60 is only
+-- the cap pacing itself, so it never stands in for the panel
+RefreshRate.reportedHz = function() return nil end
+FrameCap.apply(60)
+T.check(not PresentSync.hardwarePacesCap(60),
+  "a measured rate alone never skips the software pacer")
+RefreshRate.reportedHz = realReported
 
 -- Warmup must not skip FrameCap on a guessed panel rate.
 PresentProbe._testSetState({ osLinux = false, ready = true, clearGated = true,
