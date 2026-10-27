@@ -128,12 +128,68 @@ function FilePicker.open(prompt, kind)
   return nil
 end
 
-function FilePicker.read(path)
-  local file, openError = io.open(path, "rb")
-  if not file then return nil, openError end
-  local data = file:read("*a")
+-- Larger than anything PK:GB opens (the biggest is a 256 MiB NDS dump for an
+-- asset importer); reading a multi-gigabyte file picked by mistake into one
+-- Lua string would take the whole app down.
+FilePicker.MAX_READ_BYTES = 512 * 1024 * 1024
+
+local function openFile(path)
+  -- SaveData's opener takes non-ASCII paths on Windows, where io.open needs
+  -- the ANSI codepage and fails on "Pokémon Gold.gbc"
+  local okS, SaveData = pcall(require, "src.core.SaveData")
+  if okS and type(SaveData) == "table" and SaveData.openNative then
+    local okO, file, err = pcall(SaveData.openNative, path, "rb")
+    if okO then return file, err end
+  end
+  return io.open(path, "rb")
+end
+
+-- The whole file, or nil plus a sentence a player can act on.
+function FilePicker.read(path, maxBytes)
+  if type(path) ~= "string" or path == "" then
+    return nil, "No file was chosen."
+  end
+  local name = FilePicker.basename(path)
+  local file, openError = openFile(path)
+  if not file then
+    local why = tostring(openError or ""):lower()
+    if why:find("permission", 1, true) or why:find("denied", 1, true) then
+      return nil, ("PK:GB is not allowed to open %s. Move it somewhere you "
+        .. "own, such as your Documents folder, and choose it again."):format(name)
+    end
+    return nil, ("%s could not be opened; it may have been moved or deleted. "
+      .. "Choose the file again."):format(name)
+  end
+  -- a folder opens fine on Linux and macOS, then fails every read (and
+  -- seeks to a nonsense size), so ask it for zero bytes first
+  if io.type(file) == "file" then
+    local _, probeError = file:read(0)
+    if tostring(probeError or ""):lower():find("directory", 1, true) then
+      file:close()
+      return nil, ("%s is a folder. Open it and choose the file inside."):format(name)
+    end
+  end
+  local limit = maxBytes or FilePicker.MAX_READ_BYTES
+  local size = file.seek and file:seek("end")
+  if size and size > limit then
+    file:close()
+    return nil, ("%s is %.1f GiB, far larger than any file PK:GB opens. "
+      .. "Choose the right file."):format(name, size / 1073741824)
+  end
+  if size then file:seek("set", 0) end
+  local data, readError = file:read("*a")
   file:close()
-  if not data or data == "" then return nil, "empty file" end
+  if data == nil then
+    if tostring(readError or ""):lower():find("directory", 1, true) then
+      return nil, ("%s is a folder. Open it and choose the file inside."):format(name)
+    end
+    return nil, ("%s could not be read. Choose it again, or copy it to "
+      .. "another folder first."):format(name)
+  end
+  if data == "" then
+    return nil, ("%s is empty (0 bytes); the download or copy did not "
+      .. "finish. Choose a complete copy of the file."):format(name)
+  end
   return data
 end
 
