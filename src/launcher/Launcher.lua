@@ -170,6 +170,10 @@ function Launcher:refresh(recheck)
   self.stale = self.stale or {}
   for _, v in ipairs(self.games) do
     if recheck or self.ready[v] == nil then
+      -- an import cut off after moving the old copy aside puts it back
+      if self.ready[v] == nil and not (self.job and self.job.version == v) then
+        pcall(ImportJob.recover, v)
+      end
       self.ready[v] = cacheReady(v)
       self.stale[v] = not self.ready[v] and cacheStale(v)
       -- an import that quit part way reads like one an update left behind
@@ -1182,7 +1186,14 @@ function Launcher:update(dt)
       if self.opts.onImported then return self.opts.onImported(version) end
     elseif state == "error" then
       self.inboxRom = nil -- left in the imports folder, not retried this session
-      self:say("Import failed: " .. tostring(self.job.error), "error")
+      local kept = self.job.restored
+        and (" Your previous copy of " .. GameVersion.info(self.job.version).displayName
+          .. " is still there, ready to play.") or ""
+      if self.job.detail == ImportJob.CANCELLED then
+        self:say("Import cancelled." .. kept, "info")
+      else
+        self:say("Import failed: " .. tostring(self.job.error) .. kept, "error")
+      end
       -- a headless import (POKEPORT_IMPORT_ONLY) has no one to read that
       if os.getenv("POKEPORT_IMPORT_ONLY") == "1" then
         print("import failed: " .. tostring(self.job.error) .. " (" .. tostring(self.job.detail) .. ")")
@@ -2433,7 +2444,11 @@ function Launcher:drawGame(x, y, w, h, s)
   local modsOn, conversion = 0, nil
   if ready and not importing then
     for _, row in ipairs(self:modsFor(v) or {}) do
-      if row.enabled and row.supported and not row.broken then
+      -- only mods that will run: a bundled example waiting on an asset
+      -- pack is on but does nothing, and "Mods (2)" on a new install read
+      -- as something added behind the player's back
+      local need = row.enabled and row.supported and not row.broken and self:modNeeds(row)
+      if row.enabled and row.supported and not row.broken and not need then
         modsOn = modsOn + 1
         local m = row.manifest or {}
         if m.profile == "total_conversion" or m.category == "TOTAL_CONVERSION" then
@@ -2510,12 +2525,32 @@ function Launcher:drawGame(x, y, w, h, s)
   local btnH = math.max(Kit.tapMin(), math.floor(44 * s))
 
   if importing then
-    Kit.text("small", self.job.stage or "Importing", cx, cy, PAL.text)
-    local pct = math.floor((self.job.progress or 0) * 100) .. "%"
+    local job = self.job
+    local pct = math.floor((job.progress or 0) * 100) .. "%"
+    Kit.text("small", "Importing " .. info.displayName, cx, cy, PAL.text)
     Kit.text("small", pct, cx + cw - Kit.textWidth("small", pct), cy, PAL.muted)
     cy = cy + Kit.textHeight("small") + Theme.space("s", s)
-    Theme.meter(cx, cy, cw, math.floor(10 * s), self.job.progress or 0, color)
-    return cy + math.floor(10 * s) + pad - y
+    -- the meter takes 0-100; the job's progress is a fraction (the bar sat
+    -- at a sliver for the whole import)
+    Theme.meter(cx, cy, cw, math.floor(10 * s), 100 * (job.progress or 0), color)
+    cy = cy + math.floor(10 * s) + Theme.space("xs", s)
+    -- the extractor's step names (Teachy TV, Battle Transitions) are detail
+    if job.stage then
+      Kit.text("micro", Kit.ellipsize("micro", job.stage, cw), cx, cy, PAL.faint)
+      cy = cy + Kit.textHeight("micro")
+    end
+    cy = cy + Theme.space("m", s)
+    local note = job.backup
+      and "The copy you had stays playable until this one is ready."
+      or "This can take a minute. Your saves are not touched."
+    Kit.textWrapped("small", note, cx, cy, cw, PAL.muted)
+    cy = cy + Kit.wrapHeight("small", note, cw) + Theme.space("m", s)
+    local bw = math.floor(math.min(cw, 200 * s))
+    if job.cancel and Kit.button(cx, cy, bw, btnH, job.cancelRequested and "Stopping..." or "Cancel",
+        { id = "import-cancel", enabled = not job.cancelRequested }) then
+      self:queue(function() if self.job then self.job:cancel() end end)
+    end
+    return cy + btnH + pad - y
   end
 
   if not ready then

@@ -238,8 +238,8 @@ local function unwrapAt(data, displayName, opts, depth)
     sizes[#sizes + 1] = ("%s is %s"):format(cand.name, fmt(cand.size))
   end
   return nil, ("The ROM inside %s is not a complete cartridge dump (%s). A "
-    .. "Game Boy ROM is 1 MiB, a Game Boy Color ROM 2 MiB and a Game Boy "
-    .. "Advance ROM 16 MiB; dump your cartridge again.")
+    .. "Game Boy ROM is 1 MB, a Game Boy Color ROM 2 MB and a Game Boy "
+    .. "Advance ROM 16 MB; dump your cartridge again.")
     :format(label(displayName), table.concat(sizes, ", "))
 end
 

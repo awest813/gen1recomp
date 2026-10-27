@@ -562,6 +562,15 @@ local function maxWorkers(taskCount)
   return math.max(1, math.min(taskCount, cores - 1, 6))
 end
 
+-- Cancel (ImportJob:cancel) reaches this thread through the channel
+-- ExtractThread names; the workers are handed the same name.
+local function cancelRequested()
+  local name = rawget(_G, "POKEPORT_IMPORT_CANCEL")
+  local ch = name and love and love.thread and love.thread.getChannel and love.thread.getChannel(name)
+  return ch and ch:peek() and true or false
+end
+RomExtractorGen3.CANCELLED = "import cancelled"
+
 function RomExtractorGen3:runParallel(sha1)
   if os.getenv("POKEPORT_NO_THREAD") == "1" then
     return false, "POKEPORT_NO_THREAD set"
@@ -607,7 +616,8 @@ function RomExtractorGen3:runParallel(sha1)
       end
       local worker = { task = t, thread = th }
       owned[#owned + 1] = worker
-      local okStart, startResult = pcall(th.start, th, t, prefix, self.romData, sha1, ch_name)
+      local okStart, startResult = pcall(th.start, th, t, prefix, self.romData, sha1, ch_name,
+        rawget(_G, "POKEPORT_IMPORT_CANCEL"))
       if not okStart or startResult == false then
         return false, "failed to start thread for " .. t .. ": " .. tostring(startResult)
       end
@@ -663,6 +673,7 @@ function RomExtractorGen3:runParallel(sha1)
           if not okSpawn then return false, spawnErr end
         end
       else
+        if cancelRequested() then error(RomExtractorGen3.CANCELLED, 0) end
         for i = #running, 1, -1 do
           local err = running[i].thread:getError()
           if err then
@@ -794,6 +805,10 @@ function runBody(self, sha1)
   -- the same way, minutes later on a slow device.
   local parText = tostring(parErr or parRes)
   if okPar and parText:find("could not write", 1, true) then error(parText, 0) end
+  -- a cancel is not a thread failure: no sequential second run
+  if parText:find(RomExtractorGen3.CANCELLED, 1, true) or cancelRequested() then
+    error(RomExtractorGen3.CANCELLED, 0)
+  end
   print("[RomExtractorGen3] Parallel extraction fell back to sequential: " .. parText)
 
   local ok, detail, okPoke, okAux = true, nil, true, true

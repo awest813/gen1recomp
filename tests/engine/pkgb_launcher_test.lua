@@ -132,7 +132,7 @@ check(text:find("Continue", 1, true) == nil, "and no Continue")
 l = fresh()
 l:importData("not a rom", "notes.txt")
 check(l.message and l.message.kind == "error", "a wrong-size file is refused")
-check(l.message.text:find("MiB", 1, true) ~= nil, "with the size explained")
+check(l.message.text:find("MB", 1, true) ~= nil, "with the size explained")
 eq(l.job, nil, "and no import starts")
 local _, err = ImportJob.verify("", "empty.gb")
 check(err ~= nil, "an empty file is refused")
@@ -309,7 +309,7 @@ fh = io.open(rom, "wb") fh:write("not a rom") fh:close()
 l:pickRom()
 queued = rom
 l:update(0)
-check(l.message and l.message.text:find("MiB", 1, true) ~= nil,
+check(l.message and l.message.text:find("MB", 1, true) ~= nil,
   "a picked ROM goes through the same verification as a dropped one")
 eq(io.open(rom, "rb"), nil, "and its temporary copy is removed")
 for k, v in pairs(realSys) do love.system[k] = v end

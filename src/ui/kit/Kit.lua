@@ -756,6 +756,10 @@ function Kit.textinput(text)
   if VirtualKeyboard.active then
     return VirtualKeyboard.textinput(text)
   end
+  -- the file browser: a letter jumps to the first entry it starts
+  if FileBrowser.active and Kit.focus ~= "fb-path" then
+    return FileBrowser.textinput(text)
+  end
   if not Kit.focus then return false end
   edits[#edits + 1] = text
   return true
@@ -767,13 +771,22 @@ function Kit.keypressed(key)
   if VirtualKeyboard.active then
     return VirtualKeyboard.keypressed(key)
   end
-  if FileBrowser.active then
+  -- (its path field, while typed in, takes the keys as any field does)
+  if FileBrowser.active and Kit.focus ~= "fb-path" then
     return FileBrowser.keypressed(key)
   end
   if Kit.focus then
     local isDown = love and love.keyboard and love.keyboard.isDown
     local ctrl = isDown and (isDown("lctrl") or isDown("rctrl") or isDown("lgui") or isDown("rgui"))
     if ctrl and key == "a" then edits[#edits + 1] = "\1" return true end
+    -- paste: a path copied from a file manager, an address
+    if ctrl and key == "v" and love.system and love.system.getClipboardText then
+      local okC, clip = pcall(love.system.getClipboardText)
+      if okC and type(clip) == "string" and clip ~= "" then
+        edits[#edits + 1] = (clip:gsub("[\r\n]", ""))
+      end
+      return true
+    end
     if key == "backspace" then edits[#edits + 1] = "\b" return true
     elseif key == "return" or key == "kpenter" then
       edits[#edits + 1] = "\r" return true

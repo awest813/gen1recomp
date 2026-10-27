@@ -241,6 +241,95 @@ local function clearCache(prefix)
   end)
 end
 
+-- ------------------------------------------------- the previous copy
+--
+-- Importing a game again used to start by deleting the copy that worked, so
+-- a failed or cancelled import (a full disk, the wrong file, a change of
+-- mind) left the game unplayable.  Now the old tree is renamed aside first
+-- (data/generated -> data/generated.previous, the marker likewise), put
+-- back when the import does not finish, and deleted once the new one is
+-- published.  A host where the rename does not work (no real path, a
+-- console's save store) keeps the old behaviour: clear, then rebuild.
+ImportJob.BACKUP_SUFFIX = ".previous"
+local TREES = { "data/generated", "assets/generated" }
+
+local function realBase()
+  local CacheFs = require("src.import.CacheFs")
+  local okR, root = pcall(CacheFs.root)
+  if okR and type(root) == "string" and root ~= "" then return root end
+  local lfs = love and love.filesystem
+  local dir = lfs and lfs.getSaveDirectory and lfs.getSaveDirectory()
+  if type(dir) == "string" and dir ~= "" then return dir end
+end
+
+local function present(rel)
+  local lfs = love and love.filesystem
+  return lfs and lfs.getInfo and lfs.getInfo(rel) ~= nil
+end
+
+-- Rename `prefix`'s marker, then its trees, aside.  Returns the record
+-- restoreBackup needs, or nil when there was nothing ready to keep or the
+-- host cannot rename (then nothing was moved).
+function ImportJob._backupCache(prefix)
+  local base = realBase()
+  if not base or not present(prefix .. CacheContract.MARKER_PATH) then return nil end
+  local SUF = ImportJob.BACKUP_SUFFIX
+  -- a backup a crash left behind is older than the copy now in place
+  withPrefix(prefix, function(CacheFs)
+    local clear = CacheFs.clearTree or CacheFs.removeTree
+    for _, tree in ipairs(TREES) do clear(tree .. SUF) end
+  end)
+  os.remove(base .. "/" .. prefix .. CacheContract.MARKER_PATH .. SUF)
+  local moved = {}
+  local function undo()
+    for i = #moved, 1, -1 do os.rename(moved[i] .. SUF, moved[i]) end
+    return nil
+  end
+  -- the marker first: a crash halfway must not leave it over a gap
+  local marker = base .. "/" .. prefix .. CacheContract.MARKER_PATH
+  if not os.rename(marker, marker .. SUF) then return nil end
+  moved[1] = marker
+  local trees = {}
+  for _, tree in ipairs(TREES) do
+    if present(prefix .. tree) then
+      local path = base .. "/" .. prefix .. tree
+      if not os.rename(path, path .. SUF) then return undo() end
+      moved[#moved + 1] = path
+      trees[#trees + 1] = tree
+    end
+  end
+  return { base = base, trees = trees }
+end
+
+-- Put a backup back over whatever the failed import left; the marker last.
+function ImportJob._restoreBackup(prefix, backup)
+  if not backup then return false end
+  local SUF, base = ImportJob.BACKUP_SUFFIX, backup.base
+  local ok = true
+  for _, tree in ipairs(backup.trees) do
+    local path = base .. "/" .. prefix .. tree
+    -- the half-built tree (or its empty folders) moves out of the way
+    if present(prefix .. tree) then os.rename(path, path .. ".failed") end
+    if not os.rename(path .. SUF, path) then ok = false end
+  end
+  withPrefix(prefix, function(CacheFs)
+    local clear = CacheFs.clearTree or CacheFs.removeTree
+    for _, tree in ipairs(backup.trees) do clear(tree .. ".failed") end
+  end)
+  local marker = base .. "/" .. prefix .. CacheContract.MARKER_PATH
+  if ok then ok = os.rename(marker .. SUF, marker) and true or false end
+  return ok
+end
+
+function ImportJob._dropBackup(prefix, backup)
+  if not backup then return end
+  withPrefix(prefix, function(CacheFs)
+    local clear = CacheFs.clearTree or CacheFs.removeTree
+    for _, tree in ipairs(backup.trees) do clear(tree .. ImportJob.BACKUP_SUFFIX) end
+  end)
+  os.remove(backup.base .. "/" .. prefix .. CacheContract.MARKER_PATH .. ImportJob.BACKUP_SUFFIX)
+end
+
 -- Another process importing this game right now (two windows, or a second
 -- copy of the app), going by the lock it refreshes while it runs.
 -- This process's id and a liveness probe for another's, where the host has
@@ -323,6 +412,29 @@ function ImportJob.interrupted(version)
   return ok and type(lock) == "string" and marker == nil or false
 end
 
+-- An import cut off (the app quit or crashed) after it had moved the
+-- previous copy aside: put that copy back, so the game is playable again
+-- instead of "the last import did not finish".  True when it was restored.
+function ImportJob.recover(version)
+  local info = GameVersion.info(version)
+  if not (info and ImportJob.interrupted(version)) then return false end
+  local prefix = info.cachePrefix
+  local base = realBase()
+  if not base then return false end
+  local SUF = ImportJob.BACKUP_SUFFIX
+  local f = io.open(base .. "/" .. prefix .. CacheContract.MARKER_PATH .. SUF, "rb")
+  if not f then return false end
+  f:close()
+  local trees = {}
+  for _, tree in ipairs(TREES) do
+    if present(prefix .. tree .. SUF) then trees[#trees + 1] = tree end
+  end
+  pcall(clearCache, prefix)
+  local ok = ImportJob._restoreBackup(prefix, { base = base, trees = trees })
+  if ok then withPrefix(prefix, function(CacheFs) CacheFs.remove(ImportJob.LOCK_PATH) end) end
+  return ok
+end
+
 local function extractorFor(version)
   local gen = GameVersion.generation(version)
   if gen == 3 then return require("src.import.RomExtractorGen3") end
@@ -357,6 +469,8 @@ function ImportJob.start(rom)
   running[job.prefix] = job
   job:_lock()
   job:_mark("Clearing the old game data")
+  local okB, backup = pcall(ImportJob._backupCache, job.prefix)
+  job.backup = okB and backup or nil
   local ok, err = clearCache(job.prefix)
   -- from here on the tree is this job's to fill, and to empty if it fails
   job.ownsTree = true
@@ -382,12 +496,20 @@ function ImportJob:fail(err, detail)
   if self.ownsTree then
     self.ownsTree = nil
     pcall(clearCache, self.prefix)
+    if self.backup then
+      local okR, restored = pcall(ImportJob._restoreBackup, self.prefix, self.backup)
+      self.backup = nil
+      self.restored = okR and restored or false
+    end
   end
   if running[self.prefix] == self then running[self.prefix] = nil end
   self:_unlock()
   pcall(function()
-    require("src.core.Logger").error("import of %s failed: %s",
-      tostring(self.version), tostring(self.detail))
+    local Logger = require("src.core.Logger")
+    if self.detail == ImportJob.CANCELLED then
+      return (Logger.info or Logger.warn)("import of %s cancelled", tostring(self.version))
+    end
+    Logger.error("import of %s failed: %s", tostring(self.version), tostring(self.detail))
   end)
   if TIMING then self:_report() end
   return self
@@ -398,12 +520,15 @@ function ImportJob:_startThread(data)
   if not ok or not thread then return false end
   local tag = tostring(self):match("0x%x+") or tostring(os.time())
   local progressName, resultName = "import_progress_" .. tag, "import_result_" .. tag
+  local cancelName = "import_cancel_" .. tag
   self.progressChannel = love.thread.getChannel(progressName)
   self.resultChannel = love.thread.getChannel(resultName)
+  self.cancelChannel = love.thread.getChannel(cancelName)
   self.progressChannel:clear()
   self.resultChannel:clear()
+  self.cancelChannel:clear()
   local started, result = pcall(thread.start, thread, self.version, self.prefix,
-    data, progressName, resultName, self.sha1)
+    data, progressName, resultName, self.sha1, cancelName)
   if not started or result == false then return false end
   self.thread = thread
   return true
@@ -537,6 +662,10 @@ function ImportJob:_finish()
   CacheFs.prefix = saved
   if not okP then ok, err = false, ok end
   if not ok then return self:fail("could not finish the game data: " .. tostring(err)) end
+  if self.backup then
+    pcall(ImportJob._dropBackup, self.prefix, self.backup)
+    self.backup = nil
+  end
   local SaveConvert = package.loaded["src.save_convert.SaveConvert"]
   if GameVersion.generation(self.version) == 2 and SaveConvert
       and SaveConvert.invalidateGen2Data then
@@ -548,6 +677,21 @@ function ImportJob:_finish()
   self:_unlock()
   if TIMING then self:_report() end
   return self
+end
+
+-- Stop a running import: the extractor stops at its next progress report
+-- and the job fails as "cancelled", which puts a previous copy back.
+ImportJob.CANCELLED = "cancelled"
+function ImportJob:cancel()
+  if self.state ~= "working" then return false end
+  self.cancelRequested = true
+  if self.cancelChannel then self.cancelChannel:push(true) end
+  return true
+end
+
+function ImportJob:_cancelled()
+  return self:fail(("The import of %s was cancelled."):format(self.gameName or self.version),
+    ImportJob.CANCELLED)
 end
 
 -- Advance the job; `budget` seconds of extractor time for the coroutine path.
@@ -568,9 +712,11 @@ function ImportJob:step(budget)
       if threadError then self:fail(threadError) end
       return self.state
     end
+    if self.cancelRequested then return self:_cancelled().state end
     if not res.ok then return self:fail(res.error).state end
     return self:_finish().state
   end
+  if self.worker and self.cancelRequested then return self:_cancelled().state end
   if self.worker then
     local clock = love.timer and love.timer.getTime
     local deadline = clock and (clock() + (budget or 0.008))

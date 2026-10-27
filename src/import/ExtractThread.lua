@@ -27,10 +27,14 @@ table.insert(package.searchers or package.loaders, 1, function(modname)
   end
 end)
 
-local version, prefix, romData, progressName, resultName, romSha1 = ...
+local version, prefix, romData, progressName, resultName, romSha1, cancelName = ...
 
 local progressChannel = love.thread and love.thread.getChannel and love.thread.getChannel(progressName)
 local resultChannel = love.thread and love.thread.getChannel and love.thread.getChannel(resultName)
+local cancelChannel = cancelName and love.thread and love.thread.getChannel
+  and love.thread.getChannel(cancelName)
+-- FireRed's extractor hands this to its own worker threads, which stop too
+rawset(_G, "POKEPORT_IMPORT_CANCEL", cancelName)
 
 -- RomExtractor:tick fires per item, thousands of times per import; a channel
 -- push each would cost more than the work it reports.
@@ -56,6 +60,9 @@ local ok, err = pcall(function()
       -- Stage changes always go through, or the caption goes stale.
       if stage ~= lastStage or now - lastPush >= 1 / PROGRESS_HZ then
         lastPush, lastStage = now, stage
+        -- Cancel (ImportJob:cancel) is looked for as often as progress
+        -- is sent; the job then puts the previous copy back
+        if cancelChannel and cancelChannel:peek() then error("import cancelled", 0) end
         progressChannel:push({
           progress = progress, total = total, stage = stage,
           current = current, stageTotal = stageTotal,

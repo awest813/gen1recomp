@@ -66,8 +66,8 @@ end
 
 -- ------------------------------------------------------- RomIdentify
 
-eq(RomIdentify.formatBytes(1048576), "1 MiB", "whole MiB")
-eq(RomIdentify.formatBytes(524288), "512 KiB", "whole KiB")
+eq(RomIdentify.formatBytes(1048576), "1 MB", "whole MB")
+eq(RomIdentify.formatBytes(524288), "512 KB", "whole KB")
 eq(RomIdentify.formatBytes(1048575), "1,048,575 bytes", "odd sizes in bytes")
 
 local yellow = gbRom("POKEMON YELLOW", { cgb = 0x80 })
@@ -107,7 +107,7 @@ why = RomIdentify.explain(string.rep("x", 1048576), "x.gb")
 check(why:find("not a Game Boy", 1, true) ~= nil, "no logo, no ROM: " .. why)
 
 why = RomIdentify.explainSize(524288, yellow:sub(1, 524288), "y.gb")
-check(why:find("incomplete: it is 512 KiB, but the cartridge holds 1 MiB", 1, true) ~= nil,
+check(why:find("incomplete: it is 512 KB, but the cartridge holds 1 MB", 1, true) ~= nil,
   "a truncated dump is called incomplete with both sizes: " .. why)
 
 why = RomIdentify.explainSize(32768, string.rep("\0", 32768), "game.sav")
@@ -116,7 +116,7 @@ why = RomIdentify.explainSize(32768, string.rep("\255", 32768), "game.gb")
 check(why:find("save file", 1, true) ~= nil, "so is a 32 KiB SRAM image named .gb: " .. why)
 
 why = RomIdentify.explainSize(9, "not a rom", "notes.txt")
-check(why:find("MiB", 1, true) ~= nil and why:find("9 bytes", 1, true) ~= nil,
+check(why:find("MB", 1, true) ~= nil and why:find("9 bytes", 1, true) ~= nil,
   "a tiny file gets its size and the real sizes: " .. why)
 
 local fr = gbaRom("BPRE")
@@ -127,7 +127,7 @@ check(info.headerOk, "the complement check passes")
 why = RomIdentify.explain(gbaRom("BPRJ"), "f.gba")
 check(why:find("Japanese release of Pokémon FireRed", 1, true) ~= nil, "BPRJ is Japanese: " .. why)
 why = RomIdentify.explainSize(15 * 1048576, fr:sub(1, 15 * 1048576), "f.gba")
-check(why:find("incomplete: it is 15 MiB", 1, true) ~= nil, "a short GBA dump is incomplete: " .. why)
+check(why:find("incomplete: it is 15 MB", 1, true) ~= nil, "a short GBA dump is incomplete: " .. why)
 
 -- ------------------------------------------------------- ImportJob.verify
 
@@ -158,7 +158,7 @@ eq(rom and rom.version, "red", "so does a 4 MiB 0xFF-padded one")
 
 rom, why = ImportJob.verify(RED_IMAGE:sub(1, 1047552), "red.gb")
 eq(rom, nil, "1 KiB short is refused")
-check(why:find("incomplete", 1, true) ~= nil and why:find("1023 KiB", 1, true) ~= nil,
+check(why:find("incomplete", 1, true) ~= nil and why:find("1023 KB", 1, true) ~= nil,
   "as an incomplete Pokémon Red, not as '1.00 MiB is not 1 MiB': " .. why)
 playerSentence(why, "the short-dump message")
 

@@ -15,6 +15,7 @@ local function shQuote(path)
   return "'" .. tostring(path):gsub("'", "'\\''") .. "'"
 end
 local PAL = Theme.PAL
+local MODE_LABEL = { rom = "ROM", save = "Save", box = "Box save", mod = "Mod", cart = "Cart", all = "File" }
 local Kit = nil
 local function getKit()
   if not Kit then Kit = require("src.ui.kit.Kit") end
@@ -215,6 +216,10 @@ function FileBrowser.close(path)
   FileBrowser.active = false
   FileBrowser.onSelect = nil
   FileBrowser.onCancel = nil
+  FileBrowser.pathDraft, FileBrowser.pathError = nil, nil
+  -- a path field left focused would keep the launcher's keys after this
+  local K = getKit()
+  if K.focus == "fb-path" and K.blur then K.blur() end
   if path and onSelect then
     onSelect(path)
   elseif not path and onCancel then
@@ -228,6 +233,49 @@ function FileBrowser.setDirectory(dir)
   FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   FileBrowser.selectedIdx = 1
   FileBrowser.page = 1
+  FileBrowser.pathError = nil
+end
+
+-- A typed or pasted path: a folder opens, a file of the right kind is
+-- chosen, anything else says why.  "~" is the home folder.
+function FileBrowser.goTo(path)
+  path = tostring(path or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  path = path:gsub('^"(.*)"$', "%1"):gsub("^'(.*)'$", "%1")
+  local home = os.getenv("HOME") or os.getenv("USERPROFILE")
+  if home then path = path:gsub("^~", home) end
+  if path == "" then return end
+  FileBrowser.pathError = nil
+  local ok, h = pcall(io.popen, ("test -d %s && echo dir || (test -f %s && echo file)")
+    :format(shQuote(path), shQuote(path)))
+  local kind = ok and h and (h:read("*a") or ""):match("%a+")
+  if ok and h then h:close() end
+  if kind == "dir" then
+    FileBrowser.setDirectory(path)
+  elseif kind == "file" and isMatchingFilter(path:match("[^/]+$") or path, false, FileBrowser.mode) then
+    FileBrowser.close(normalizePath(path))
+  elseif kind == "file" then
+    FileBrowser.pathError = "That file is not one this can open. Choose a folder or a "
+      .. (MODE_LABEL[FileBrowser.mode] or "matching") .. " file."
+  else
+    FileBrowser.pathError = "There is no folder called " .. path .. "."
+  end
+end
+
+-- A letter typed over the list jumps to the next entry starting with it.
+function FileBrowser.textinput(text)
+  if not FileBrowser.active or type(text) ~= "string" or #text ~= 1 then return true end
+  local want = text:lower()
+  local n = #FileBrowser.entries
+  for step = 1, n do
+    local i = (FileBrowser.selectedIdx + step - 1) % n + 1
+    if FileBrowser.entries[i].name:sub(1, 1):lower() == want then
+      FileBrowser.selectedIdx = i
+      FileBrowser.page = math.floor((i - 1) / FileBrowser.perPage) + 1
+      FileBrowser.followSel = true
+      break
+    end
+  end
+  return true
 end
 
 -- X: the next quick jump that exists on this machine (the fixed list held
@@ -316,6 +364,9 @@ function FileBrowser.keypressed(key)
   elseif key == "return" then
     return FileBrowser.gamepadpressed("a")
   elseif key == "backspace" then
+    -- up a folder; in the folder it opened in, nothing (closing on a
+    -- Backspace surprised people; Esc closes)
+    if atHome() then return true end
     return FileBrowser.gamepadpressed("b")
   end
   return false
@@ -355,7 +406,6 @@ local function places()
 end
 FileBrowser._places = places
 
-local MODE_LABEL = { rom = "ROM", save = "Save", box = "Box save", mod = "Mod", cart = "Cart", all = "File" }
 
 function FileBrowser.draw(m)
   if not FileBrowser.active then return end
@@ -398,12 +448,20 @@ function FileBrowser.draw(m)
       enabled = FileBrowser.currentDir ~= "/" }) then
     FileBrowser.setDirectory(parentDir(FileBrowser.currentDir))
   end
+  -- the path is a field: click it, type or paste a folder, Enter goes there
+  -- (reaching a folder outside Home was a long walk down the tree)
   local barX, barW = cx + upW + gap, cw - upW - gap
-  Theme.fillRounded(barX, cy, barW, btn, PAL.bg, 1)
-  Theme.strokeRounded(barX, cy, barW, btn, PAL.line, Theme.A.hairline, 1)
-  Kit.text("small", Kit.ellipsizeLeft("small", FileBrowser.currentDir, barW - 2 * gap), barX + gap,
-    cy + (btn - Kit.textHeight("small")) / 2, PAL.text)
+  local typing = Kit.focus == "fb-path"
+  local value, ended = Kit.textfield("fb-path", barX, cy, barW, btn,
+    typing and (FileBrowser.pathDraft or FileBrowser.currentDir) or FileBrowser.currentDir,
+    "Type or paste a folder")
+  FileBrowser.pathDraft = Kit.focus == "fb-path" and value or nil
+  if ended == "submit" then FileBrowser.goTo(value) end
   cy = cy + btn + gap
+  if FileBrowser.pathError then
+    Kit.text("micro", Kit.ellipsize("micro", FileBrowser.pathError, cw), cx, cy, PAL.red)
+    cy = cy + Kit.textHeight("micro") + gap
+  end
 
   -- quick places, as chips on one line (as many as fit)
   local chipH = math.max(Kit.tapMin(), math.floor(28 * s))
@@ -425,8 +483,10 @@ function FileBrowser.draw(m)
   local rowH = math.max(Kit.tapMin(), math.floor(34 * s))
   local total = #FileBrowser.entries
   if total == 0 then
+    -- (other kinds of file are hidden: say so, or the folder looks empty)
     Kit.emptyBox(cx, cy, cw, math.min(listH, rowH * 3),
-      "No " .. (MODE_LABEL[FileBrowser.mode] or "matching") .. " files in this folder.")
+      "No " .. (MODE_LABEL[FileBrowser.mode] or "matching") .. " files in this folder."
+      .. (FileBrowser.mode == "rom" and " Only .gb, .gbc, .gba and .zip files are shown." or ""))
   else
     local contentH = total * rowH
     local maxAt = Kit.scrollExtent(contentH, listH)
@@ -469,7 +529,17 @@ function FileBrowser.draw(m)
     FileBrowser.close(nil)
     return
   end
-  local hint = atHome() and "A open   B close   X next place" or "A open   B up   X next place"
+  -- in the terms of the device in hand: pad names on a keyboard read as
+  -- nonsense ("B close" for Backspace)
+  local okI, Input = pcall(require, "src.core.Input")
+  local onPad = okI and Input.lastDevice == "pad"
+  local hint
+  if onPad then
+    hint = atHome() and "A open   B close   X next place" or "A open   B up   X next place"
+  else
+    hint = (atHome() and "Enter opens   Esc closes" or "Enter opens   Backspace goes up   Esc closes")
+      .. "   Type a letter to jump"
+  end
   if Kit.textWidth("micro", hint) < cw - cancelW - gap then
     Kit.text("micro", hint, cx, fy + (btn - Kit.textHeight("micro")) / 2, PAL.muted)
   end

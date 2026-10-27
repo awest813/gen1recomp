@@ -21,7 +21,7 @@ table.insert(package.searchers or package.loaders, 1, function(modname)
   end
 end)
 
-local task_name, prefix, romData, sha1, ch_name = ...
+local task_name, prefix, romData, sha1, ch_name, cancel_name = ...
 
 -- Phones and handhelds: collect sooner.  Each worker otherwise lets its heap
 -- grow to twice what is live before a cycle; on a desktop FireRed import a
@@ -42,6 +42,8 @@ do
 end
 
 local ch = love and love.thread and love.thread.getChannel and love.thread.getChannel(ch_name)
+-- the import's Cancel: this task stops at its next progress report
+local cancelCh = cancel_name and love.thread.getChannel(cancel_name)
 
 local ok, err = pcall(function()
   local GameVersion = require("src.core.GameVersion")
@@ -53,6 +55,7 @@ local ok, err = pcall(function()
 
   local RomExtractorGen3 = require("src.import.RomExtractorGen3")
   local ext = RomExtractorGen3.new(romData, nil, function(progress, total, stage, current, stageTotal)
+    if cancelCh and cancelCh:peek() then error("import cancelled", 0) end
     if ch then
       local frac = (progress or 0) / math.max(total or 1000, 1)
       ch:push({

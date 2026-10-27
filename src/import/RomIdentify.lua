@@ -49,9 +49,10 @@ end
 local SAVE_EXT = { sav = true, srm = true, sa1 = true, dsv = true, sgm = true,
   ss0 = true, ss1 = true, st0 = true, ["state"] = true }
 
+-- In the units a player knows (MB, KB): "MiB" read as jargon.
 function RomIdentify.formatBytes(n)
-  if n >= 1048576 and n % 1048576 == 0 then return ("%d MiB"):format(n / 1048576) end
-  if n >= 1024 and n % 1024 == 0 then return ("%d KiB"):format(n / 1024) end
+  if n >= 1048576 and n % 1048576 == 0 then return ("%d MB"):format(n / 1048576) end
+  if n >= 1024 and n % 1024 == 0 then return ("%d KB"):format(n / 1024) end
   local s = tostring(math.floor(n))
   local grouped = s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
   return grouped .. (n == 1 and " byte" or " bytes")
@@ -211,14 +212,14 @@ function RomIdentify.explainSize(size, data, name)
     end
     if not info.platform then
       return ("That file (%s) is not a Game Boy, Game Boy Color or Game Boy "
-        .. "Advance ROM; those are 1 MiB, 2 MiB and 16 MiB. Choose the .gb, "
+        .. "Advance ROM; those are 1 MB, 2 MB and 16 MB. Choose the .gb, "
         .. ".gbc or .gba file dumped from your cartridge.")
         :format(RomIdentify.formatBytes(size))
     end
   end
   return ("That file is %s, which is not the size of any Pokémon cartridge "
-    .. "(Game Boy ROMs are 1 MiB, Game Boy Color 2 MiB, Game Boy Advance "
-    .. "16 MiB). It may be incomplete or not a ROM; dump your cartridge "
+    .. "(Game Boy ROMs are 1 MB, Game Boy Color 2 MB, Game Boy Advance "
+    .. "16 MB). It may be incomplete or not a ROM; dump your cartridge "
     .. "again."):format(RomIdentify.formatBytes(size))
 end
 
