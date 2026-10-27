@@ -1209,7 +1209,9 @@ end
 function ModsPage:update()
   self:pumpChecks()
   self:pumpCatalog()
-  self:pumpInstalls()
+  -- a job that throws ends with the reason rather than repeating every frame
+  local ok, err = pcall(self.pumpInstalls, self)
+  if not ok and self.current then self:finishJob(self.current, false, err) end
   self:pumpBatch()
 end
 
