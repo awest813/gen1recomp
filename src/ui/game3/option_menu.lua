@@ -179,6 +179,20 @@ local function bob(k, freq)
   return v < 0 and math.ceil(v) or math.floor(v)
 end
 
+-- A value wider than its room loses trailing words (a mod row, a long
+-- translation) rather than printing over the arrow or the frame.
+local function fitValue(text, room)
+  local FrlgFont = require("src.ui.game3.frlg_font")
+  local okM, w = pcall(FrlgFont.measure, text)
+  while okM and type(w) == "number" and w > room do
+    local shorter = text:match("^(.*%S)%s+%S+$")
+    if not shorter then break end
+    text = shorter
+    okM, w = pcall(FrlgFont.measure, text)
+  end
+  return text
+end
+
 local function scrollArrow(dir, x, y)
   local ok, BagChrome = pcall(require, "src.ui.game3.bag_chrome")
   if ok and BagChrome and BagChrome.drawArrow then
@@ -233,7 +247,10 @@ function OptionMenu.draw()
         Window.printPx(row.label or "?", LABEL_X, y, { colors = FrlgFont.COLOR.NORMAL })
         if row.value then
           local ok, text = pcall(row.value, c)
-          Window.printPx(ok and tostring(text) or "----", VALUE_X, y, { colors = vcol })
+          -- the first and last rows share their right end with a scroll arrow
+          local arrowRow = total > VISIBLE and (slot == 1 or slot == VISIBLE)
+          text = fitValue(ok and tostring(text) or "----", (arrowRow and 208 or WIN_X + WIN_W - 4) - VALUE_X)
+          Window.printPx(text, VALUE_X, y, { colors = vcol })
         end
       end
     end

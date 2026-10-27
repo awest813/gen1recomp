@@ -455,7 +455,8 @@ function Rows.build(ctx, skip)
     id = "mods", label = Strings("MODS"),
     value = function(c)
       local status = (c.game and c.game.modStatus) or {}
-      return Strings("%d INSTALLED", #(status.available or {}))
+      -- "%d INSTALLED" runs under this window's scroll arrow
+      return Strings("%d MODS", #(status.available or {}))
     end,
     activate = function(c)
       local ModManager = require("src.ui.game3.mod_manager")

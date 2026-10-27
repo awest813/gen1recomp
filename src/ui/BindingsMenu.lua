@@ -26,8 +26,9 @@ local BUTTONS = {
   { id = "b", label = "B", key = "x", pad = "b" },
   { id = "start", label = "START", key = "escape", pad = "start" },
   { id = "select", label = "SELECT", key = "tab", pad = "back" },
-  { id = "speedDown", label = "SPEED -", key = "0", pad = "leftshoulder", action = true },
-  { id = "speedUp", label = "SPEED +", key = "1", pad = "rightshoulder", action = true },
+  -- the Game Boy charmap has no "+", so "SPEED +" would print as "SPEED"
+  { id = "speedDown", label = "SLOWER", key = "0", pad = "leftshoulder", action = true },
+  { id = "speedUp", label = "FASTER", key = "1", pad = "rightshoulder", action = true },
 }
 BindingsMenu.BUTTONS = BUTTONS
 
