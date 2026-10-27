@@ -21,6 +21,20 @@ local function u16le(n)
   return string.char(n % 256, math.floor(n / 256) % 256)
 end
 
+local unpack = unpack or table.unpack
+
+-- Bytes (0..255 numbers, 1-based) to a string, string.char'd in slices: one
+-- string.char per byte was most of encodeIdx (a 1000-mid atlas is 256 000
+-- of them, three layers per tileset pair).
+local SLICE = 4096
+local function bytesToString(bytes, n)
+  local parts = {}
+  for i = 1, n, SLICE do
+    parts[#parts + 1] = string.char(unpack(bytes, i, math.min(n, i + SLICE - 1)))
+  end
+  return table.concat(parts)
+end
+
 local function read_u16(s, i)
   return s:byte(i) + s:byte(i + 1) * 256
 end
@@ -98,9 +112,9 @@ function NativePack.encodeIdx(tbl)
   local n = (tbl.midCount or 0) * 256
   local chunk = {}
   for i = 1, n do
-    chunk[i] = u8(pix[i] or 0)
+    chunk[i] = (tonumber(pix[i]) or 0) % 256
   end
-  parts[#parts + 1] = table.concat(chunk)
+  parts[#parts + 1] = bytesToString(chunk, n)
   return table.concat(parts)
 end
 
@@ -275,12 +289,17 @@ function NativePack.encodeMidLayout(layout)
   end
   local cells = layout.cells or {}
   local n = (layout.width or 0) * (layout.height or 0)
+  local bytes, b = {}, 0
   for i = 1, n do
     local c = cells[i] or { mid = 0, coll = 0xff, elev = 0 }
-    parts[#parts + 1] = u16le(c.mid or 0)
-    parts[#parts + 1] = u8(c.coll or 0)
-    parts[#parts + 1] = u8(c.elev or 0)
+    local mid = (tonumber(c.mid or 0) or 0) % 65536
+    bytes[b + 1] = mid % 256
+    bytes[b + 2] = math.floor(mid / 256) % 256
+    bytes[b + 3] = (tonumber(c.coll or 0) or 0) % 256
+    bytes[b + 4] = (tonumber(c.elev or 0) or 0) % 256
+    b = b + 4
   end
+  parts[#parts + 1] = bytesToString(bytes, b)
   return table.concat(parts)
 end
 
