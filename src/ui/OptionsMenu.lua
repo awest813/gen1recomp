@@ -714,8 +714,11 @@ local function buildRows(game)
   do
     local env = os.getenv("POKEPORT_TOUCH")
     local osName = love.system and love.system.getOS and love.system.getOS()
+    -- a phone browser turns the pad on at the first touch (Web): offer the
+    -- rows to switch it off again
     local show = env == "1"
-      or (env ~= "0" and (osName == "Android" or osName == "iOS"))
+      or (env ~= "0" and (osName == "Android" or osName == "iOS"
+        or require("src.core.TouchControls").active == true))
     if not show then
       local filtered = {}
       for _, row in ipairs(rows) do

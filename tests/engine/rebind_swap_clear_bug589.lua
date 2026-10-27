@@ -164,7 +164,8 @@ press(box, "a")
 settleChoice(box)
 eq(game.stack:top(), bm, "answering pops the box")
 check(game.save.options.bindings ~= nil, "NO keeps the bindings (defaultNo)")
-eq(bm.items[ROW_A].right, "P/B", "and the rows keep showing them")
+-- (clearing the B half of (a)'s swap gave A its own pad button back)
+eq(bm.items[ROW_A].right, "P/A", "and the rows keep showing them")
 
 -- again, flip to YES: the overlay goes away and every row reads default
 press(bm, "start")

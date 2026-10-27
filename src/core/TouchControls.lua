@@ -67,7 +67,8 @@ local HOTBAR = {
   { spec = "key:f1", label = "SAVE" },
   { spec = "key:f2", label = "LOAD" },
   { spec = "key:1", label = "SPEED" },
-  { spec = "key:2", label = "COLOR" },
+  -- the Game Boy palette ladder; FireRed has no COLOR hotkey
+  { spec = "key:2", label = "COLOR", gb = true },
   { spec = "key:3", label = "TILT" },
   { spec = "key:4", label = "ZOOM" },
 }
@@ -275,6 +276,12 @@ local function loadImages()
 end
 
 function TouchControls:init()
+  -- a re-init under a finger (the in-game TOUCH LAYOUT row opens on the
+  -- press) releases what it held, or Input keeps that button down for good
+  if self.held then self:reset() end
+  -- the session that installed a skin hotkey handler may be gone; the game
+  -- starting now installs its own
+  self.hotkeyHandler = nil
   self.active = wantsOverlay()
   TouchSkin.setOverlayLive(self.active)
   self.enabled = true
@@ -562,14 +569,17 @@ local function inSquircle(zone, x, y, slop)
 end
 
 function TouchControls:hotbarItems()
-  if self.hotbarControls then return self.hotbarControls end
+  local gen = self.generation
+  if self.hotbarControls and self.hotbarFor == gen then return self.hotbarControls end
   local out = {}
-  for i, entry in ipairs(HOTBAR) do
-    local ctl = TouchSkin.newControl(entry.spec, 0, 0, 0, 0, "rect")
-    ctl.label = entry.label
-    out[i] = ctl
+  for _, entry in ipairs(HOTBAR) do
+    if not (entry.gb and gen == 3) then
+      local ctl = TouchSkin.newControl(entry.spec, 0, 0, 0, 0, "rect")
+      ctl.label = entry.label
+      out[#out + 1] = ctl
+    end
   end
-  self.hotbarControls = out
+  self.hotbarControls, self.hotbarFor = out, gen
   return out
 end
 
@@ -823,7 +833,11 @@ function TouchControls:touchpressed(id, x, y)
   end
   for _, btn in ipairs(self:buttons()) do
     local zone = L[btn]
-    if zone and inCircle(zone, x, y, SLOP[btn] or 1.3) then
+    -- the same shapes hitTest gives the editor: L/R are wide bars
+    local isSq = zone and (zone.shape == "squircle" or zone.shape == "rect" or btn == "l" or btn == "r")
+    local hit = zone and (isSq and inSquircle(zone, x, y, SLOP[btn] or 1.25)
+                          or inCircle(zone, x, y, SLOP[btn] or 1.3))
+    if hit then
       self.touches[id] = { control = btn }
       pressBtn(self, btn)
       return true

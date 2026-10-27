@@ -602,7 +602,8 @@ local function buildRows()
   local env = os.getenv("POKEPORT_TOUCH")
   local osName = love.system and love.system.getOS and love.system.getOS()
   local showTouch = env == "1"
-    or (env ~= "0" and (osName == "Android" or osName == "iOS"))
+    or (env ~= "0" and (osName == "Android" or osName == "iOS"
+      or require("src.core.TouchControls").active == true))
   local isNX = require("src.core.Platform").isNX()
   for i, row in ipairs(ROWS) do
     -- PRINT is wGBPrinterBrightness, how dark the Game Boy Printer prints

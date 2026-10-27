@@ -50,11 +50,38 @@ local function boundKey(overlay, def)
   return def.key
 end
 
+-- The pad button a row starts on is whatever the live default map gives
+-- its button, not BUTTONS' desktop name: on a Switch the A row is SDL "b"
+-- (GamepadMap.NX_GAMEPAD_BINDINGS), and the swap below has to see that or
+-- binding B to physical A leaves the pad with two Bs and no A.
+local function defaultPad(def)
+  if def.action then return def.pad end
+  for button, action in pairs(GamepadMap.gamepadBindings()) do
+    if action == def.id then return button end
+  end
+  return def.pad
+end
+
 local function boundPad(overlay, def)
   local b = overlay and overlay[def.id]
   if type(b) == "table" and b.pad then return b.pad end
   if b == false then return nil end
-  return def.pad
+  return defaultPad(def)
+end
+
+local function defaultIn(slot, def)
+  if slot == "key" then return def.key end
+  return defaultPad(def)
+end
+
+-- One slot of a row's overlay entry; a value equal to the row's default is
+-- dropped, and an entry left with nothing in it goes away.
+local function setSlot(bindings, def, slot, value)
+  local b = bindings[def.id]
+  if type(b) ~= "table" then b = { key = type(b) == "string" and b or nil } end
+  if value == defaultIn(slot, def) then value = nil end
+  b[slot] = value
+  bindings[def.id] = (b.key ~= nil or b.pad ~= nil) and b or nil
 end
 
 -- The right column is KEY/PAD (e.g. "Z/A").  The row is 20 tiles and the
@@ -250,7 +277,21 @@ function BindingsMenu:storeBinding(slot, value)
   local handover = prev
   if handover == nil and item.button.action then handover = item.button.pad end
   if value ~= prev then
-    for _, other in ipairs(self.items) do
+    -- the rows on screen, then FireRed's L and R keys: bindings are shared,
+    -- so taking Q in Red would otherwise leave FireRed's L row showing a
+    -- key that now presses A
+    local others = {}
+    for _, other in ipairs(self.items) do others[#others + 1] = other end
+    if slot == "key" then
+      for _, def in ipairs(BindingsMenu.GEN3_BUTTONS) do
+        local shown = false
+        for _, other in ipairs(self.items) do
+          if other.button.id == def.id then shown = true end
+        end
+        if not shown and not def.action then others[#others + 1] = { button = def } end
+      end
+    end
+    for _, other in ipairs(others) do
       if other ~= item and not (slot == "key" and other.button.action)
           and effective(opts.bindings, other.button) == value then
         if other.button.action then
@@ -298,6 +339,23 @@ function BindingsMenu:clearBinding(item)
     opts.bindings[def.id] = false
   else
     if not (opts and opts.bindings and opts.bindings[def.id]) then return end
+    -- undo a swap: the row now holding this row's default takes back what
+    -- this row had, or clearing one half of a swap leaves two rows on one
+    -- input and the other's input on nothing
+    for _, slot in ipairs({ "key", "pad" }) do
+      local effective = (slot == "key") and boundKey or boundPad
+      local cur, dflt = effective(opts.bindings, def), defaultIn(slot, def)
+      if cur ~= nil and dflt ~= nil and cur ~= dflt then
+        for _, other in ipairs(self.items) do
+          local od = other.button
+          if od ~= def and not od.action and effective(opts.bindings, od) == dflt then
+            setSlot(opts.bindings, od, slot, cur)
+            other.right = boundRight(opts.bindings, od)
+            break
+          end
+        end
+      end
+    end
     opts.bindings[def.id] = nil
   end
   item.right = boundRight(opts.bindings, def)
@@ -354,6 +412,10 @@ end
 
 function BindingsMenu:update(dt)
   if self.capture then
+    -- Input:reset (focus loss, an app switch, a pad plugged in) disarms the
+    -- capture behind this screen's back; Gold and touch reach the capture
+    -- only through Input's queue, so re-arm it or no key could cancel it
+    if Input.armCapture and not Input.captureArmed then Input:armCapture() end
     self:drainCapture()
     return
   end

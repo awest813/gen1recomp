@@ -80,9 +80,11 @@ function Editor.load(opts)
     local gold = type(optsTbl.gold) == "table" and optsTbl.gold or {}
     local hotbar = gold.hotbar
     if hotbar == nil then hotbar = optsTbl.hotbar end
+    -- touchControls and haptics are shared keys in Gold's options
+    -- (src/core/gen2/Save.lua SHARED_KEYS): the top level is what Gold draws
     applied = {
-      touchControls = gold.touchControls,
-      haptics = gold.haptics or optsTbl.haptics,
+      touchControls = optsTbl.touchControls or gold.touchControls,
+      haptics = optsTbl.haptics or gold.haptics,
       hotbar = hotbar,
       generation = 2,
     }
@@ -104,7 +106,11 @@ function Editor.load(opts)
       generation = 1,
     }
   end
+  -- opened from a running game: init drops the skin hotkey handler, which
+  -- belongs to that game and must outlive the editor
+  local handler = TouchControls.hotkeyHandler
   TouchControls:init()
+  TouchControls:setHotkeyHandler(handler)
   TouchControls:ensureImages()
   TouchControls:applyOptions(applied)
   TouchControls:setPreview(true)
@@ -179,8 +185,9 @@ local function persist()
   local gen = GameVersion.VERSIONS[Editor.version]
     and GameVersion.generation(Editor.version) or 1
   if gen == 2 then
-    opts.gold = type(opts.gold) == "table" and opts.gold or {}
-    opts.gold.touchControls = block
+    -- shared with Red (see Editor.load); a copy in the gold block is never read
+    opts.touchControls = block
+    if type(opts.gold) == "table" then opts.gold.touchControls = nil end
   elseif gen == 3 then
     opts.game3 = type(opts.game3) == "table" and opts.game3 or {}
     opts.game3.touchControls = block

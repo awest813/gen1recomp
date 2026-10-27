@@ -476,7 +476,8 @@ function Rows.build(ctx, skip)
   local VideoMode = require("src.core.VideoMode")
   local touchEnv = os.getenv("POKEPORT_TOUCH")
   local mobile = Orientation.isAndroid() or Orientation.isIOS()
-  local showTouch = touchEnv == "1" or (mobile and touchEnv ~= "0")
+  local showTouch = touchEnv == "1" or (touchEnv ~= "0"
+    and (mobile or require("src.core.TouchControls").active == true))
   local keep = {}
   for _, row in ipairs(rows) do
     local drop = false

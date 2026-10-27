@@ -848,6 +848,12 @@ function Game:keypressed(key)
       self.stack:push(require("src.dev.Console").new(self))
       return
     end
+    -- as Game3:keypressed: a key the player bound in CONTROLS plays its
+    -- button rather than a hotkey ("A = 2" must not cycle COLORS)
+    if Input.keyBindings and Input.keyBindings[key] ~= nil then
+      Input:keypressed(key)
+      return
+    end
     if key == "f10" then
       -- toggle: the manager no longer swallows the keyboard, so a second
       -- press reaches this branch and closes it instead of stacking another

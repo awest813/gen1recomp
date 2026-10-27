@@ -387,6 +387,34 @@ function Game2:softReset()
   self:showCopyright()
 end
 
+-- A custom touch skin's hotkey buttons (src/core/TouchSkin.lua), as
+-- Game:touchSkinHotkey handles them in Red.
+Game2.SKIN_FAST_FORWARD = 4
+function Game2:touchSkinHotkey(action, pressed)
+  if action == "fast_forward_hold" then
+    if pressed then
+      self.skinSpeedSaved = self.speedOverride
+      self.speedOverride = Game2.SKIN_FAST_FORWARD
+    else
+      self.speedOverride = self.skinSpeedSaved
+      self.skinSpeedSaved = nil
+    end
+  elseif action == "fast_forward_toggle" then
+    if pressed then self:_cycleSpeed(1) end
+  elseif action == "soft_reset" then
+    if pressed then
+      Input:reset()
+      TouchControls:reset()
+      self:softReset()
+    end
+  elseif action == "menu" then
+    local top = self.stack and self.stack:top()
+    if pressed and self.world and not (top and top.screenId == "Gen2OptionsMenu") then
+      self:showOptions()
+    end
+  end
+end
+
 function Game2:showOptions(onDone)
   Screens.push(self, "Gen2OptionsMenu", {
     options = self.options,
@@ -1076,6 +1104,9 @@ function Game2:load(opts)
   -- in the same order).
   TouchControls:init()
   self.touchControls = TouchControls
+  TouchControls:setHotkeyHandler(function(action, pressed)
+    self:touchSkinHotkey(action, pressed)
+  end)
   self:applyOptions()
   self.titleData = loadGenerated("data/generated/title.lua") or {}
   self.oakSpeechData = loadGenerated("data/generated/oak_speech.lua") or {}
@@ -2293,7 +2324,10 @@ function Game2:keypressed(key)
     -- the title screen and the intro menu are exactly where someone tries the
     -- COLOR key, and the ladder's world-only rungs already refuse themselves
     -- when there is no map.
-    if self:hotkey(key) then return end
+    -- as Game3:keypressed: a key the player bound plays its button, and a
+    -- CONTROLS capture waiting for a key gets every key
+    local bound = Input.keyBindings and Input.keyBindings[key] ~= nil
+    if not Input.captureArmed and not bound and self:hotkey(key) then return end
     Input:keypressed(key)
   end
   if not ModRuntime.wantsHook("input.key") then return vanilla() end

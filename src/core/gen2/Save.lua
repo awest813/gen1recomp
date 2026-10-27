@@ -381,6 +381,9 @@ local SHARED_KEYS = {
   mods = true, modsByVersion = true, modsGen2 = true,
   modOptions = true, modProfiles = true, modProfilesSeeded = true,
   activeProfile = true,
+  -- CONTROLS belongs to the machine (SaveData.CART_OPTION_KEYS): a rebind
+  -- made in Red works in Gold and FireRed, and the other way round
+  bindings = true,
 }
 
 function Save.loadOptions(fs)
@@ -423,6 +426,9 @@ function Save.saveOptions(options, fs)
       block[key] = value
     end
   end
+  -- RESET ALL in CONTROLS leaves no bindings at all: that is a deletion,
+  -- not a key this table merely did not mention
+  if options.bindings == nil then file.bindings = nil end
   file[Save.OPTIONS_KEY] = block
   SaveData.saveOptions(file, fs)
   return true
