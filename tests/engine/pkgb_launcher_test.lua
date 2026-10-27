@@ -1338,6 +1338,23 @@ do
   check(worst <= 4, "and the stack never grows: " .. worst)
 end
 
+-- ------------------------------------ overlays do not re-check the imports
+do
+  local CC = package.loaded["src.import.CacheContract"]
+  local realImported = rawget(CC, "isImported")
+  local calls = 0
+  CC.isImported = function(v) calls = calls + 1 return realImported(v) end
+  local m = fresh()
+  check(calls > 0, "a new launcher checks every game's import")
+  calls = 0
+  m:resumeAfterOverlay()
+  m:focus()
+  eq(calls, 0, "coming back from the save editor or Skin Studio does not check them again")
+  m:refresh(true)
+  check(calls > 0, "an import finishing does")
+  CC.isImported = realImported
+end
+
 -- ------------------------------------------------ text field select-all
 do
   window(1280, 720)

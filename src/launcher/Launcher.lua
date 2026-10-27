@@ -150,15 +150,21 @@ function Launcher.new(onLaunch, opts)
 end
 
 -- Re-read which games are imported and what save slots each has.
-function Launcher:refresh()
+-- `recheck` looks at every game's imported files again (hundreds of file
+-- checks for a Gen 3 game): at start and after an import.  Coming back from
+-- the save editor or the Skin Studio, which cannot change an import, only
+-- the lists are rebuilt.
+function Launcher:refresh(recheck)
   self.games = {}
   for _, v in ipairs(GameVersion.ORDER) do
     if visibleGame(v) then self.games[#self.games + 1] = v end
   end
-  self.stale = {}
+  self.stale = self.stale or {}
   for _, v in ipairs(self.games) do
-    self.ready[v] = cacheReady(v)
-    self.stale[v] = not self.ready[v] and cacheStale(v)
+    if recheck or self.ready[v] == nil then
+      self.ready[v] = cacheReady(v)
+      self.stale[v] = not self.ready[v] and cacheStale(v)
+    end
   end
   self.slots = {}
   self:publishShortcuts()
@@ -1094,7 +1100,7 @@ function Launcher:update(dt)
     if state == "done" then
       local version = self.job.version
       self.job = nil
-      self:refresh()
+      self:refresh(true)
       self:selectGame(version)
       self:say(GameVersion.info(version).displayName .. " is ready to play.", "info")
       -- more games waiting on an automatic re-import go next
@@ -1105,7 +1111,7 @@ function Launcher:update(dt)
     elseif state == "error" then
       self:say("Import failed: " .. tostring(self.job.error), "error")
       self.job = nil
-      self:refresh()
+      self:refresh(true)
     end
   end
   if #self.actions > 0 then
