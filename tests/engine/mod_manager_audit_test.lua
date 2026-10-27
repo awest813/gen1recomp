@@ -108,4 +108,22 @@ do
   end
 end
 
+-- mods made for another game sit in their own group, not beside switched-off ones
+do
+  local g = game({ manifest("here", { enabled = false }),
+    manifest("gold_only", { state = "wrong_generation", enabled = false }) })
+  local ms = ManagerState.new(g)
+  ms:refresh()
+  local rows = ms:modRows()
+  local headers, under = {}, {}
+  local current
+  for _, r in ipairs(rows) do
+    if r.header then current = r.label; headers[#headers + 1] = r.label
+    elseif r.mod then under[r.mod.id] = current end
+  end
+  eq(headers[#headers], "FOR OTHER GAMES", "the last group is FOR OTHER GAMES")
+  eq(under.gold_only, "FOR OTHER GAMES", "a Gold-only mod is in it")
+  eq(under.here, "OTHER", "a mod switched off here stays in its category")
+end
+
 T.finish("mod manager audit")

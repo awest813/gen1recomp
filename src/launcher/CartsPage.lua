@@ -66,7 +66,7 @@ function CartsPage:removeCart(version, row)
   if l.armedDelete ~= key then
     l.armedDelete = key
     return l:say("Press Remove again to uninstall " .. tostring(row.title)
-      .. ". Its saves are kept.", "info")
+      .. ". Its saves are kept.", "notice")
   end
   l.armedDelete = nil
   local ok, done, err = pcall(require("src.carts.CartStore").uninstall, row.id)

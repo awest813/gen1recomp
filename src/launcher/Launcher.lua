@@ -366,11 +366,12 @@ function Launcher:drawToast(x, y, w, s)
   local lines = math.min(3, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
   local h = math.max(lines * Kit.textHeight("small"), m.action and actH or 0) + 2 * pad
   local bx = x + (w - tw) / 2
-  local color = m.kind == "error" and PAL.red or PAL.green
+  -- "notice": a heads-up or a confirm-again prompt, not a success
+  local color = m.kind == "error" and PAL.red or m.kind == "notice" and PAL.yellow or PAL.green
   Theme.shadow(bx, y, tw, h, Theme.radius())
   Theme.fillRounded(bx, y, tw, h, PAL.raised, alpha, Theme.radius())
   Theme.fillRounded(bx, y, math.max(3, math.floor(4 * s)), h, color, alpha, 2)
-  Icons.draw(m.kind == "error" and "triangle-alert" or "check", bx + pad, y + pad, icon, color, alpha)
+  Icons.draw((m.kind == "error" or m.kind == "notice") and "triangle-alert" or "check", bx + pad, y + pad, icon, color, alpha)
   Kit.textWrapped("small", m.text, bx + 2 * pad + icon, y + pad, textW, PAL.text, lines)
   self.toastRect = { bx, y, tw, h }
   local wasOverlay = Kit._overlay

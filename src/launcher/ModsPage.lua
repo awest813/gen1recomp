@@ -208,7 +208,7 @@ function ModsPage:changed()
   local l = self.launcher
   l.modRows, l.cartPlans = nil, nil
   self.importerStates, self.schemas, self.seenSchemas = nil, nil, nil
-  self.exampleRows = nil
+  self.exampleRows, self.codeOptions = nil, nil
 end
 
 -- An asset importer's state (missing / partial / ready) reads its packs'
@@ -247,7 +247,7 @@ function ModsPage:removeMod(row)
   local key = "mod:" .. tostring(row and row.folder)
   if l.armedDelete ~= key then
     l.armedDelete = key
-    return l:say("Press Remove again to uninstall " .. tostring(row.name) .. ".", "info")
+    return l:say("Press Remove again to uninstall " .. tostring(row.name) .. ".", "notice")
   end
   l.armedDelete = nil
   local ModLibrary = require("src.mods.ModLibrary")
@@ -378,7 +378,7 @@ function ModsPage:removeModFile(row, fileRow)
   if l.armedDelete ~= key then
     l.armedDelete = key
     return l:say("Press Remove file again to delete the stored "
-      .. tostring(fileRow.name) .. ".", "info")
+      .. tostring(fileRow.name) .. ".", "notice")
   end
   l.armedDelete = nil
   local RequiredImports = require("src.mods.RequiredImports")
@@ -654,7 +654,7 @@ function ModsPage:deleteProfile(name)
   local key = "profile:" .. tostring(name)
   if l.armedDelete ~= key then
     l.armedDelete = key
-    return l:say("Press Delete again to remove the profile " .. tostring(name) .. ".", "info")
+    return l:say("Press Delete again to remove the profile " .. tostring(name) .. ".", "notice")
   end
   l.armedDelete = nil
   local opts = l:options()
@@ -699,6 +699,20 @@ function ModsPage:schemaFor(row)
   end
   self.schemas[key] = schema
   return schema or nil
+end
+
+-- A mod whose entry script calls mod.options:define has options the launcher
+-- cannot read until the game has run it once.
+function ModsPage:definesOptionsInCode(row)
+  if not (row and row.folder and love and love.filesystem) then return false end
+  self.codeOptions = self.codeOptions or {}
+  local known = self.codeOptions[row.folder]
+  if known ~= nil then return known end
+  local entry = type(row.manifest) == "table" and row.manifest.entry or "main.lua"
+  local okR, body = pcall(love.filesystem.read, row.folder .. "/" .. tostring(entry))
+  known = okR and type(body) == "string" and body:find("options:define", 1, true) ~= nil or false
+  self.codeOptions[row.folder] = known
+  return known
 end
 
 local OPTION_TYPES = { toggle = true, choice = true, number = true, text = true }
@@ -791,7 +805,7 @@ function ModsPage:checkUpdates(force)
     if self:checkRow(row, force) then n = n + 1 end
   end
   if n == 0 and next(self.checks) == nil then
-    return l:say("None of your mods name a GitHub repo to update from.", "info")
+    return l:say("None of your mods name a GitHub repo to update from.", "notice")
   end
   self.reportChecks = true
 end
@@ -898,7 +912,7 @@ function ModsPage:updateAll(spec)
   local rows = self:updatableRows()
   if #rows == 0 then
     return finish({ ok = true, skipped = true, updated = 0, total = 0, failures = {} },
-      not spec.auto and "None of your mods name a GitHub repo to update from." or nil)
+      not spec.auto and "None of your mods name a GitHub repo to update from." or nil, "notice")
   end
   self.batch = { auto = spec.auto, done = spec.done, phase = "checking", rows = rows,
     updated = 0, total = 0, failures = {} }
@@ -1299,7 +1313,7 @@ function ModsPage:removeFeed(source)
   local key = "feed:" .. tostring(source.feed)
   if l.armedDelete ~= key then
     l.armedDelete = key
-    return l:say("Press Remove again to drop this index and its saved listing.", "info")
+    return l:say("Press Remove again to drop this index and its saved listing.", "notice")
   end
   l.armedDelete = nil
   local ok, done, err = pcall(require("src.mods.ModIndex").removeSource, source.feed)
@@ -1404,7 +1418,7 @@ function ModsPage:drawMods(x, y, w, h, s)
   local avail = self:availableCount()
   local busy = self:busy()
   cy = self:flow(cx, cy, cw, s, {
-    { label = "Get mods", id = "mods-catalog", kind = "accent", run = function() self:openCatalog() end },
+    { label = "Get mods", id = "mods-catalog", run = function() self:openCatalog() end },
     { label = "Examples", id = "mods-examples", run = function() l.page = "examples" end },
     avail > 0 and { label = ("Update all (%d)"):format(avail), id = "mods-update-all", kind = "primary",
         enabled = not busy, run = function() self:updateAll({}) end }
@@ -1526,7 +1540,8 @@ end
 
 function ModsPage:installExample(row)
   local l = self.launcher
-  local ok, manifest, err = pcall(require("src.mods.ModLibrary").installExample, row.name)
+  local ok, manifest, err = pcall(require("src.mods.ModLibrary").installExample, row.name,
+    { replace = row.outdated == true })
   if not ok then manifest, err = nil, manifest end
   if not manifest then
     return l:say("Could not install " .. tostring(row.title) .. ": " .. tostring(err), "error")
@@ -1534,6 +1549,10 @@ function ModsPage:installExample(row)
   self:changed()
   self.exampleRows = nil
   local v = l.selected
+  if row.outdated then
+    return l:say(("%s is updated to this build's copy. It applies the next time the game starts.")
+      :format(tostring(row.title)), "info")
+  end
   if row.supported == false then
     l:say(("%s is installed. It does not run on %s, so it stays off here."):format(
       tostring(row.title), gameName(v)), "info")
@@ -1587,10 +1606,11 @@ function ModsPage:drawExamples(x, y, w, h, s)
     twoLines(row.title, detail, cx + math.floor(12 * s), ry, rowH,
       rw - bw - math.floor(36 * s), PAL.text, ink, s)
     local bx, by = cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2
-    if Kit.button(bx, by, bw, bh, row.installed and "Installed" or "Install",
+    local label = row.outdated and "Update" or row.installed and "Installed" or "Install"
+    if Kit.button(bx, by, bw, bh, label,
         { id = "example-install-" .. tostring(row.name), font = "small",
-          kind = not row.installed and row.supported ~= false and "primary" or nil,
-          enabled = not row.installed }) then
+          kind = (row.outdated or not row.installed) and row.supported ~= false and "primary" or nil,
+          enabled = row.outdated or not row.installed }) then
       l:queue(function() self:installExample(row) end)
     elseif clicked and not Kit.clickIn(bx, by, bw, bh) then
       local name = row.name
@@ -1638,8 +1658,15 @@ function ModsPage:drawExample(x, y, w, h, s)
     cy = para("small", "Its author marks it experimental: it starts off.", cx, cy, cw, PAL.yellow, gap)
   end
   local items = {}
+  if row.outdated then
+    cy = para("small", "Your copy is from an older build. Update replaces it with this build's; "
+      .. "its settings are kept.", cx, cy, cw, PAL.yellow, gap)
+  end
   if row.installed then
-    items[1] = { label = "Installed", id = "example-detail-installed", enabled = false }
+    items[1] = row.outdated
+      and { label = "Update", id = "example-detail-update", kind = "primary",
+            run = function() self:installExample(row) end }
+      or { label = "Installed", id = "example-detail-installed", enabled = false }
     items[2] = { label = "Open in Mods", id = "example-detail-open", run = function()
       local folder
       for _, r in ipairs(self:modsFor(v)) do if r.id == row.id then folder = r.folder end end
@@ -1733,6 +1760,13 @@ function ModsPage:drawDetail(x, y, w, h, s)
   if self:schemaFor(row) then
     items[#items + 1] = { label = "Options", id = "mod-detail-options",
       run = function() l.page = "modoptions" end }
+  elseif self:definesOptionsInCode(row) then
+    -- its rows exist only once the game has run it (OptionSchemaCache)
+    items[#items + 1] = { label = "Options", id = "mod-detail-options-later", enabled = true,
+      run = function()
+        l:say(tostring(row.name) .. " lists its options when it first runs. Start the game "
+          .. "once with it on, then they appear here.", "notice")
+      end }
   end
   if not row.bundled then
     items[#items + 1] = { label = armed and "Confirm remove" or "Remove", id = "mod-detail-remove",
@@ -1971,9 +2005,29 @@ function ModsPage:drawLoadOrder(x, y, w, h, s)
   return need
 end
 
+-- The in-game manager turns the setup a player already had into PROFILE 1
+-- the first time it opens (ModProfile.ensureFirst); the launcher does the
+-- same, so the two never disagree about whether a profile exists.
+function ModsPage:seedFirstProfile(version)
+  local l = self.launcher
+  local opts = l:options()
+  if opts.modProfilesSeeded then return end
+  local available = {}
+  for _, row in ipairs(self:modsFor(version)) do
+    if row.id and not row.broken then
+      available[#available + 1] = { id = row.id, enabled = row.enabled and true or false }
+    end
+  end
+  local SaveData = saveData()
+  if require("src.mods.ModProfile").ensureFirst(opts, available, opts.modOptions) and SaveData then
+    SaveData.saveOptions(opts)
+  end
+end
+
 function ModsPage:drawProfiles(x, y, w, h, s)
   local l = self.launcher
   local v = l.selected
+  self:seedFirstProfile(v)
   local pad = math.floor(18 * s)
   Kit.card(x, y, w, h)
   local cx, cw = x + pad, w - 2 * pad

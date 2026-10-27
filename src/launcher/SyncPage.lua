@@ -53,7 +53,7 @@ function SyncPage:unlink()
   local l = self.launcher
   if l.armedDelete ~= "sync:unlink" then
     l.armedDelete = "sync:unlink"
-    return l:say("Press Unlink again. Saves stay on this device.", "info")
+    return l:say("Press Unlink again. Saves stay on this device.", "notice")
   end
   l.armedDelete = nil
   local eng = self:engine()
@@ -66,7 +66,7 @@ function SyncPage:unlinkDevice(id)
   local key = "sync:device:" .. tostring(id)
   if l.armedDelete ~= key then
     l.armedDelete = key
-    return l:say("Press Unlink again to remove that device from sync.", "info")
+    return l:say("Press Unlink again to remove that device from sync.", "notice")
   end
   l.armedDelete = nil
   local eng = self:engine()

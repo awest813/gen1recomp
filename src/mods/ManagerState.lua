@@ -340,13 +340,22 @@ end
 function ManagerState:modRows()
   local rows = {}
   local byCategory, categories = {}, {}
+  -- mods made for another game go in their own group at the bottom: a "-"
+  -- beside them read the same as a mod the player switched off
+  local elsewhere = {}
   for _, m in ipairs(self.status.available or {}) do
     local cat = m.category or "OTHER"
+    if m.state == "wrong_generation" or not self:runsHere(m) then
+      cat = nil
+      elsewhere[#elsewhere + 1] = m
+    end
+    if cat then
     if not byCategory[cat] then
       byCategory[cat] = {}
       categories[#categories + 1] = cat
     end
     table.insert(byCategory[cat], m)
+    end
   end
   table.sort(categories)
   for _, cat in ipairs(categories) do
@@ -354,6 +363,12 @@ function ManagerState:modRows()
     for _, m in ipairs(byCategory[cat]) do
       rows[#rows + 1] = { mod = m, label = m.name or m.id,
                           glyph = self:glyphFor(m) }
+    end
+  end
+  if #elsewhere > 0 then
+    rows[#rows + 1] = { header = true, label = Strings("FOR OTHER GAMES") }
+    for _, m in ipairs(elsewhere) do
+      rows[#rows + 1] = { mod = m, label = m.name or m.id, glyph = " " }
     end
   end
   if #rows == 0 then
@@ -366,8 +381,10 @@ function ManagerState:profileRows()
   local rows = {}
   local opts = self:optionsTable()
   for _, p in ipairs(opts.modProfiles or {}) do
-    rows[#rows + 1] = { profile = p, label = p.name,
-      glyph = opts.activeProfile == p.name and GLYPH.errored or " " }
+    -- the profile in use says so; "!" is the error marker everywhere else
+    local live = opts.activeProfile == p.name
+    rows[#rows + 1] = { profile = p, label = live and (p.name .. " (ON)") or p.name,
+      glyph = " " }
   end
   rows[#rows + 1] = { saveAs = true, label = Strings("SAVE CURRENT AS..") }
   -- #593 sharing: EXPORT writes the focused profile to profiles/*.g1rmodlist

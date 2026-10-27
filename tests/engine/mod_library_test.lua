@@ -373,6 +373,12 @@ do
   eq(again, nil, "installing it twice is refused")
   check(tostring(why):find("already installed", 1, true), "with the reason")
   eq(files["mods/ex_gold/main.lua"], "-- the player's edit", "and the player's copy is untouched")
+  eq(ModLibrary.examples("gold")[1].outdated, true, "a copy that differs from this build's reads as outdated")
+  local upd, uerr = ModLibrary.installExample("ex_gold", { replace = true })
+  eq(upd and upd.id, "ex_gold", "replace updates it (" .. tostring(uerr) .. ")")
+  check(files["mods/ex_gold/main.lua"] ~= "-- the player's edit", "with this build's main.lua")
+  check(files["mods/ex_gold/assets/a.png"] ~= nil, "and its assets")
+  eq(ModLibrary.examples("gold")[1].outdated, nil, "after which it is current")
 
   eq((ModLibrary.installExample("../zeta")), nil, "a path is not an example name")
   eq((ModLibrary.installExample("missing")), nil, "an example not in this build is refused")

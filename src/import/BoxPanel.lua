@@ -699,11 +699,13 @@ local function drawBody(imp, s, x, y, w, _, m)
   s.view = s.view or "box"
   local top, gap, pad = y, 8 * m.s, 10 * m.s
   local rowH = math.max(Kit.tapMin(), 32 * m.s)
-  Kit.textBold("button", Strings(s.summary and "SUMMARY" or "BOX"), x, y, PAL.heading)
+  -- the same page heading Settings and Mods use
+  Kit.textBold("title", Strings(s.summary and "Summary" or "Box"), x, y, PAL.heading)
   if s.service then
-    Kit.textRight("small", ("%d / %d"):format(Store.count(s.service.state), Store.BOXES * Store.SLOTS), x + w, y + 3, PAL.muted)
+    Kit.textRight("small", ("%d / %d"):format(Store.count(s.service.state), Store.BOXES * Store.SLOTS), x + w,
+      y + math.floor((Kit.textHeight("title") - Kit.textHeight("small")) / 2), PAL.muted)
   end
-  y = y + Kit.textHeight("button") + gap
+  y = y + Kit.textHeight("title") + gap
   if s.notice and not s.service then y = y + Kit.textWrapped("small", Strings(s.notice), x, y, w, PAL.red, 3) + gap end
   local queryAffectsPage = not s.summary and (not s.toolsPage or s.toolsPage=="List"
     or s.toolsPage=="Filters" or s.toolsPage=="Showcase"

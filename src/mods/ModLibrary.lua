@@ -366,6 +366,25 @@ local function copyExample(fs, out, from, to)
   end
 end
 
+-- True when an installed copy's files differ from this build's example (an
+-- older build installed it): the gallery offers to update it.
+local function exampleDiffers(fs, from, to)
+  for _, name in ipairs(fs.getDirectoryItems(from) or {}) do
+    if not EXAMPLE_SKIP[name] then
+      local src, dst = from .. "/" .. name, to .. "/" .. name
+      local info = fs.getInfo(src)
+      if info and info.type == "directory" then
+        if exampleDiffers(fs, src, dst) then return true end
+      elseif info then
+        local okA, a = pcall(fs.read, src)
+        local okB, b = pcall(fs.read, dst)
+        if not (okA and okB) or a ~= b then return true end
+      end
+    end
+  end
+  return false
+end
+
 -- Every bundled example as a row: { name, id, title, description, manifest,
 -- supported (for `version`), installed }.  Sorted with what runs on that game
 -- first, then by title.
@@ -379,9 +398,11 @@ function ModLibrary.examples(version, fs)
     if info and info.type == "directory" and fs.getInfo(folder .. "/manifest.json") then
       local manifest = readManifest(fs, folder)
       if manifest then
+        local at = findInstalled(fs, manifest.id)
         local row = { name = name, folder = folder, id = manifest.id,
           title = manifest.name or manifest.id, description = manifest.description,
-          manifest = manifest, installed = findInstalled(fs, manifest.id) ~= nil }
+          manifest = manifest, installed = at ~= nil,
+          outdated = at ~= nil and exampleDiffers(fs, folder, at) or nil }
         if version then
           local okT, supported = pcall(ModTargets.supports, manifest, version,
             GameVersion.generation(version))
@@ -399,8 +420,9 @@ function ModLibrary.examples(version, fs)
 end
 
 -- Install one bundled example by its folder name.  Returns the manifest, or
--- nil plus a reason.  An example already installed is left alone: the player
--- may have changed it, and the Mods page is where it is removed.
+-- nil plus a reason.  An example already installed is left alone (the player
+-- may have changed it) unless opts.replace asks for this build's copy; its
+-- settings live in options.lua, not in the folder, so they survive.
 function ModLibrary.installExample(name, opts)
   opts = opts or {}
   local fs = fsys(opts.fs)
@@ -417,8 +439,9 @@ function ModLibrary.installExample(name, opts)
   end
   local installed, clash = findInstalled(fs, manifest.id)
   if clash then return nil, clash end
-  if installed then return nil, manifest.id .. " is already installed" end
-  local target = ModLibrary.ROOT .. "/" .. manifest.id
+  if installed and not opts.replace then return nil, manifest.id .. " is already installed" end
+  local target = installed or (ModLibrary.ROOT .. "/" .. manifest.id)
+  if installed then removeTree(fs, installed, out) end
   out.mkdir(ModLibrary.ROOT)
   local ok, err = pcall(copyExample, fs, out, from, target)
   if not ok then
