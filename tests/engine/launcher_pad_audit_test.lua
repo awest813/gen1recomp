@@ -243,4 +243,20 @@ do
   Kit.endFrame()
 end
 
+-- ---- Settings > Keys and buttons lists the hotkeys, and Back returns to its row
+l.page = "settings"; frame(12)
+Kit.setFocus("keys"); frame(2)
+pad("a"); frame(12)
+eq(l.page, "keys", "Show opens the keys page")
+eq(l:section(), "settings", "under Settings")
+local KeysPage = require("src.launcher.KeysPage")
+local listed = {}
+for _, sec in ipairs(KeysPage.SECTIONS) do
+  for _, row in ipairs(sec[2]) do listed[row[1]] = row[2] end
+end
+eq(listed["F1 / F2"], "Quick save / quick load", "the quick save keys are listed")
+pad("b"); frame(12)
+eq(l.page, "settings", "B goes back to Settings")
+eq(Kit.focusId, "keys", "with the ring on the row that opened it")
+
 T.finish("launcher pad audit")

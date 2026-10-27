@@ -1152,7 +1152,7 @@ end
 
 -- Escape / B: leave the current page (Mods and Carts lead back to the game).
 -- Escape / B: the same page the on-screen Back button goes to.
-local PARENT = { sync = "settings" }
+local PARENT = { sync = "settings", keys = "settings" }
 for k, v in pairs(require("src.launcher.ModsPage").PARENT) do PARENT[k] = v end
 for k, v in pairs(require("src.launcher.CartsPage").PARENT) do PARENT[k] = v end
 
@@ -1927,6 +1927,13 @@ function Launcher:drawSettings(x, y, w, h, s)
     end
     cy = cy + rowH + math.floor(10 * s)
   end
+  -- every key and button, the in-game hotkeys among them (src/launcher/KeysPage.lua)
+  label("Keys and buttons", cy)
+  local kw = math.floor(math.min(cw * 0.5, 300 * s))
+  if Kit.button(cx + cw - kw, cy, kw, rowH, "Show", { id = "keys", font = "small" }) then
+    self:queue(function() self.page = "keys" end)
+  end
+  cy = cy + rowH + math.floor(10 * s)
   if self.opts.onEditTouchControls then
     label("Touch controls", cy)
     local tw = math.floor(math.min(cw * 0.5, 300 * s))
@@ -2154,6 +2161,9 @@ function Launcher:drawPage(x, y, w, h, s)
     return self:drawFitted("settings", x, y, w, h, s, self.drawSettings)
   end
   if self.page == "notes" then return self:drawNotes(x, y, w, h, s) end
+  if self.page == "keys" then
+    return self:drawFitted("keys", x, y, w, h, s, require("src.launcher.KeysPage").draw)
+  end
   if self.page == "sync" and self.sync then
     return self:drawFitted("sync", x, y, w, h, s, function(l, ...) return l.sync:draw(...) end)
   end
@@ -2722,7 +2732,7 @@ end
 
 -- Which top-level section a page belongs to: the rail / tab bar highlight.
 local SECTION_OF = { box = "box", online = "online", settings = "settings", sync = "settings",
-  notes = "notes" }
+  keys = "settings", notes = "notes" }
 function Launcher:section()
   return SECTION_OF[self.page] or "games"
 end

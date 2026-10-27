@@ -1026,6 +1026,9 @@ function love.update(dt)
   -- checkEmergencyQuit runs from love.run each frame; calling it here too
   -- would double-count dt and fire the 5s hold after 2.5s.
   HostDisplay.update(dt)
+  -- the pointer hides during play once it sits still (src/core/CursorIdle.lua)
+  require("src.core.CursorIdle").update(dt, Game ~= nil and not Importer and not editorMode
+    and not TouchEditor and not Studio and not Prelaunch and not mouseTouch)
   SwitchDiagnostics.maybeFlush(false)
   -- NX only (no-op elsewhere): follow dock/undock without waiting for SDL.
   NxDisplay.sync()
@@ -1534,7 +1537,10 @@ if love.system and love.system.getOS() == "Linux"
 end
 
 function love.mousepressed(x, y, button, istouch)
-  if not istouch then eventMouseX, eventMouseY = x, y end
+  if not istouch then
+    eventMouseX, eventMouseY = x, y
+    require("src.core.CursorIdle").moved()
+  end
   if TouchEditor then
     -- Android primary touch already arrived via love.touchpressed; a second
     -- mouse path would double-fire Done / begin a second drag.
@@ -1599,7 +1605,10 @@ function love.mousereleased(x, y, button, istouch)
 end
 
 function love.mousemoved(x, y, dx, dy, istouch)
-  if not istouch then eventMouseX, eventMouseY = x, y end
+  if not istouch then
+    eventMouseX, eventMouseY = x, y
+    require("src.core.CursorIdle").moved()
+  end
   if TouchEditor then
     if love.system.getOS() == "Android" then return end
     return TouchEditor.mousemoved(x, y)
