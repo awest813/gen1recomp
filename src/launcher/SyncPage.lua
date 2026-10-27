@@ -60,6 +60,33 @@ function SyncPage:unlink()
   if eng then pcall(eng.unlink, eng) end
 end
 
+-- Another device off the account (two presses), new link codes, auto sync.
+function SyncPage:unlinkDevice(id)
+  local l = self.launcher
+  local key = "sync:device:" .. tostring(id)
+  if l.armedDelete ~= key then
+    l.armedDelete = key
+    return l:say("Press Unlink again to remove that device from sync.", "info")
+  end
+  l.armedDelete = nil
+  local eng = self:engine()
+  if not eng then return end
+  local ok, why = eng:unlinkDevice(id)
+  if ok == false then l:say(why, "error") end
+end
+
+function SyncPage:reissue()
+  local eng = self:engine()
+  if not eng then return end
+  local ok, why = eng:reissueCodes()
+  if ok == false then self.launcher:say(why, "error") end
+end
+
+function SyncPage:setAuto(on)
+  local eng = self:engine()
+  if eng then pcall(eng.setEnabled, eng, on) end
+end
+
 function SyncPage:resolve(key, choice)
   local eng = self:engine()
   if not eng then return end
@@ -146,7 +173,38 @@ function SyncPage:draw(x, y, w, h, s)
         { id = "sync-unlink", kind = "danger" }) then
       l:queue(function() self:unlink() end, true)
     end
+    cy = cy + rowH + gap
+    -- automatic sync, and fresh codes (the old pair stops linking)
+    local auto = not (eng.state and eng.state.enabled == false)
+    if Kit.button(cx, cy, half, rowH, auto and "Auto sync: On" or "Auto sync: Off",
+        { id = "sync-auto", font = "small", kind = auto and "primary" or nil, enabled = not busy }) then
+      l:queue(function() self:setAuto(not auto) end)
+    end
+    if Kit.button(cx + cw - half, cy, half, rowH, "New codes", { id = "sync-reissue", font = "small",
+        enabled = not busy }) then
+      l:queue(function() self:reissue() end)
+    end
     cy = cy + rowH + gap * 2
+    if type(eng.devices) == "table" and #eng.devices > 0 then
+      Kit.caption(cx, cy, "LINKED DEVICES", PAL.caption)
+      cy = cy + Kit.textHeight("caption") + math.floor(6 * s)
+      local uw = math.max(Kit.tapMin(), Kit.textWidth("small", "Confirm") + math.floor(28 * s))
+      for i, d in ipairs(eng.devices) do
+        local name = tostring(d.label) .. (d.current and "  (this device)" or "")
+        Kit.text("small", Kit.ellipsize("small", name, cw - uw - gap), cx,
+          cy + (rowH - Kit.textHeight("small")) / 2, d.current and PAL.heading or PAL.text)
+        if not d.current then
+          local armed = l.armedDelete == "sync:device:" .. tostring(d.id)
+          local id = d.id
+          if Kit.button(cx + cw - uw, cy, uw, rowH, armed and "Confirm" or "Unlink",
+              { id = "sync-device-" .. i, font = "small", kind = "danger", enabled = not busy }) then
+            l:queue(function() self:unlinkDevice(id) end, true)
+          end
+        end
+        cy = cy + rowH + math.floor(4 * s)
+      end
+      cy = cy + gap
+    end
     for i, c in ipairs(eng.conflicts or {}) do
       local title = c.box and "Box collection"
         or ((c.version and GameVersion.info(c.version) and GameVersion.info(c.version).displayName

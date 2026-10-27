@@ -1187,6 +1187,124 @@ do
   eq(m.page, pageBefore, "and does not also press the control under it")
 end
 
+-- ------------------------------------------------ parity: saves, ROMs, nav
+do
+  window(1280, 720)
+  local SD = package.loaded["src.core.SaveData"]
+  local dup = {}
+  SD.duplicateSlot = function(version, id, label) dup[#dup + 1] = { version, id, label } return "slot9" end
+  local m = fresh()
+  m.selected, m.selectedSlot.gold = "gold", "slot1"
+  m:duplicateSave()
+  eq(dup[1] and dup[1][2], "slot1", "Duplicate copies the chosen save")
+  eq(m.selectedSlot.gold, "slot9", "and chooses the copy")
+
+  -- a toast can carry one action; pressing it runs the action
+  local ran = false
+  m:say("Exported to /tmp/x/y.sav", "info", { label = "Open folder", run = function() ran = true end })
+  local rects = {}
+  local realB = Kit.button
+  Kit.button = function(x, y, w, h, label, o)
+    if o and o.id then rects[o.id] = { x = x + w / 2, y = y + h / 2 } end
+    return realB(x, y, w, h, label, o)
+  end
+  drawText(m)
+  Kit.button = realB
+  local r = rects["toast-action"]
+  check(r ~= nil, "the toast draws its action button")
+  if r then
+    local realPos = love.mouse.getPosition
+    love.mouse.getPosition = function() return r.x, r.y end
+    m.click = { x = r.x, y = r.y }
+    drawText(m)
+    love.mouse.getPosition = realPos
+    m:update(0)
+  end
+  check(ran, "and pressing it runs the action")
+  eq(m.message, nil, "then the toast goes")
+
+  -- section switching from the keyboard and the shoulders
+  m.page = nil
+  m:cycleSection(1)
+  m:update(0)
+  eq(m:section(), "box", "Ctrl+Tab / R steps to the next section")
+  m:cycleSection(-1)
+  m:update(0)
+  eq(m:section(), "games", "and back")
+  m:cycleSection(-1)
+  m:update(0)
+  eq(m:section(), "settings", "wrapping round the ends")
+  m.page = nil
+
+  -- Start plays the chosen game's save from the game screen
+  m:gamepadpressed(nil, "start")
+  m:update(0)
+  eq(launched[#launched], "gold", "Start on the game screen plays it")
+
+  -- the left stick steps the ring once per push
+  local navs = {}
+  local realNav = Kit.navigate
+  Kit.navigate = function(dir) navs[#navs + 1] = dir end
+  local n = fresh()
+  n:gamepadaxis(nil, "lefty", 0.9)
+  n:gamepadaxis(nil, "lefty", 0.95)
+  eq(#navs, 1, "pushing the stick down moves the ring once")
+  n:update(0.5)
+  eq(#navs, 2, "and holding it repeats")
+  n:gamepadaxis(nil, "lefty", 0)
+  n:update(0.5)
+  eq(#navs, 2, "letting go stops")
+  Kit.navigate = realNav
+
+  -- reduce motion: no page slide
+  local rm = fresh()
+  rm:setOption("reduceMotion", true)
+  rm.page = "settings"
+  drawText(rm)
+  eq(rm.pageAt, nil, "with Reduce motion on, a page change does not slide")
+  rm:setOption("reduceMotion", false)
+
+  -- volumes and Union Room settings
+  local u = fresh()
+  u:setOption("unionRoom", false)
+  eq(savedOptions.unionRoom, false, "Union Room can be turned off")
+  u:setOption("unionRoom", true)
+end
+
+do
+  -- opened on a page or with an invite
+  local b = Launcher.new(function() end, { noUpdateCheck = true, initialGame = "mods" })
+  eq(b.page, "mods", "a launcher opened on Mods shows Mods")
+  local inv = Launcher.new(function() end, { noUpdateCheck = true, invite = "r0123456789abcdef" })
+  eq(inv.page, "online", "an invite opens Online")
+  eq(inv.pendingInvite, "r0123456789abcdef", "and hands it the code")
+end
+
+do
+  -- a game imported by an older build: Update needed, import again from its file
+  local CC = package.loaded["src.import.CacheContract"]
+  local realRead = rawget(CC, "readMarker")
+  CC.readMarker = function(v) if v == "silver" then return "rom-cache-v1-silver:abc" end return nil end
+  local tmp = os.tmpname()
+  local f = io.open(tmp, "wb") f:write("not a rom") f:close()
+  savedOptions.romSources = { silver = tmp }
+  local m = fresh()
+  check(m.stale.silver == true, "a cache left by an older build reads as stale")
+  check(not m.stale.red, "a game never imported does not")
+  m.selected = "silver"
+  local t = drawText(m)
+  check(t:find("Update needed", 1, true) ~= nil, "the banner says Update needed")
+  check(t:find("Import again", 1, true) ~= nil, "and offers Import again")
+  eq(m:romSource("silver"), tmp, "from the file it came from")
+  m:reimport("silver")
+  check(m.message and m.message.kind == "error", "a file that no longer verifies is refused with a reason")
+  os.remove(tmp)
+  eq(m:romSource("silver"), nil, "a file that is gone is not offered")
+  m:forgetRomSources()
+  eq(next(savedOptions.romSources or {}), nil, "Forget clears the remembered files")
+  CC.readMarker = realRead
+end
+
 -- ------------------------------------- a selected save that does not exist
 do
   local m = fresh()

@@ -534,6 +534,7 @@ local function makeLauncher(launcherOpts)
     bootGame(version, cartId, opts)
   end, {
     initialGame = launcherOpts and launcherOpts.initialTab or nil,
+    invite = launcherOpts and launcherOpts.invite or nil,
     importPath = os.getenv("POKEPORT_LAUNCHER_IMPORT"),
     onImported = launcherOpts and launcherOpts.onImported or nil,
     noUpdateCheck = launcherOpts and launcherOpts.noUpdateCheck or nil,

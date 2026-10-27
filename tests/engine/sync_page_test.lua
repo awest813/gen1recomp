@@ -58,6 +58,25 @@ check(t:find("1234-5678", 1, true) ~= nil, "linked, it shows the codes for anoth
 check(t:find("Sync now", 1, true) ~= nil, "and offers Sync now")
 l.sync:syncNow()
 eq(calls[#calls], "sync", "Sync now syncs")
+
+-- linked devices: each other one can be unlinked (two presses), new codes
+function eng:unlinkDevice(id) calls[#calls + 1] = "unlinkDevice:" .. id return true end
+function eng:reissueCodes() calls[#calls + 1] = "reissue" return true end
+function eng:setEnabled(on) calls[#calls + 1] = "auto:" .. tostring(on) self.state.enabled = on end
+eng.state = { enabled = true }
+eng.devices = { { id = "me", label = "PK:GB on Linux", current = true },
+  { id = "phone", label = "PK:GB on Android" } }
+t = drawText(l)
+check(t:find("PK:GB on Android", 1, true) ~= nil, "with the other device by name")
+check(t:find("(this device)", 1, true) ~= nil, "and this one marked")
+l.sync:unlinkDevice("phone")
+check(calls[#calls] ~= "unlinkDevice:phone", "the first Unlink only arms")
+l.sync:unlinkDevice("phone")
+eq(calls[#calls], "unlinkDevice:phone", "the second removes that device")
+l.sync:reissue()
+eq(calls[#calls], "reissue", "New codes asks for a fresh pair")
+l.sync:setAuto(false)
+eq(calls[#calls], "auto:false", "auto sync can be turned off")
 l.sync:unlink()
 check(calls[#calls] ~= "unlink", "Unlink takes two presses")
 l.sync:unlink()

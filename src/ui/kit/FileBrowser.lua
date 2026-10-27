@@ -90,6 +90,8 @@ local function parentDir(p)
 end
 
 local function isMatchingFilter(name, isDir, mode)
+  -- hidden files and folders (.cache, .config ...) are never what is wanted
+  if name:sub(1, 1) == "." and mode ~= "all" then return false end
   if isDir then return true end
   local ext = name:match("%.([^.]+)$")
   if not ext then return (mode == "all") end

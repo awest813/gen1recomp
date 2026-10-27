@@ -99,9 +99,13 @@ function Launcher.new(onLaunch, opts)
   for _, v in ipairs(self.games) do
     if self.ready[v] then first = first or v end
   end
+  -- nothing ready: a game waiting on an update before one never imported
+  for _, v in ipairs(self.games) do
+    if not first and self.stale[v] then first = v end
+  end
   local last = okO and type(saved) == "table" and saved.lastVersion or nil
   self.selected = (opts.initialGame and self.ready[opts.initialGame]
-    and opts.initialGame) or (last and self.ready[last] and last)
+    and opts.initialGame) or (last and (self.ready[last] or self.stale[last]) and last)
     or first or self.games[1]
   -- ask the self-updater (src/update/Check.lua) whether a release is out;
   -- it works on a worker thread and is a no-op where it cannot run
@@ -124,6 +128,18 @@ function Launcher.new(onLaunch, opts)
     self:openOnline()
     self:queue(function() self.online:connect() end)
   end
+  -- opened on a page: the Box (a Box error sends the player back to it),
+  -- the selected game's Mods (an update before launch failed)
+  if opts.initialGame == "box" then self:queue(function() self:openBox() end) end
+  if opts.initialGame == "mods" then self.page = "mods" end
+  -- an invite link: Online takes it from here (OnlinePage reads it)
+  if type(opts.invite) == "string" and opts.invite ~= "" then
+    self.pendingInvite = opts.invite
+    self:openOnline()
+  end
+  local o = self:options()
+  self:applyMotion(o.reduceMotion)
+  if o.autoReimport then self:queue(function() self:autoReimport() end) end
   -- keyboard and pad focus start on the chosen game, ring hidden until used
   if self.selected then
     Kit.focusId = "game-" .. self.selected
@@ -259,6 +275,7 @@ end
 -- cleaned up).
 function Launcher:clearSaveState()
   self.renaming, self.saveMenu, self.saveMenuRect = nil, nil, nil
+  self.gameMenu, self.gameMenuRect = nil, nil
   if self.saveConfirm then self:confirmSave(false) end
 end
 
@@ -380,15 +397,17 @@ local function now()
   return love.timer and love.timer.getTime and love.timer.getTime() or os.clock()
 end
 
-function Launcher:say(text, kind)
-  self.message = text and { text = text, kind = kind or "info", at = now() } or nil
+-- `action` = { label, run } adds one button to the toast (and keeps it up
+-- a little longer, so there is time to press it).
+function Launcher:say(text, kind, action)
+  self.message = text and { text = text, kind = kind or "info", at = now(), action = action } or nil
 end
 
 function Launcher:drawToast(x, y, w, s)
   local m = self.message
   self.toastRect = nil
   if not m then return end
-  local life = m.kind == "error" and Launcher.TOAST_ERROR or Launcher.TOAST_INFO
+  local life = (m.kind == "error" or m.action) and Launcher.TOAST_ERROR or Launcher.TOAST_INFO
   local age = now() - (m.at or now())
   if age > life then
     self.message = nil
@@ -398,10 +417,12 @@ function Launcher:drawToast(x, y, w, s)
   local pad = Theme.space("m", s)
   local icon = math.floor(18 * s)
   local tw = math.min(w - 2 * pad, math.floor(560 * s))
-  local textW = tw - 3 * pad - icon
+  local actW = m.action and (Kit.textWidth("small", m.action.label) + Theme.space("xl", s)) or 0
+  local actH = math.max(Kit.tapMin(), math.floor(30 * s))
+  local textW = tw - 3 * pad - icon - (actW > 0 and actW + pad or 0)
   local th = Kit.wrapHeight("small", m.text, textW)
   local lines = math.min(3, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
-  local h = lines * Kit.textHeight("small") + 2 * pad
+  local h = math.max(lines * Kit.textHeight("small"), m.action and actH or 0) + 2 * pad
   local bx = x + (w - tw) / 2
   local color = m.kind == "error" and PAL.red or PAL.green
   Theme.shadow(bx, y, tw, h, Theme.radius())
@@ -412,7 +433,16 @@ function Launcher:drawToast(x, y, w, s)
   self.toastRect = { bx, y, tw, h }
   local wasOverlay = Kit._overlay
   Kit._overlay = true
-  if Kit.press(bx, y, tw, h) then
+  local acted = false
+  if m.action then
+    acted = Kit.button(bx + tw - pad - actW, y + (h - actH) / 2, actW, actH, m.action.label,
+      { id = "toast-action", font = "small" })
+    if acted then
+      local run = m.action.run
+      self:queue(function() self.message = nil; run() end, true)
+    end
+  end
+  if not acted and Kit.press(bx, y, tw, h) then
     self:queue(function() self.message = nil end, true)
   end
   Kit._overlay = wasOverlay
@@ -1058,7 +1088,49 @@ function Launcher:exportSave()
   local ok, result = SaveFileIO.exportActiveSlot(v)
   if not ok then return self:say("Export failed: " .. tostring(result), "error") end
   if self:shareExport(result) then return end
-  self:say("Exported to " .. tostring(result), "info")
+  self:sayExported(result)
+end
+
+-- "Exported to <path>", with Open folder where the system can show one.
+function Launcher:sayExported(path)
+  local dir = tostring(path):match("^(.*)[/\\][^/\\]+$")
+  local sys = love and love.system
+  local okP, Platform = pcall(require, "src.core.Platform")
+  local action
+  if dir and sys and sys.openURL and okP and Platform.canSpawnProcess() then
+    action = { label = "Open folder", run = function()
+      local url = "file://" .. (dir:sub(1, 1) == "/" and "" or "/") .. dir:gsub("\\", "/")
+      if not pcall(sys.openURL, url) then self:say("Could not open " .. dir, "error") end
+    end }
+  end
+  self:say("Exported to " .. tostring(path), "info", action)
+end
+
+-- The selected save as its original .lua file (it keeps everything the .sav
+-- format has no room for: mod data, port-only fields).
+function Launcher:exportSaveLua()
+  local v, id = self.selected, self:selectedSaveId()
+  if not (v and id) then return end
+  local ok, result = require("src.import.SaveFileIO").exportLuaSlot(v, id, self:activeCart(v))
+  if not ok then return self:say("Export failed: " .. tostring(result), "error") end
+  self:sayExported(result)
+end
+
+-- A copy of the selected save, chosen once it exists.
+function Launcher:duplicateSave()
+  local v, id = self.selected, self:selectedSaveId()
+  if not (v and id) then return end
+  local SaveData = require("src.core.SaveData")
+  local cartId = self:activeCart(v)
+  local current = self:currentSave(v)
+  local label = current and ((current.label or current.name or id) .. " copy") or nil
+  local newId, err
+  if cartId then newId, err = SaveData.duplicateCartSlot(cartId, id, label)
+  else newId, err = SaveData.duplicateSlot(v, id, label) end
+  if not newId then return self:say("Could not copy the save: " .. tostring(err), "error") end
+  self.slots[self:scopeKey(v)] = nil
+  self.selectedSlot[self:scopeKey(v)] = newId
+  self:say("Save copied.", "info")
 end
 
 -- Android and iOS keep the export in the app's own folder, out of the
@@ -1144,6 +1216,7 @@ local ALL_GAMES_KEYS = { musicVol = true, sfxVol = true }
 function Launcher:setOption(key, value)
   local opts = self:options()
   opts[key] = value
+  if key == "reduceMotion" then self:applyMotion(value) end
   if ALL_GAMES_KEYS[key] then
     local okG, Gen2Save = pcall(require, "src.core.gen2.Save")
     local block = okG and Gen2Save.OPTIONS_KEY or "gold"
@@ -1156,6 +1229,13 @@ function Launcher:setOption(key, value)
     local okV, VideoMode = pcall(require, "src.core.VideoMode")
     if okV then VideoMode.apply(value) end
   end
+end
+
+-- Reduce motion: no page slide here, no screen transitions in the kit.
+function Launcher:applyMotion(reduce)
+  self.reduceMotion = reduce == true
+  local okT, Transition = pcall(require, "src.ui.kit.Transition")
+  if okT then Transition.reduceMotion = self.reduceMotion end
 end
 
 -- Open a prefilled issue form (src/core/IssueReport.lua) with this build,
@@ -1224,6 +1304,7 @@ end
 -- ------------------------------------------------------------- host hooks
 
 function Launcher:update(dt)
+  self:stickRepeat(dt or 0)
   pcall(self.pollExport, self)
   if self.assetJob then self:stepImporter(0.008) end
   local okP, errP = pcall(self.pollHostPick, self)
@@ -1257,6 +1338,8 @@ function Launcher:update(dt)
       self:refresh()
       self:selectGame(version)
       self:say(GameVersion.info(version).displayName .. " is ready to play.", "info")
+      -- more games waiting on an automatic re-import go next
+      if self:options().autoReimport and self:autoReimport() then return end
       -- scripted runs (main.lua: POKEPORT_IMPORT_ROM / IMPORT_ONLY) go on
       -- from here on their own
       if self.opts.onImported then return self.opts.onImported(version) end
@@ -1368,6 +1451,7 @@ end
 function Launcher:wheelmoved(_, dy) self.wheel = (self.wheel or 0) + dy end
 
 function Launcher:keypressed(key)
+  if Kit.FileBrowser.active then return Kit.keypressed(key) end
   if self._boxPrompt then
     if key == "escape" then
       self:queue(function() require("src.import.BoxPrompt").close(self, false) end)
@@ -1384,9 +1468,21 @@ function Launcher:keypressed(key)
     self:queue(function() self:closeBox() end)
     return true
   end
+  local isDown = love.keyboard and love.keyboard.isDown
+  local ctrl = isDown and (isDown("lctrl") or isDown("rctrl") or isDown("lgui") or isDown("rgui"))
+  local shiftDown = isDown and (isDown("lshift") or isDown("rshift"))
+  -- Ctrl+Tab / Ctrl+PgDn: next section; with Shift / PgUp: the one before
+  if ctrl and (key == "tab" or key == "pagedown" or key == "pageup") then
+    self:cycleSection((key == "pageup" or (key == "tab" and shiftDown)) and -1 or 1)
+    return true
+  end
+  if key == "f11" then
+    local okW, Window = pcall(require, "src.import.LauncherWindow")
+    if okW then pcall(Window.toggle) end
+    return true
+  end
   if key == "tab" and not Kit.focus then
-    local shift = love.keyboard and love.keyboard.isDown
-      and (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift"))
+    local shift = shiftDown
     Kit.navigate(shift and "up" or "down")
     return true
   end
@@ -1411,13 +1507,68 @@ function Launcher:gamepadpressed(_, button)
   if button == "b" and not Kit.focus then
     if self._boxPopup or self._boxPrompt or self.page then return self:keypressed("escape") end
   end
+  if Kit.FileBrowser.active then return Kit.gamepadpressed(button) end
+  -- shoulders step through the sections, as tabs do on a console
+  if not (self._boxPopup or self._boxPrompt) and (button == "leftshoulder" or button == "rightshoulder") then
+    self:cycleSection(button == "leftshoulder" and -1 or 1)
+    return true
+  end
   if Kit.gamepadpressed(button) then return true end
-  if button == "start" then Kit.activateFocused() return true end
+  if button == "start" then
+    -- Start plays: Continue on the game screen, else whatever is focused
+    if not self.page and self.selected and self.ready[self.selected]
+        and #self:slotsFor(self.selected) > 0 then
+      local v = self.selected
+      self:queue(function() self:play(v) end)
+    else
+      Kit.activateFocused()
+    end
+    return true
+  end
   return false
 end
 
+function Launcher:cycleSection(dir)
+  local at = 1
+  for i, it in ipairs(Launcher.NAV) do if it.id == self:section() then at = i end end
+  local nextId = Launcher.NAV[(at - 1 + dir) % #Launcher.NAV + 1].id
+  self:queue(function() self:goSection(nextId) end)
+end
+
+-- The left stick moves the ring like the d-pad: one step when it is pushed
+-- past half way, then repeats while held (update).
+local STICK_ON, STICK_OFF = 0.6, 0.3
+function Launcher:gamepadaxis(_, axis, value)
+  if axis ~= "leftx" and axis ~= "lefty" then return false end
+  self.stick = self.stick or { leftx = 0, lefty = 0 }
+  self.stick[axis] = value
+  local dir
+  if math.abs(self.stick.lefty) >= STICK_ON then dir = self.stick.lefty > 0 and "down" or "up"
+  elseif math.abs(self.stick.leftx) >= STICK_ON then dir = self.stick.leftx > 0 and "right" or "left" end
+  if dir and dir ~= self.stickDir then
+    self.stickDir, self.stickHeld = dir, 0
+    if Kit.FileBrowser.active then
+      Kit.gamepadpressed("dp" .. dir)
+    else
+      Kit.navigate(dir)
+    end
+  elseif not dir and math.abs(self.stick.lefty) < STICK_OFF and math.abs(self.stick.leftx) < STICK_OFF then
+    self.stickDir = nil
+  end
+  return true
+end
+
+function Launcher:stickRepeat(dt)
+  if not self.stickDir then return end
+  self.stickHeld = (self.stickHeld or 0) + dt
+  if self.stickHeld >= 0.4 then
+    self.stickHeld = 0.4 - 0.12
+    if Kit.FileBrowser.active then Kit.gamepadpressed("dp" .. self.stickDir)
+    else Kit.navigate(self.stickDir) end
+  end
+end
+
 function Launcher:gamepadreleased() end
-function Launcher:gamepadaxis() end
 function Launcher:joystickpressed() end
 function Launcher:joystickreleased() end
 function Launcher:joystickaxis() end
@@ -1505,6 +1656,19 @@ function Launcher:reimport(version)
   if not path then return self:pickRom() end
   self.pickedRomPath = path
   self:startPath(path)
+end
+
+-- Settings > Import again after updates: the first game that needs it and
+-- still has its file is imported again.  Returns true when one started.
+function Launcher:autoReimport()
+  if self:importing() then return false end
+  for _, v in ipairs(self.games) do
+    if self.stale and self.stale[v] and self:romSource(v) then
+      self:reimport(v)
+      return self:importing()
+    end
+  end
+  return false
 end
 
 -- Forget every remembered ROM location (Settings).
@@ -1639,17 +1803,20 @@ function Launcher:drawGameList(x, y, w, h, s)
         rightW = Kit.textWidth("micro", note) + inset
         Kit.text("micro", note, x + rw - rightW, py + (rowH - Kit.textHeight("micro")) / 2, PAL.yellow)
       elseif not ready then
+        -- a game an update left behind says so, and imports from its file
+        local stale = self.stale and self.stale[v]
+        local chip = stale and "Update" or "Import"
         local cw = Kit.textWidth("micro", "Import") + Theme.BUTTON.labelInset * s + Theme.space("s", s)
         -- a full tap target where the row has room for one
         local ch = math.min(rowH - Theme.space("s", s), math.max(Kit.tapMin(), math.floor(28 * s)))
         rightW = cw + inset
-        if Kit.button(x + rw - cw - inset, py + (rowH - ch) / 2, cw, ch, "Import",
+        if Kit.button(x + rw - cw - inset, py + (rowH - ch) / 2, cw, ch, chip,
             { id = "game-import-" .. v, face = "chip", active = chosen,
-              color = Theme.readable(color, PAL.bg) }) then
+              color = stale and PAL.yellow or Theme.readable(color, PAL.bg) }) then
           self:queue(function()
             self:selectGame(v)
             self.page = nil
-            self:pickRom()
+            if stale then self:reimport(v) else self:pickRom() end
           end)
         end
       end
@@ -1834,6 +2001,46 @@ function Launcher:drawSettings(x, y, w, h, s)
     end)
   end
   cy = cy + rowH + math.floor(10 * s)
+
+  -- on/off rows: the button names the state, a press flips it
+  local function toggle(id, text, on, flip, note)
+    label(text, cy)
+    local tw = math.floor(math.min(cw * 0.5, 300 * s))
+    if Kit.button(cx + cw - tw, cy, tw, rowH, on and "On" or "Off",
+        { id = id, font = "small", kind = on and "primary" or nil }) then
+      self:queue(flip)
+    end
+    cy = cy + rowH + math.floor(note and 4 or 10) * s
+    if note then
+      Kit.textWrapped("micro", note, cx, cy, cw, PAL.faint)
+      cy = cy + Kit.wrapHeight("micro", note, cw) + math.floor(10 * s)
+    end
+  end
+  toggle("reduce-motion", "Reduce motion", opts.reduceMotion == true, function()
+    self:setOption("reduceMotion", self:options().reduceMotion ~= true)
+  end)
+  local okU, Union = pcall(require, "src.online.union.Setting")
+  if okU then
+    toggle("union-room", "Union Room", Union.enabledIn(opts), function()
+      self:setOption(Union.KEY, not Union.enabledIn(self:options()))
+    end, "Red, Blue, Yellow, Gold, Silver and Crystal: the Pokemon Center's upstairs "
+      .. "room for online trades and battles.")
+  end
+  local okPl, Platform = pcall(require, "src.core.Platform")
+  if okPl and Platform.canSpawnProcess() then
+    toggle("auto-reimport", "Import again after updates", opts.autoReimport == true, function()
+      self:setOption("autoReimport", self:options().autoReimport ~= true)
+    end, "When an update needs a game imported again, read the same ROM file without asking.")
+    local sources = type(opts.romSources) == "table" and next(opts.romSources) ~= nil
+    if sources then
+      label("Remembered ROM files", cy)
+      local fw = math.floor(math.min(cw * 0.5, 300 * s))
+      if Kit.button(cx + cw - fw, cy, fw, rowH, "Forget", { id = "forget-roms", font = "small" }) then
+        self:queue(function() self:forgetRomSources() end)
+      end
+      cy = cy + rowH + math.floor(10 * s)
+    end
+  end
   label("Something wrong?", cy)
   local rw = math.floor(math.min(cw * 0.5, 300 * s))
   if Kit.button(cx + cw - rw, cy, rw, rowH, "Report a problem", { id = "report", font = "small" }) then
@@ -1858,10 +2065,12 @@ function Launcher:drawSettings(x, y, w, h, s)
     end
     cy = cy + rowH + Theme.space("m", s)
   end
-  Kit.textWrapped("micro", "More options (colors, zoom, speed, controls) are in "
-    .. "the game's own OPTIONS menu.", cx, cy, cw, PAL.faint)
-  return cy + Kit.wrapHeight("micro", "More options (colors, zoom, speed, controls) are in "
-    .. "the game's own OPTIONS menu.", cw) + pad - y
+  local more = "More options (colors, zoom, speed, controls) are in the game's own OPTIONS menu."
+  Kit.textWrapped("micro", more, cx, cy, cw, PAL.faint)
+  cy = cy + Kit.wrapHeight("micro", more, cw) + Theme.space("s", s)
+  -- the build, for bug reports
+  Kit.text("micro", Kit.ellipsize("micro", Version.NAME .. " " .. tostring(Version.engine), cw), cx, cy, PAL.faint)
+  return cy + Kit.textHeight("micro") + pad - y
 end
 
 function Launcher:drawNotes(x, y, w, h, s)
@@ -2250,6 +2459,8 @@ function Launcher:drawGame(x, y, w, h, s)
   -- menu itself draws last), so one press never lands on both
   local r = self.saveMenu and self.saveMenuRect
   if r then Kit.occlude(r[1], r[2], r[3], r[4]) else self.saveMenuRect = nil end
+  local gr = self.gameMenu and self.gameMenuRect
+  if gr then Kit.occlude(gr[1], gr[2], gr[3], gr[4]) else self.gameMenuRect = nil end
 
   -- banner
   local compact = self.compactBanner
@@ -2270,6 +2481,7 @@ function Launcher:drawGame(x, y, w, h, s)
 
   -- Carts / Mods on the banner's right
   local rightW = 0
+  local gameMenuAt
   if ready and not importing then
     local mh = math.max(Kit.tapMin(), math.floor(32 * s))
     local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + Theme.space("xl", s) + Theme.space("s", s))
@@ -2283,6 +2495,14 @@ function Launcher:drawGame(x, y, w, h, s)
       self:queue(function() self.page = "carts"; self.cartScroll = 0 end)
     end
     rightW = mw + kw + Theme.space("s", s) + Theme.space("m", s)
+    -- "..." : the game's own, rarer actions
+    local gx = x + w - pad - mw - Theme.space("s", s) - kw - Theme.space("s", s) - mh
+    if Kit.button(gx, by, mh, mh, "", { id = "banner-menu", icon = "ellipsis", face = "bare", ring = false,
+        iconInk = PAL.text }) then
+      self:queue(function() self.gameMenu = not self.gameMenu end)
+    end
+    if self.gameMenu then gameMenuAt = { x = gx + mh, y = by + mh } end
+    rightW = rightW + mh + Theme.space("s", s)
   end
   -- the name matters more than the art: a banner too narrow for both
   -- (a GBA cartridge on a phone) drops the cartridge
@@ -2515,6 +2735,18 @@ function Launcher:drawGame(x, y, w, h, s)
 
   if menuAt then self:drawSaveMenu(menuAt, x, y, w, h, s, cartId, scope)
   else self.saveMenuRect = nil end
+  if gameMenuAt then
+    local items = { { id = "banner-reimport", label = "Import ROM again", icon = "refresh-cw",
+      run = function() self:reimport(v) end } }
+    local okP, Platform = pcall(require, "src.core.Platform")
+    local lfs = love and love.filesystem
+    if okP and Platform.canSpawnProcess() and lfs and lfs.getSaveDirectory and love.system.openURL then
+      items[#items + 1] = { id = "banner-folder", label = "Open data folder", icon = "folder-open",
+        run = function() pcall(love.system.openURL, "file://" .. lfs.getSaveDirectory()) end }
+    end
+    self.gameMenuRect = self:drawPopup(gameMenuAt, items, x, y, w, h, s, "banner-menu",
+      function() self.gameMenu = nil end)
+  end
   return self:detailNeed(w, s, compact)
 end
 
@@ -2529,9 +2761,17 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
         Kit.setFocus("rename-field")
         Kit.focus = "rename-field"
       end },
+    { id = "save-duplicate", label = "Duplicate", icon = "copy",
+      run = function() self:duplicateSave() end },
     { id = "save-export", label = "Export .sav", icon = "download", enabled = cartId == nil,
       run = function() self:exportSave() end },
   }
+  -- the full .lua save, where a file manager can reach the exports folder
+  local okP, Platform = pcall(require, "src.core.Platform")
+  if okP and Platform.canSpawnProcess() then
+    items[#items + 1] = { id = "save-export-lua", label = "Export .lua", icon = "download",
+      run = function() self:exportSaveLua() end }
+  end
   if self.opts.onEditSave then
     items[#items + 1] = { id = "save-edit", label = "Edit", icon = "file-pen-line",
       enabled = cartId == nil, run = function() self:editSave() end }
@@ -2539,6 +2779,15 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
   local armed = self.armedDelete == v .. ":" .. tostring(slot.id)
   items[#items + 1] = { id = "save-delete", label = armed and "Confirm delete" or "Delete",
     icon = "trash", danger = true, keep = true, run = function() self:deleteSave() end }
+  self.saveMenuRect = self:drawPopup(at, items, x, y, w, h, s, "save-menu-" .. tostring(slot.id),
+    function() self.saveMenu = nil end)
+end
+
+-- A small menu of actions under (or above) an anchor point, inside the box
+-- x, y, w, h.  It draws over everything and takes the press; a press
+-- outside, or the pad ring leaving it, calls `close`.  Returns its rect for
+-- the caller to occlude next frame (it is drawn last).
+function Launcher:drawPopup(at, items, x, y, w, h, s, openerId, close)
   local itemH = math.max(Kit.tapMin(), math.floor(38 * s))
   local mw = math.floor(math.min(220 * s, w - 2 * Theme.space("m", s)))
   local mh = #items * itemH + 2 * Theme.space("xs", s)
@@ -2548,7 +2797,6 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
   Theme.shadow(mx, my, mw, mh, Theme.radius())
   Theme.fillRounded(mx, my, mw, mh, PAL.raised, 1, Theme.radius())
   Theme.strokeRounded(mx, my, mw, mh, PAL.line, Theme.A.hairline, 1, Theme.radius())
-  self.saveMenuRect = { mx, my, mw, mh }
   local wasOverlay = Kit._overlay
   Kit._overlay = true
   for i, it in ipairs(items) do
@@ -2558,22 +2806,19 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
           enabled = it.enabled ~= false,
           ink = it.danger and Theme.readable(PAL.red, PAL.raised) or PAL.text }) then
       self:queue(function()
-        if not it.keep then self.saveMenu = nil end
+        if not it.keep then close() end
         it.run()
       end, it.danger)
     end
   end
   -- the ring leaving it closes it too (pad and keyboard)
-  local inMenu = Kit.focusId == "save-menu-" .. tostring(slot.id)
+  local inMenu = Kit.focusId == openerId
   for _, it in ipairs(items) do inMenu = inMenu or Kit.focusId == it.id end
-  if Kit._ringShown and not inMenu then
-    self:queue(function() self.saveMenu = nil end, true)
-  end
+  if Kit._ringShown and not inMenu then self:queue(close, true) end
   -- a press anywhere else closes it
-  if Kit.mouseClicked and not Kit.hit(mx, my, mw, mh) then
-    self:queue(function() self.saveMenu = nil end, true)
-  end
+  if Kit.mouseClicked and not Kit.hit(mx, my, mw, mh) then self:queue(close, true) end
   Kit._overlay = wasOverlay
+  return { mx, my, mw, mh }
 end
 
 function Launcher:boxMetrics(s)
@@ -2799,6 +3044,9 @@ function Launcher:draw()
   -- also landing on the control underneath
   local tr = self.message and self.toastRect
   if tr then Kit.occlude(tr[1], tr[2], tr[3], tr[4]) end
+  -- the in-app file browser is modal: nothing under it takes a press
+  local browsing = Kit.FileBrowser.active
+  if browsing then Kit.blockClicks = true end
   self.click, self.wheel = nil, 0
   Theme.field()
   -- a Box popup or prompt owns the frame: nothing under its scrim takes clicks
@@ -2843,7 +3091,7 @@ function Launcher:draw()
   -- wait for it to settle so none lands where the content used to be
   local pageKey = tostring(self.page)
   if pageKey ~= self.lastPageKey then
-    if self.lastPageKey ~= nil then self.pageAt, self.pageFrames = now(), 0 end
+    if self.lastPageKey ~= nil and not self.reduceMotion then self.pageAt, self.pageFrames = now(), 0 end
     self.lastPageKey = pageKey
   end
   local slide = 0
@@ -2890,6 +3138,10 @@ function Launcher:draw()
     Kit.blockClicks = boxModal
   end
   self:drawToast(x, y + Theme.space("xs", s), w, s)
+  if browsing then
+    local W, H = love.graphics.getDimensions()
+    Kit.FileBrowser.draw({ s = s, W = W, H = H })
+  end
   if self.page == "box" then
     Kit.blockClicks = false
     self:drawBoxOverlays(s)
