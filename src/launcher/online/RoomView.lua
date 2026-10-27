@@ -151,32 +151,25 @@ function RoomView.install(P)
   end
 
   -- One pickable Pokemon row.
-  local function monRow(self, game, cx, cy, cw, m, ref, mon, id)
+  local function monRow(self, game, cx, cy, cw, m, ref, mon, id, limit)
     local entryH = math.max(Kit.tapMin(), math.floor(40 * m.s))
     local chosen = self:picked(ref)
     local clicked, ink = Kit.row(cx, cy, cw, entryH, chosen, id)
     Kit.text("button", Kit.ellipsize("button", P.monName(game.version, mon), cw - math.floor(24 * m.s)),
       cx + math.floor(12 * m.s), cy + (entryH - Kit.textHeight("button")) / 2, ink or PAL.text)
-    if clicked then self.launcher:queue(function() self:toggle(ref, game) end) end
+    if clicked then self.launcher:queue(function() self:toggle(ref, game, limit) end) end
     return cy + entryH + math.floor(4 * m.s)
   end
 
-  function P:drawTeam(room, game, cx, cy, cw, m)
+  -- The party, then one PC box at a time with arrows to page through the
+  -- boxes.  limit caps the picks (the room's team size by default).
+  function P:drawPicker(game, cx, cy, cw, m, limit)
     local l = self.launcher
-    local s, gap = m.s, m.gap
+    local s = m.s
     local source, why = self:source(game)
-    local size = self:partySize(game)
-    local ended = self.lastResult ~= nil or room.stage == "ended"
-    if ended and not self.readied then
-      local text = (self.lastResult and (self.lastResult .. " ") or "The battle is over. ")
-        .. "Ready up again for a rematch, or leave the room."
-      cy = Layout.para("small", text, cx, cy, cw, PAL.heading) + gap
-    end
-    Kit.caption(cx, cy, ("YOUR TEAM  -  PICK %d"):format(size), PAL.caption)
-    cy = cy + Kit.textHeight("caption") + math.floor(6 * s)
     if not source then
       Kit.textWrapped("small", "That save could not be read: " .. tostring(why), cx, cy, cw, PAL.red)
-      return cy + Kit.wrapHeight("small", "x " .. tostring(why), cw) + gap
+      return cy + Kit.wrapHeight("small", "x " .. tostring(why), cw) + m.gap
     end
     local rows = self:candidates(game)
     local boxes, boxNames, order = {}, {}, {}
@@ -190,7 +183,7 @@ function RoomView.install(P)
         local list = boxes[row.box]
         list[#list + 1] = row
       else
-        cy = monRow(self, game, cx, cy, cw, m, row.ref, row.mon, "online-mon-" .. row.ref)
+        cy = monRow(self, game, cx, cy, cw, m, row.ref, row.mon, "online-mon-" .. row.ref, limit)
       end
     end
     if #order > 0 then
@@ -205,9 +198,26 @@ function RoomView.install(P)
       cy = cy + math.floor(6 * s)
       for _, row in ipairs(boxes[box]) do
         cy = monRow(self, game, cx, cy, cw, m, row.ref, row.mon,
-          ("online-box-%d-%d"):format(row.ref.box, row.ref.index))
+          ("online-box-%d-%d"):format(row.ref.box, row.ref.index), limit)
       end
     end
+    return cy
+  end
+
+  function P:drawTeam(room, game, cx, cy, cw, m)
+    local l = self.launcher
+    local s, gap = m.s, m.gap
+    local size = self:partySize(game)
+    local ended = self.lastResult ~= nil or room.stage == "ended"
+    if ended and not self.readied then
+      local text = (self.lastResult and (self.lastResult .. " ") or "The battle is over. ")
+        .. "Ready up again for a rematch, or leave the room."
+      cy = Layout.para("small", text, cx, cy, cw, PAL.heading) + gap
+    end
+    Kit.caption(cx, cy, ("YOUR TEAM  -  PICK %d"):format(size), PAL.caption)
+    cy = cy + Kit.textHeight("caption") + math.floor(6 * s)
+    if not self:source(game) then return self:drawPicker(game, cx, cy, cw, m) end
+    cy = self:drawPicker(game, cx, cy, cw, m)
     cy = cy + gap
     local count = #self:teamList()
     local label

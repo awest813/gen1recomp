@@ -34,13 +34,23 @@ local Connect = lazy("src.online.Connect")
 local Client = lazy("src.online.Client")
 
 local EVENTS = { "match_start", "match_end", "invite_token", "error", "room",
-  "invite_in", "invite_sent", "invite_closed" }
+  "invite_in", "invite_sent", "invite_closed", "tournament", "tour_match", "tour_spectate",
+  "tour_bye", "tour_over" }
 
 -- Seconds a host or join request may go unanswered before the page gives
 -- up on it and lets the player try again.
 OnlinePage.JOIN_TIMEOUT = 15
 -- Spectator seats a hosted battle offers when watching is allowed.
 OnlinePage.SPECTATORS = 8
+
+-- Tournament shot clocks the relay accepts (Protocol2.SHOT_CLOCKS).
+OnlinePage.SHOT_CLOCKS = { 3, 6, 9 }
+
+-- The team each tournament was entered with, by tournament id: a page is
+-- made afresh when the launcher comes back from a battle, and the next
+-- round must play the same team.
+local tourPicks = {}
+OnlinePage.tourPicks = tourPicks
 
 -- Gen 3 battle formats, by the activity that names their ruleset.
 OnlinePage.FORMATS = {
@@ -65,6 +75,8 @@ function OnlinePage.new(launcher)
     hostOpts = { format = "single", private = false, pin = "", spectators = true,
                  partySize = nil, minLevel = nil, maxLevel = nil, forceLevel = nil },
     inviteNames = {},   -- incoming invite id -> sender name
+    tourOpts = { shotClock = 6, spectators = 8, public = true },
+    tourCode = "",
   }, OnlinePage)
   for _, event in ipairs(EVENTS) do
     local fn = function(payload) self:onEvent(event, payload) end
@@ -198,11 +210,14 @@ function OnlinePage:source(game)
   if self.sourceKey ~= key then
     local TeamPick = require("src.online.TeamPick")
     local ok, slot, why = pcall(TeamPick.readSlot, game.version, game.slotId)
+    -- picks belong to a save: another save (or a reloaded one) starts over
+    if self.sourceKey ~= nil then
+      self.team, self.teamOrder = {}, {}
+      self.box = 1
+    end
     self.sourceKey = key
     self.sourceSlot = ok and slot or nil
     self.sourceWhy = ok and why or slot
-    self.team, self.teamOrder = {}, {}
-    self.box = 1
   end
   return self.sourceSlot, self.sourceWhy
 end
@@ -318,7 +333,7 @@ end
 function OnlinePage:request(pending, info)
   self.pending, self.pendingAge, self.pendingInfo = pending, 0, info or {}
   self.readied, self.inviteToken, self.lastResult = nil, nil, nil
-  self.team, self.teamOrder = {}, {}
+  if not (info and info.keepTeam) then self.team, self.teamOrder = {}, {} end
 end
 
 function OnlinePage:host(intent)
@@ -580,7 +595,8 @@ function OnlinePage:picked(ref)
 end
 
 -- Add or drop one pick: a party index, or { where = "box", box, index }.
-function OnlinePage:toggle(ref, game)
+-- limit overrides the room's team size (a tournament entry picks up to 6).
+function OnlinePage:toggle(ref, game, limit)
   if self.readied then return end
   local key = refKey(ref)
   if self.team[key] then
@@ -588,7 +604,7 @@ function OnlinePage:toggle(ref, game)
     for i = #self.teamOrder, 1, -1 do
       if refKey(self.teamOrder[i]) == key then table.remove(self.teamOrder, i) end
     end
-  elseif #self:teamList() < self:partySize(game) then
+  elseif #self:teamList() < (limit or self:partySize(game)) then
     self.team[key] = ref
     self.teamOrder[#self.teamOrder + 1] = ref
   end
@@ -602,12 +618,12 @@ local function digest(packed)
                              Fingerprint.fnv1a32(text, 0x050C5D1F))
 end
 
-function OnlinePage:pack(game, team)
+function OnlinePage:pack(game, team, rule)
   local TeamPick = require("src.online.TeamPick")
   local source = self:source(game)
   if not source then return nil, "That save could not be read." end
   local room = Client().room()
-  local rule = (room and room.rule) or game.profile.rule
+  rule = rule or (room and room.rule) or game.profile.rule
   local ok, why = TeamPick.validate(source, team, rule)
   if not ok then return nil, why end
   return TeamPick.pack(source, team, game.generation)
@@ -653,6 +669,11 @@ function OnlinePage:startMatch(p)
     }
   else
     local team = self.myTeam
+    local tour = select(2, call("tournament"))
+    local entered = tour and tourPicks[tour.tour]
+    if not team and entered then
+      team, self.myPacked = entered.team, entered.packed
+    end
     if not team then
       -- a room that starts on its own (Gen 3) takes the first party members
       team = {}
@@ -726,6 +747,23 @@ function OnlinePage:onEvent(event, payload)
     end
   elseif event == "invite_closed" and type(payload) == "table" then
     self:inviteClosed(payload)
+  elseif event == "tournament" then
+    self:onTournament(payload)
+  elseif event == "tour_match" and type(payload) == "table" then
+    self:say(("You play next: round %d. Your battle opens when it starts."):format(
+      tonumber(payload.round) or 1), "info")
+  elseif event == "tour_spectate" then
+    self:say("A tournament battle is starting. It opens here to watch.", "info")
+  elseif event == "tour_bye" and type(payload) == "table" then
+    self:say(("You have a bye in round %d and go straight through."):format(
+      tonumber(payload.round) or 1), "info")
+  elseif event == "tour_over" and type(payload) == "table" then
+    if payload.championId and self:isYou(payload.championId) then
+      self:say("You won the tournament! You are the champion.", "info")
+    else
+      self:say(("The tournament is over. %s is the champion."):format(
+        tostring(payload.champion or "Nobody")), "info")
+    end
   end
 end
 
@@ -750,6 +788,121 @@ function OnlinePage:inviteClosed(msg)
   local ok, text = pcall(Protocol2.inviteClosedText, msg)
   self:say(ok and text or ("The invite closed: " .. tostring(msg.why)),
     (msg.why == "declined" or msg.why == "timeout") and "info" or "error")
+end
+
+-- ------------------------------------------------------------ tournaments
+
+-- The team picked for a tournament, packed, or nil plus why not.  rule is
+-- the tournament's rule when it is known.
+function OnlinePage:tourEntry(game, rule)
+  local team = self:teamList()
+  if #team == 0 then return nil, "Pick your team first." end
+  local need = rule and tonumber(rule.partySize)
+  if need and #team ~= need then
+    return nil, ("This tournament plays %d Pokemon; you picked %d."):format(need, #team)
+  end
+  rule = rule or {}
+  local packed, why = self:pack(game, team, { partySize = #team, minLevel = rule.minLevel,
+    maxLevel = rule.maxLevel, forceLevel = rule.forceLevel })
+  if not packed then return nil, why end
+  return { team = team, packed = packed }
+end
+
+function OnlinePage:hostTournament()
+  local game, why = self:game()
+  if not game then return self:say(why, "error") end
+  local rule = self:hostRule(game)
+  local entry, err = self:tourEntry(game, rule)
+  if not entry then return self:say(err, "error") end
+  local profile, perr = self:hostProfile(game, "battle")
+  if not profile then return self:say(perr, "error") end
+  local o = self.tourOpts
+  self:advertise(profile)
+  self.tourEntering = entry
+  self:request(Client().createTournament({
+    profile = profile, rule = rule, playing = true, shotClock = o.shotClock,
+    maxSpectators = o.spectators, party = entry.packed, partyDigest = digest(entry.packed),
+    public = o.public,
+  }), { tour = true, keepTeam = true })
+  self:say(nil)
+end
+
+-- Join a tournament by its code (6 letters/digits) or id, as a player
+-- (with the picked team) or a spectator.  entry is its lobby row.
+function OnlinePage:joinTournament(ref, as, entry)
+  local game, why = self:game()
+  if not game then return self:say(why, "error") end
+  as = as or "player"
+  ref = tostring(ref or ""):gsub("%s", "")
+  local opts = { as = as }
+  if ref:match("^t%x+$") and #ref == 17 then
+    opts.tour = ref:lower()
+  elseif #ref == 6 and ref:match("^%w+$") then
+    opts.code = ref:upper()
+  else
+    return self:say("Enter a tournament code (6 letters and digits).", "error")
+  end
+  local profile = entry and self:joinProfile(game, entry) or game.profile
+  opts.profile = profile
+  if as == "player" then
+    local rule = entry and entry.profile and entry.profile.rule
+    local tourEntry, err = self:tourEntry(game, rule)
+    if not tourEntry then return self:say(err, "error") end
+    opts.party, opts.partyDigest = tourEntry.packed, digest(tourEntry.packed)
+    self.tourEntering = tourEntry
+  else
+    self.tourEntering = nil
+  end
+  self:advertise(profile)
+  local ok, pending = call("joinTournament", opts)
+  if not ok then return self:say("Couldn't join that tournament.", "error") end
+  self:request(pending, { tour = true, as = as, keepTeam = true })
+  self:say(nil)
+end
+
+function OnlinePage:onTournament(tour)
+  if type(tour) ~= "table" then
+    self.tourEntering = nil
+    return
+  end
+  if self.tourEntering and tour.tour then
+    tourPicks[tour.tour] = self.tourEntering
+    self.tourEntering = nil
+  end
+end
+
+function OnlinePage:tourCall(name, ...)
+  call(name, ...)
+end
+
+-- The creator of a tournament can start it, remove players and close it.
+function OnlinePage:isCreator(tour)
+  return tour ~= nil and tour.creator ~= nil and self:isYou(tour.creator)
+end
+
+-- The name of a tournament player, by id.
+function OnlinePage.tourName(tour, id)
+  if id == nil then return "?" end
+  for _, p in ipairs(tour and tour.players or {}) do
+    if p.id == id then return tostring(p.name or id) end
+  end
+  return tostring(id)
+end
+
+-- This trainer's next unplayed match in the current round, or nil.
+function OnlinePage:nextMatch(tour)
+  if not (tour and tour.stage == "running") then return nil end
+  local you = self:you()
+  if not you then return nil end
+  for _, round in ipairs(tour.bracket or {}) do
+    for _, match in ipairs(round.matches or {}) do
+      if (match.a == you.id or match.b == you.id)
+          and (match.state == "pending" or match.state == "live") then
+        return match, round.round
+      end
+    end
+  end
+  return nil
 end
 
 -- ------------------------------------------------------------------ trade
@@ -881,6 +1034,7 @@ function OnlinePage:update(dt)
       self:say("Trade complete. The save was updated.", "info")
       self.launcher:savesChanged()
       self.sourceKey = nil
+      self.team, self.teamOrder = {}, {}
       self:endTrade()
     elseif stage == "cancelled" then
       local why = self.trade.session and self.trade.session.error
@@ -1000,8 +1154,11 @@ function OnlinePage:draw(x, y, w, h, s)
   if not online then return cy - y + pad end
 
   cy = self:drawInvites(game, cx, cy, cw, m)
+  local okT, tour = call("tournament")
   local room = Client().room()
-  if room then
+  if okT and type(tour) == "table" then
+    cy = self:drawTournament(tour, room, game, cx, cy, cw, m)
+  elseif room then
     cy = self:drawRoom(room, game, cx, cy, cw, m)
   else
     cy = self:drawLobby(game, cx, cy, cw, m)
@@ -1011,5 +1168,6 @@ end
 
 require("src.launcher.online.LobbyView").install(OnlinePage)
 require("src.launcher.online.RoomView").install(OnlinePage)
+require("src.launcher.online.TourView").install(OnlinePage)
 
 return OnlinePage

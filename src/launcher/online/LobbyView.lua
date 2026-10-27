@@ -118,6 +118,7 @@ function LobbyView.install(P)
       { value = "rooms", label = ("Rooms (%d)"):format(#rooms) },
       { value = "watch", label = ("Watch (%d)"):format(#watch) },
       { value = "players", label = ("Players (%d)"):format(#players) },
+      { value = "tours", label = ("Tournaments (%d)"):format(#self:openTournaments()) },
     }
     local refreshW = Layout.buttonW(s, "Refresh")
     local tabW = cw - refreshW - gap
@@ -132,6 +133,8 @@ function LobbyView.install(P)
       return self:drawWatchList(watch, game, cx, cy, cw, m)
     elseif self.tab == "players" then
       return self:drawPlayers(players, game, cx, cy, cw, m)
+    elseif self.tab == "tours" then
+      return self:drawTourLobby(game, cx, cy, cw, m)
     end
     return self:drawRoomList(rooms, game, cx, cy, cw, m)
   end
@@ -252,7 +255,7 @@ function LobbyView.install(P)
   end
 
   -- A list row with a title, a detail line and buttons at the right.
-  local function listRow(self, cx, cy, cw, m, id, title, detail, buttons)
+  function P:listRow(cx, cy, cw, m, id, title, detail, buttons)
     local s = m.s
     local entryH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(52 * s))
     local bw = 0
@@ -294,7 +297,7 @@ function LobbyView.install(P)
       if entry.locked then parts[#parts + 1] = "PIN" end
       if not fits then parts[#parts + 1] = "not your game" end
       local room = entry.room
-      cy = listRow(self, cx, cy, cw, m, "online-room-" .. tostring(entry.id),
+      cy = self:listRow(cx, cy, cw, m, "online-room-" .. tostring(entry.id),
         tostring(entry.name or "?"), table.concat(parts, "  -  "), {
           { key = "join", label = "Join", enabled = fits and self.pending == nil,
             run = function() self:join(nil, room, { entry = entry }) end },
@@ -315,7 +318,7 @@ function LobbyView.install(P)
       if format then parts[#parts + 1] = format end
       parts[#parts + 1] = ("%d watching"):format(entry.spectators or 0)
       if not fits then parts[#parts + 1] = "not your game" end
-      cy = listRow(self, cx, cy, cw, m, "online-watch-" .. tostring(entry.id),
+      cy = self:listRow(cx, cy, cw, m, "online-watch-" .. tostring(entry.id),
         tostring(entry.name or "?") .. "'s battle", table.concat(parts, "  -  "), {
           { key = "go", label = "Watch", enabled = fits and self.pending == nil,
             run = function() self:watch(entry) end },
@@ -334,7 +337,7 @@ function LobbyView.install(P)
       local detail = P.statusText(entry)
       if entry.version then detail = detail .. "  -  " .. gameName(entry.version) end
       local can = game ~= nil and out == nil
-      cy = listRow(self, cx, cy, cw, m, "online-player-" .. tostring(entry.id),
+      cy = self:listRow(cx, cy, cw, m, "online-player-" .. tostring(entry.id),
         tostring(entry.name or "?"), detail, {
           { key = "battle", label = "Battle", enabled = can,
             run = function() self:invitePlayer(entry, "battle") end },

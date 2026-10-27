@@ -146,6 +146,17 @@ package.loaded["src.online.Client"] = {
   end,
   replyInvite = function(id, accept) record("reply", id, accept) return true end,
   sendRaw = function(msg) record("raw", msg) end,
+  tournament = function() return C.tour end,
+  createTournament = function(opts)
+    record("tourCreate", opts) C.pending = { kind = "tournament" } return C.pending
+  end,
+  joinTournament = function(opts)
+    record("tourJoin", opts) C.pending = { kind = "tournament" } return C.pending
+  end,
+  startTournament = function() record("tourStart") end,
+  kickFromTournament = function(id) record("tourKick", id) end,
+  closeTournament = function() record("tourClose") end,
+  leaveTournament = function() record("tourLeave") C.tour = nil end,
 }
 local connectStarts = {}
 package.loaded["src.online.Connect"] = {
@@ -575,6 +586,117 @@ check(has(page.notice.text, "desktop or mobile app"), "and says Online needs the
 check(has(drawText(l), "desktop or mobile app"), "on the page too")
 love.system.getOS = realOS
 
+-- ---------------------------------------------------------- 12: tournaments
+C.state = "online"
+l, page = fresh("gold")
+l:update(0)
+local openTour = { id = "u8", name = "ORGANIZER", tour = "t00000000000000c1", stage = "registering",
+  players = 3, version = "gold", profile = { version = "gold", rulesetId = "gen2", rule = { partySize = 2 } } }
+C.watch = { openTour }
+page.tab = "tours"
+text = drawText(l)
+check(has(text, "Tournaments (1)"), "the lobby has a Tournaments list")
+check(has(text, "Host a tournament (0/3)") and has(text, "Shot clock 6"), "with hosting and its shot clock")
+check(has(text, "ORGANIZER's tournament") and has(text, "taking players"), "and the public tournaments")
+page:hostTournament()
+check(has(page.notice.text, "Pick your team"), "hosting needs a team first")
+game = page:game()
+for i = 1, 4 do page:toggle(i, game, 6) end
+eq(#page:teamList(), 4, "a tournament team can hold more than the room size")
+page:hostTournament()
+check(has(page.notice.text, "plays 3"), "but must match the tournament's team size")
+page:toggle(4, game, 6)
+page.tourOpts.shotClock, page.tourOpts.spectators, page.tourOpts.public = 9, 32, false
+page:hostTournament()
+local made = last("tourCreate")[1]
+check(made ~= nil, "Host a tournament creates one")
+eq(made.shotClock, 9, "with the shot clock")
+eq(made.maxSpectators, 32, "the spectator cap")
+eq(made.public, false, "code only")
+eq(#made.party, 3, "entering the picked team")
+check(type(made.partyDigest) == "string", "with its digest")
+eq(made.rule.partySize, 3, "under the room options' rule")
+eq(#page:teamList(), 3, "and keeps the team picked")
+C.tour = { tour = "t00000000000000a1", code = "ABC234", creator = "me", stage = "registering",
+  players = { { id = "me", name = "TRAINER#123" }, { id = "u1", name = "RIVAL" } },
+  rule = { partySize = 3 }, shotClock = 9, maxSpectators = 32, spectators = {}, bracket = {},
+  deadlines = {} }
+C.handlers.tournament(C.tour)
+check(page.tourPicks["t00000000000000a1"] ~= nil, "the entered team is kept for later rounds")
+C.pending.done = true
+l:update(0)
+text = drawText(l)
+check(has(text, "code ABC234") and has(text, "Taking players (2 so far)"), "the tournament shows its code and players")
+check(has(text, "TRAINER#123 (you)") and has(text, "Start") and has(text, "Close tournament"),
+  "the creator can start and close it")
+check(has(text, "Kick"), "and remove players")
+page:tourCall("kickFromTournament", "u1")
+eq(last("tourKick")[1], "u1", "Kick removes that player")
+page:tourCall("startTournament")
+eq(count("tourStart"), 1, "Start starts it")
+
+-- running: the bracket and "you play next"
+C.tour.stage, C.tour.round = "running", 1
+C.tour.bracket = { { round = 1, matches = { { match = "m1", a = "me", b = "u1", state = "pending" } } } }
+C.tour.deadlines = { shot = C.now + 65000 }
+text = drawText(l)
+check(has(text, "You play next: round 1 against RIVAL"), "the next match is called out")
+check(has(text, "TRAINER#123  vs  RIVAL"), "the bracket lists the matches")
+check(has(text, "Choose a move within 1:05"), "and the shot clock counts down")
+check(not has(text, "Start"), "a running tournament can't be started again")
+C.handlers.tour_match({ match = "m1", round = 1, room = "r00000000000000d1", role = "player" })
+check(has(page.notice.text, "You play next: round 1"), "a called match says so")
+C.handlers.tour_bye({ match = "m2", round = 2 })
+check(has(page.notice.text, "bye in round 2"), "a bye says so")
+
+-- the round's battle boots on a fresh page with the entered team
+l, page = fresh("gold")
+l:update(0)
+C.room = { room = "r00000000000000d1", intent = "tournament", seats = 2, players = {}, stage = "waiting",
+  rule = { partySize = 3 }, deadlines = {} }
+n = #launches
+C.handlers.match_start({ role = "guest", seat = 1, seed = 5, match = "m1", room = C.room.room,
+  theirParty = { { species = "BULBASAUR", level = 5 }, { species = "CHARMANDER", level = 5 },
+    { species = "SQUIRTLE", level = 5 } } })
+l:update(0)
+eq(#launches, n + 1, "a tournament battle boots: " .. tostring(page.notice and page.notice.text))
+spec = launches[#launches].opts.arena
+eq(spec.myParty and #spec.myParty, 3, "with the team entered")
+eq(spec.myParty and spec.myParty[3].species, "MON153", "the same picks")
+C.room = nil
+l, page = fresh("gold")   -- launching closed the page, as the real launcher does
+l:update(0)
+
+C.handlers.tour_over({ tour = C.tour.tour, champion = "RIVAL", championId = "u1" })
+check(has(page.notice.text, "RIVAL is the champion"), "the champion is announced")
+C.handlers.tour_over({ tour = C.tour.tour, champion = "TRAINER#123", championId = "me" })
+check(has(page.notice.text, "You won the tournament"), "and a win is celebrated")
+C.tour.stage, C.tour.championName = "finished", "RIVAL"
+check(has(drawText(l), "Champion: RIVAL"), "a finished tournament names its champion")
+page:tourCall("leaveTournament")
+eq(C.tour, nil, "Leave leaves it")
+
+-- joining
+game = page:game()
+for i = 1, 3 do page:toggle(i, game, 6) end
+page:joinTournament("abc")
+check(page.notice.kind == "error" and has(page.notice.text, "code"), "a bad code is refused")
+page:joinTournament("abc234", "player")
+local joined = last("tourJoin")[1]
+eq(joined.code, "ABC234", "a code joins that tournament")
+eq(joined.as, "player", "as a player")
+eq(#joined.party, 3, "with the picked team")
+page:joinTournament(openTour.tour, "player", openTour)
+check(has(page.notice.text, "plays 2"), "a public tournament checks its team size first: " .. page.notice.text)
+page:joinTournament(openTour.tour, "spectator", openTour)
+joined = last("tourJoin")[1]
+eq(joined.tour, openTour.tour, "Watch joins by the tournament's id")
+eq(joined.as, "spectator", "as a spectator")
+eq(joined.party, nil, "without a team")
+C.pending.done = true
+l:update(0)
+C.watch = {}
+
 -- ------------------------------------------------- layouts, phone first
 C.state = "online"
 l, page = fresh("gold")
@@ -585,10 +707,10 @@ page.pinPrompt = { room = "r7777777777777777", text = "" }
 C.invites = { inv }
 C.lobby = { { id = "u2", name = "BLUE", status = "idle", version = "gold" } }
 C.rooms = { locked }
-C.watch = { live }
+C.watch = { live, openTour }
 for _, size in ipairs({ { 390, 844 }, { 1280, 720 }, { 360, 640 } }) do
   window(size[1], size[2])
-  for _, tab in ipairs({ "rooms", "watch", "players" }) do
+  for _, tab in ipairs({ "rooms", "watch", "players", "tours" }) do
     page.tab = tab
     fits(l, "the lobby (" .. tab .. ")")
   end
@@ -604,5 +726,21 @@ for _, size in ipairs({ { 390, 844 }, { 1280, 720 } }) do
   window(size[1], size[2])
   fits(l, "a battle room")
 end
+
+C.room = nil
+C.tour = { tour = "t00000000000000a1", code = "ABC234", creator = "me", stage = "running", round = 1,
+  players = { { id = "me", name = "TRAINER#123" }, { id = "u1", name = "RIVAL" },
+    { id = "u2", name = "BLUE", eliminated = true } },
+  rule = { partySize = 3 }, shotClock = 6, maxSpectators = 8, spectators = {},
+  bracket = { { round = 1, matches = { { match = "m1", a = "me", b = "u1", state = "live" },
+    { match = "m2", a = "u2", state = "bye" } } } }, deadlines = { shot = C.now + 5000 } }
+for _, size in ipairs({ { 390, 844 }, { 1280, 720 } }) do
+  window(size[1], size[2])
+  fits(l, "a running tournament")
+end
+C.tour.stage = "registering"
+window(390, 844)
+fits(l, "a tournament taking players")
+C.tour = nil
 
 T.finish("online page features")
