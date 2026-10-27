@@ -560,7 +560,12 @@ function Kit._resolveColumns(cur, dir, n)
     end
     return
   end
+  -- Down / Up go to the NEXT row first, then to the control in it nearest
+  -- sideways: scoring distance and sideways gap together let a control far
+  -- to the right (Mod tools' Back, its Safe mode switch) skip a whole row of
+  -- buttons for one further down that happened to sit under it.
   local function vertical(sameColumn)
+    local cands, nearest = {}, nil
     each(function(c, col)
       if (col == curCol) == sameColumn then
         local dy = (c.y + c.h / 2) - cy
@@ -569,10 +574,16 @@ function Kit._resolveColumns(cur, dir, n)
         -- into another column only straight down/up (a stacked phone layout,
         -- the tab bar), never sideways into the next column over
         if forward > 1 and (sameColumn or gap == 0) then
-          offer(c, forward + gap * 2)
+          cands[#cands + 1] = { c = c, forward = forward, gap = gap }
+          if not nearest or forward < nearest then nearest = forward end
         end
       end
     end)
+    if not nearest then return end
+    local band = nearest + math.max(cur.h, 12)
+    for _, it in ipairs(cands) do
+      if it.forward <= band then offer(it.c, it.gap * 4 + it.forward) end
+    end
   end
   vertical(true)
   if not best then vertical(false) end

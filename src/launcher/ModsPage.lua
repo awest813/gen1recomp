@@ -1928,9 +1928,13 @@ function ModsPage:drawTools(x, y, w, h, s)
   local on = self:safeMode()
   local text = "Safe mode starts every game with all mods off, to find out whether a mod "
     .. "is behind a problem. Your choices are kept for when you turn it off."
-  local textW = cw - tw - Theme.space("m", s)
-  Kit.textBold("button", "Safe mode", cx, cy, on and PAL.red or PAL.heading)
-  local now, hit = Kit.toggle(cx + cw - tw, cy, tw, rh, on, "safe-mode")
+  local textW = cw
+  -- the switch sits beside its label, in the column the buttons below use:
+  -- at the far right, Down from it skipped the "Turn all" row
+  local labelW = Kit.textWidth("button", "Safe mode")
+  Kit.textBold("button", "Safe mode", cx, cy + (rh - Kit.textHeight("button")) / 2,
+    on and PAL.red or PAL.heading)
+  local now, hit = Kit.toggle(cx + labelW + Theme.space("m", s), cy, tw, rh, on, "safe-mode")
   if hit then l:queue(function() self:setSafeMode(now) end) end
   cy = cy + math.max(rh, Kit.textHeight("button")) + Theme.space("xxs", s)
   cy = para("small", text, cx, cy, textW, PAL.muted, gap * 2)

@@ -163,4 +163,13 @@ check(tostring(Kit.focusId):match("^nav%-") ~= nil and Kit._ringShown,
 -- (the stubbed Box cannot open here, so the section itself stays put)
 eq(Kit.focusId, "nav-box", "Games then RB: the ring is on Box")
 
+-- ---- Down goes row by row: Mod tools' Back, Safe mode, then the Turn all row
+l.selected = "gold"; l.page = "modtools"; frame(12)
+Kit.setFocus("modtools-back"); frame(2)
+l:keypressed("down"); frame(2)
+eq(Kit.focusId, "safe-mode", "Down from Back reaches the Safe mode switch")
+l:keypressed("down"); frame(2)
+eq(Kit.focusId, "mods-all-on", "then the Turn all row, not the bottom row")
+l.page = nil; frame(12)
+
 T.finish("launcher pad audit")

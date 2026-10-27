@@ -2237,12 +2237,28 @@ function Launcher:drawGame(x, y, w, h, s)
   -- Carts / Mods on the banner's right
   local rightW = 0
   local gameMenuAt
+  -- how many mods this game starts with, and a total conversion by name:
+  -- "New game" on a Yellow card that boots Sable Cove has to say so first
+  local modsOn, conversion = 0, nil
   if ready and not importing then
+    for _, row in ipairs(self:modsFor(v) or {}) do
+      if row.enabled and row.supported and not row.broken then
+        modsOn = modsOn + 1
+        local m = row.manifest or {}
+        if m.profile == "total_conversion" or m.category == "TOTAL_CONVERSION" then
+          conversion = conversion or row.name
+        end
+      end
+    end
+  end
+  self.bannerConversion = conversion
+  if ready and not importing then
+    local modsLabel = modsOn > 0 and ("Mods (%d)"):format(modsOn) or "Mods"
     local mh = math.max(Kit.tapMin(), math.floor(32 * s))
-    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", "Mods") + Theme.space("xl", s) + Theme.space("s", s))
+    local mw = math.max(Kit.tapMin(), Kit.textWidth("small", modsLabel) + Theme.space("xl", s) + Theme.space("s", s))
     local kw = math.max(Kit.tapMin(), Kit.textWidth("small", "Carts") + Theme.space("xl", s) + Theme.space("s", s))
     local by = compact and y + (bannerH - mh) / 2 or y + Theme.space("m", s)
-    if Kit.button(x + w - pad - mw, by, mw, mh, "Mods", { id = "mods", font = "small" }) then
+    if Kit.button(x + w - pad - mw, by, mw, mh, modsLabel, { id = "mods", font = "small", fullLabel = true }) then
       self:queue(function() self.page = "mods"; self.modScroll = 0 end)
     end
     if Kit.button(x + w - pad - mw - Theme.space("s", s) - kw, by, kw, mh, "Carts",
@@ -2290,6 +2306,10 @@ function Launcher:drawGame(x, y, w, h, s)
     status = "Playing as " .. tostring(cartRow.title or cartId)
       .. (problem and (" - " .. problem) or "")
     scolor = problem and PAL.red or PAL.blue
+  elseif self.bannerConversion and self.ready[v] then
+    -- a total conversion replaces the game: New game is not this game
+    status = "Plays the mod " .. tostring(self.bannerConversion)
+    scolor = PAL.yellow
   end
   -- beside Carts / Mods when the banner is slim, under them otherwise
   Kit.text("small", Kit.ellipsize("small", status, math.max(0, (compact and titleW or x + w - pad - tx))),
