@@ -208,7 +208,7 @@ function ModsPage:changed()
   local l = self.launcher
   l.modRows, l.cartPlans = nil, nil
   self.importerStates, self.schemas, self.seenSchemas = nil, nil, nil
-  self.exampleRows, self.codeOptions = nil, nil
+  self.exampleRows, self.codeOptions, self.loadReport = nil, nil, nil
 end
 
 -- An asset importer's state (missing / partial / ready) reads its packs'
@@ -699,6 +699,32 @@ function ModsPage:schemaFor(row)
   end
   self.schemas[key] = schema
   return schema or nil
+end
+
+-- Why an installed mod did not start the last time `version` was played, from
+-- the loader's report (src/mods/Loader.lua _writeLoadReport), or nil.  A
+-- mod updated since then is not held to its old version's failure.
+function ModsPage:lastFailure(version, row)
+  if not (version and row and row.id) then return nil end
+  if self.loadReport == nil then
+    self.loadReport = false
+    local fs = love and love.filesystem
+    local okL, Loader = pcall(require, "src.mods.Loader")
+    local file = okL and type(Loader) == "table" and Loader.LOAD_REPORT_FILENAME
+      or "launcher_mod_load_report.json"
+    if fs and fs.getInfo and fs.getInfo(file) then
+      local okR, body = pcall(fs.read, file)
+      local okD, doc = pcall(require("src.link.Json").decode, okR and body or "")
+      if okD and type(doc) == "table" and type(doc.versions) == "table" then
+        self.loadReport = doc.versions
+      end
+    end
+  end
+  local byId = self.loadReport and self.loadReport[version]
+  local hit = type(byId) == "table" and byId[row.id]
+  if type(hit) ~= "table" then return nil end
+  if hit.version and row.version and tostring(hit.version) ~= tostring(row.version) then return nil end
+  return tostring(hit.reason or "it failed to start")
 end
 
 -- A mod whose entry script calls mod.options:define has options the launcher
@@ -1463,8 +1489,12 @@ function ModsPage:drawMods(x, y, w, h, s)
       local detail
       local ink = PAL.muted
       local upd, updInk = self:updateLine(row)
+      local usableRow = not row.broken and row.supported
+      local failed = row.enabled and usableRow and self:lastFailure(v, row) or nil
       if need then
         detail, ink = need.text, PAL.yellow
+      elseif failed then
+        detail, ink = "Did not start last time: " .. failed, PAL.red
       elseif row.broken then
         detail, ink = "Broken: " .. row.broken, PAL.red
       elseif not row.supported then
@@ -1498,9 +1528,12 @@ function ModsPage:drawMods(x, y, w, h, s)
         end
       end
       local usable = not row.broken and row.supported
+      -- on, but it will not (or did not) run: red, not the green of a working mod
+      local stuck = row.enabled and usable and (failed or need)
       if Kit.button(onX, by, tw, sbh, row.enabled and usable and "On" or "Off",
           { id = "mod-toggle-" .. tostring(row.folder), font = "small",
-            kind = row.enabled and usable and "primary" or nil, enabled = usable }) then
+            kind = stuck and "danger" or row.enabled and usable and "primary" or nil,
+            enabled = usable }) then
         l:queue(function() self:toggleMod(v, row) end)
       end
       -- a press on a button is not also a press on its row
@@ -1730,6 +1763,11 @@ function ModsPage:drawDetail(x, y, w, h, s)
   -- what it still needs before it can load, and the way to supply it
   local need = usable and self:modNeeds(row) or nil
   if need then cy = para("small", need.text, cx, cy, cw, PAL.yellow, gap) end
+  local failed = row.enabled and usable and self:lastFailure(v, row) or nil
+  if failed then
+    cy = para("small", "It is on, but did not start the last time you played "
+      .. gameName(v) .. ": " .. failed, cx, cy, cw, PAL.red, gap)
+  end
   local items = {
     { label = row.enabled and usable and "Turn off" or "Turn on", id = "mod-detail-toggle",
       kind = (not row.enabled and usable) and "primary" or nil, enabled = usable,

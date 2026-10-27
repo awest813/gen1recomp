@@ -78,7 +78,8 @@ end
 
 local function truncate(text, cols)
   text = tostring(text or "")
-  if #text > cols then return text:sub(1, cols) end
+  -- cut with the font's "…" so a cut name reads as cut
+  if #text > cols then return (text:sub(1, cols - 1):gsub("%s+$", "")) .. "…" end
   return text
 end
 

@@ -37,6 +37,10 @@ Loader.__index = Loader
 local MOD_STATE_FILE = "mod_state.lua" -- legacy migration only
 local OPTION_SCHEMAS_FILENAME = "mod_option_schemas.json"
 local OPTION_SCHEMAS_VERSION = 1
+-- Which mods did not start on the last boot of each game, and why, for the
+-- launcher's mod list (src/launcher/ModsPage.lua).  Data only, like the
+-- option snapshot beside it.
+local LOAD_REPORT_FILENAME = "launcher_mod_load_report.json"
 
 -- The working tree's engine version is the "0.0.0-dev" placeholder that CI
 -- restamps into the packed game.love (src/core/Version.lua:7), and it sorts
@@ -2214,9 +2218,42 @@ function Loader:load(data, opts)
   Assets.installLoader(self)
   self.events:emit("mods.loaded", { loader = self, data = data })
   self:_writeOptionSchemas()
+  self:_writeLoadReport()
   self.initialized = true
   return #self.errors == 0
 end
+
+-- The failures of this boot under this game's key, merged into the report
+-- the other games left: { versions = { [version] = { [id] = { reason,
+-- version } } } }.  A boot with nothing failed still rewrites its key, so a
+-- fixed mod stops reading as failed.
+function Loader:_writeLoadReport()
+  local version = self:_targetVersion()
+  if not (self.fs.write and version) then return end
+  local failed = {}
+  for id, mod in pairs(self.mods) do
+    -- a real fault only: a mod skipped for another game has no failure
+    if mod.failed and mod.failure and not mod.skipReason and mod.enabled ~= false
+        and mod.state ~= "wrong_generation" then
+      failed[id] = { reason = tostring(mod.failure):sub(1, 240),
+        version = mod.manifest and mod.manifest.version }
+    end
+  end
+  local doc
+  if self.fs.getInfo and self.fs.getInfo(LOAD_REPORT_FILENAME) and self.fs.read then
+    local okR, body = pcall(self.fs.read, LOAD_REPORT_FILENAME)
+    local okD, got = pcall(Json.decode, okR and body or "")
+    if okD and type(got) == "table" and type(got.versions) == "table" then doc = got end
+  end
+  if not doc and next(failed) == nil then return end
+  doc = doc or { schema_version = 1, versions = {} }
+  local before = doc.versions[version]
+  doc.versions[version] = failed
+  if before == nil and next(failed) == nil then return end
+  local okE, encoded = pcall(Json.encode, doc)
+  if okE then pcall(self.fs.write, LOAD_REPORT_FILENAME, encoded) end
+end
+Loader.LOAD_REPORT_FILENAME = LOAD_REPORT_FILENAME
 
 -- the manager reads api, profile, permissions, per-mod state and the load
 -- order from here; enabled stays the user's flag so a failed mod still

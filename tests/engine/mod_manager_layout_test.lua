@@ -73,7 +73,8 @@ end
 local function inside(list, label)
   for _, d in ipairs(list) do
     local col = d.x / 8
-    local lastCol = col + #d.text - 1
+    -- characters, not bytes: the "…" a clipped name ends in is one tile
+    local lastCol = col + select(2, tostring(d.text):gsub("[^\128-\191]", "")) - 1
     local row = d.y / 8
     check(col >= 1 and lastCol <= 18 and row >= 1 and row <= 16,
       ("%s: %q at col %d..%d row %d stays inside the frame")
@@ -125,7 +126,7 @@ check(seenTail, "the hot row scrolls to the end of a long name")
 m:moveCursor(1)
 clock = 3
 local moved = frame()
-check(rowOf(moved, "Mew Starter Exa") ~= nil,
+check(rowOf(moved, "Mew Starter Ex…") ~= nil,
   "a row the cursor left goes back to a clipped head")
 inside(moved, "list after a move")
 

@@ -130,7 +130,7 @@ end
 -- ------- Marquee: characters, not bytes
 do
   local Marquee = require("src.ui.Marquee")
-  eq(Marquee.clip("Pokémon", 5), "Pokém", "a clip keeps é whole")
+  eq(Marquee.clip("Pokémon", 5), "Poké…", "a clip keeps é whole, and ends in the charmap's …")
   local a = Marquee.scroll("A LONG STATUS LINE HERE", 10, "one")
   local b = Marquee.scroll("ANOTHER LONG LINE HERE!", 10, "two")
   check(a ~= nil and b ~= nil, "two lines can scroll at once")

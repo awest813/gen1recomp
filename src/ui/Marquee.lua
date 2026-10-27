@@ -67,10 +67,15 @@ function Marquee.scroll(text, maxChars, key)
   return Marquee.at(text, maxChars, now - p.start)
 end
 
+-- Cut to maxChars, ending in "…" (the charmap's own ellipsis, $75 in Gen 1
+-- and 2) so a cut name reads as cut and not as the whole name.
 function Marquee.clip(text, maxChars)
   text = text or ""
   if #text <= maxChars then return text end
-  return slice(chars(text), 1, maxChars)
+  local list = chars(text)
+  if #list <= maxChars then return text end
+  if maxChars < 2 then return slice(list, 1, maxChars) end
+  return (slice(list, 1, maxChars - 1):gsub("%s+$", "")) .. "…"
 end
 
 return Marquee
