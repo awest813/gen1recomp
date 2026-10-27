@@ -99,6 +99,22 @@ end
 -- it. Call whenever options load or change (see Game:applyOptions and
 -- BindingsMenu:storeBinding) -- without this the menu records a choice
 -- that never actually reaches gameplay.
+-- The key CONTROLS shows for each button (src/ui/BindingsMenu.lua BUTTONS).
+-- Rebinding a button to another key takes this one away from it, or "A = C"
+-- left Z pressing A as well.  The other default keys (W beside Up, Space
+-- beside Z) are extras and stay; Escape is never taken from START, since it
+-- is how the player backs out of CONTROLS.
+-- true when some row of the overlay is bound to `key` (it is someone's now)
+local function rebindsTo(overlay, key)
+  for _, b in pairs(overlay) do
+    if b == key or (type(b) == "table" and b.key == key) then return true end
+  end
+  return false
+end
+
+local PRIMARY_KEY = { up = "up", down = "down", left = "left", right = "right",
+  a = "z", b = "x", select = "tab", l = "q", r = "e" }
+
 function Input:applyBindings(overlay)
   local keys, pads, joys, acts, explicit = {}, {}, {}, {}, {}
   for key, action in pairs(DEFAULT_BINDINGS) do keys[key] = action end
@@ -113,12 +129,23 @@ function Input:applyBindings(overlay)
     local binding = overlay[id]
     if not Input.PAD_ACTIONS[id] then
       if type(binding) == "table" then
-        if binding.key then keys[binding.key] = id end
+        if binding.key then
+          local primary = PRIMARY_KEY[id]
+          if primary and binding.key ~= primary and keys[primary] == id
+              and not (type(overlay) == "table" and rebindsTo(overlay, primary)) then
+            keys[primary] = nil
+          end
+          keys[binding.key] = id
+        end
         if binding.pad then
           local button = GamepadMap.normalizePad and GamepadMap.normalizePad(binding.pad) or GamepadMap.TRIGGER_AXES[binding.pad] or binding.pad
           pads[button], acts[button] = id, nil
         end
-      elseif type(binding) == "string" then keys[binding] = id end
+      elseif type(binding) == "string" then
+        local primary = PRIMARY_KEY[id]
+        if primary and binding ~= primary and keys[primary] == id then keys[primary] = nil end
+        keys[binding] = id
+      end
     end
   end
   for _, id in ipairs(ids) do

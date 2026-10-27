@@ -200,4 +200,20 @@ do
   Input.lastDevice = nil
 end
 
+-- ---- a rebind takes the shown key away; extras and Escape stay
+do
+  Input:init()
+  Input:applyBindings({ a = { key = "c" } })
+  eq(Input.keyBindings.c, "a", "C is A")
+  eq(Input.keyBindings.z, nil, "Z, the key CONTROLS showed, no longer presses A")
+  eq(Input.keyBindings.space, "a", "Space, an extra, still does")
+  Input:applyBindings({ start = { key = "p" } })
+  eq(Input.keyBindings.escape, "start", "Escape stays START")
+  Input:applyBindings({ a = { key = "x" }, b = { key = "z" } })
+  eq(Input.keyBindings.x, "a", "a swap: X is A")
+  eq(Input.keyBindings.z, "b", "and Z is B")
+  Input:applyBindings(nil)
+  eq(Input.keyBindings.z, "a", "with no rebinds Z is A again")
+end
+
 T.finish("rebind controls audit")

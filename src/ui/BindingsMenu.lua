@@ -447,7 +447,8 @@ function BindingsMenu:draw()
     love.graphics.setColor(0, 0, 0, 1)
     Font.draw(Strings("PRESS A BUTTON"), 24, 60)
     Font.draw(Strings("RELEASE TO SET"), 24, 72)
-    Font.draw(Strings("B/ESC CANCELS"), 24, 84)
+    -- a keyboard's X stays bindable (it has Esc); a pad or touch B cancels
+    Font.draw(Strings("ESC, PAD B OR"), 24, 84)
     Font.draw(Strings("TOUCH B CANCELS"), 24, 96)
     love.graphics.setColor(1, 1, 1, 1)
   end

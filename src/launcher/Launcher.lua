@@ -2818,7 +2818,7 @@ function Launcher:drawRail(x, y, w, h, s)
         icon = it.icon, fullLabel = not iconsOnly, align = not iconsOnly and "left" or nil,
         active = current == it.id,
         color = opts.color, glow = opts.glow, enabled = opts.enabled }) then
-      if opts.run then self:queue(opts.run) else self:queue(function() self:goSection(it.id) end) end
+      if opts.run then self:queue(opts.run, opts.keepArmed) else self:queue(function() self:goSection(it.id) end) end
     end
   end
   for _, it in ipairs(NAV) do
@@ -2836,8 +2836,18 @@ function Launcher:drawRail(x, y, w, h, s)
   -- Quit sits at the foot, away from everything else, when there is room
   if quits then
     local footY = y + h - Theme.space(showName and "l" or "s", s) - itemH
-    item({ id = "quit", label = "Quit", icon = "x" }, math.max(cy + groupGap, footY),
-      { run = function() self:quit() end })
+    -- from the keyboard or a pad (the ring shown) Quit asks twice: arrowing
+    -- down the rail and pressing Enter one row too far closed the app
+    item({ id = "quit", label = self.armedDelete == "quit" and "Quit?" or "Quit", icon = "x" },
+      math.max(cy + groupGap, footY),
+      { keepArmed = true, run = function()
+        if Kit._ringShown and self.armedDelete ~= "quit" then
+          self.armedDelete = "quit"
+          return self:say("Press Quit again to close PK:GB.", "notice")
+        end
+        self.armedDelete = nil
+        self:quit()
+      end })
   end
 end
 
@@ -2903,6 +2913,16 @@ function Launcher:draw()
   end
   Kit.beginFrame(mx, my, click ~= nil, self.wheel or 0)
   self.pageEntryId = nil
+  -- a Quit armed by the keyboard or pad disarms once the ring leaves it
+  if self.armedDelete == "quit" and Kit._ringShown and Kit.focusId ~= "nav-quit" then
+    self.armedDelete = nil
+  end
+  -- moving the ring through the game list picks the game, as a console's
+  -- menu does: the panel beside it follows the highlight
+  if not self.page and Kit._ringShown then
+    local v = tostring(Kit.focusId or ""):match("^game%-(.+)$")
+    if v and v ~= self.selected and GameVersion.VERSIONS[v] then self:selectGame(v) end
+  end
   -- which popups were up last frame, so one that just opened can take the ring
   self._popupPrev, self._popupNow = self._popupNow or {}, {}
   -- the toast is drawn last; last frame's rect keeps a press on it from

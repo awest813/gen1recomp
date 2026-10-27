@@ -276,4 +276,34 @@ do
   GM.isAccelerometer = real
 end
 
+-- ---- Quit from the pad asks twice; leaving it disarms
+do
+  local quits = 0
+  local realQuit = l.quit
+  l.quit = function() quits = quits + 1 end
+  l.page = nil; frame(12)
+  Kit.setFocus("nav-quit"); frame(2)
+  pad("a"); frame(2)
+  eq(quits, 0, "the first A only asks")
+  check(l.message and l.message.text:find("Quit again", 1, true), "and says so")
+  pad("a"); frame(2)
+  eq(quits, 1, "the second closes")
+  Kit.setFocus("nav-quit"); frame(2)
+  pad("a"); frame(2)
+  pad("dpup"); frame(2)
+  Kit.setFocus("nav-quit"); frame(2)
+  pad("a"); frame(2)
+  eq(quits, 1, "moving off it disarms, so coming back asks again")
+  l.quit = realQuit
+end
+
+-- ---- the ring on a game row picks that game
+l.page = nil; frame(12)
+Kit.setFocus("game-gold"); frame(2)
+pad("dpdown"); frame(2)
+local moved = tostring(Kit.focusId):match("^game%-(.+)$")
+if moved and require("src.core.GameVersion").VERSIONS[moved] then
+  eq(l.selected, moved, "moving down the list selects the game under the ring")
+end
+
 T.finish("launcher pad audit")

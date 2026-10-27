@@ -499,6 +499,10 @@ function Kit.focusable(id, x, y, w, h)
   -- drawn inside a popup (Kit._overlay): the ring stays among its items
   slot.overlay = Kit._overlay and true or nil
   Kit._navSeen[id] = true
+  -- a click puts the (still hidden) ring on what was clicked, so the next
+  -- arrow or d-pad press carries on from there, not from a control the
+  -- keyboard visited before the mouse took over
+  if Kit.mouseClicked and Kit.press(x, y, w, h) then Kit.focusId = id end
   if id == Kit.focusId then
     local r = Kit._lastFocusRect or {}
     r.id, r.x, r.y, r.w, r.h = id, x, y, w, h
@@ -1204,9 +1208,15 @@ function Kit.textfield(id, x, y, w, h, value, placeholder, opts)
   end
   if G then
     Theme.fillRounded(x, y, w, h, PAL.bg, 1)
-    Theme.strokeRounded(x, y, w, h, PAL.line,
-      (focused or focusRing) and Theme.A.focus or Theme.A.hairline,
-      focused and 2 or 1)
+    if focusRing and not focused then
+      -- the pad / keyboard ring, as bright as a button's (it read as a
+      -- slightly lighter border, easy to lose on the relay field)
+      Theme.strokeRounded(x, y, w, h, PAL.ink, 0.9, 2)
+    else
+      Theme.strokeRounded(x, y, w, h, PAL.line,
+        focused and Theme.A.focus or Theme.A.hairline,
+        focused and 2 or 1)
+    end
     local pad = 10 * Kit.scale
     local ty = y + (h - Kit.textHeight("mono")) / 2
     if value == "" and not focused then
@@ -1398,6 +1408,9 @@ function Kit.scrollInput(offset, maxScroll, x, y, w, h)
     local margin = math.floor(8 * Kit.scale)
     if r.y < r.clipY then
       at = Kit.scrollClamp(at - (r.clipY - r.y) - margin, maxScroll)
+      -- within a row of the top: all the way, so the heading above the first
+      -- item (the game list's GEN 1) is not left cut off
+      if at <= r.h then at = 0 end
     elseif r.y + r.h > r.clipY + r.clipH then
       at = Kit.scrollClamp(at + (r.y + r.h - r.clipY - r.clipH) + margin, maxScroll)
     end
