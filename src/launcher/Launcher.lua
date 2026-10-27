@@ -31,8 +31,6 @@ Launcher.CREDIT = "Based on the Pokemon Gen 1 Recompilation Project by BOIS "
 
 local ROM_KIND = { label = "Game Boy ROM",
   exts = { "gb", "gbc", "gba", "zip", "7z" } }
-local MOD_KIND = { label = "Mod package", exts = { "zip" } }
-local CART_KIND = { label = "Custom cart", exts = { "g1rcart" } }
 
 -- ------------------------------------------------------------------ model
 
@@ -240,34 +238,8 @@ function Launcher:store(version)
 end
 
 -- What the mod loader will make of a cart's pinned mods: nil when it can
--- run, else the reason it will be refused.
-function Launcher:cartProblem(version)
-  local cart = self:activeCart(version)
-  if not cart then return nil end
-  self.cartPlans = self.cartPlans or {}
-  local plan = self.cartPlans[cart]
-  if plan == nil then
-    plan = false
-    pcall(function()
-      local installed = {}
-      for _, row in ipairs(self:modsFor(version)) do
-        if row.manifest then
-          installed[row.id] = { id = row.id, version = row.manifest.version }
-        end
-      end
-      local report = require("src.mods.Loader").planCart(
-        require("src.carts.CartStore").get(cart), installed)
-      if report and report.refused then
-        plan = tostring(report.message or "this cart cannot start")
-        -- the message leads with the cart's title, which the panel already shows
-        local title = tostring(report.title or "") .. ": "
-        if plan:sub(1, #title) == title then plan = plan:sub(#title + 1) end
-      end
-    end)
-    self.cartPlans[cart] = plan
-  end
-  return plan or nil
-end
+-- run, else the reason it will be refused (src/launcher/CartsPage.lua).
+function Launcher:cartProblem(version) return self:cartsUi():cartProblem(version) end
 
 -- Leave the per-save state behind when the game or cart changes: slot ids
 -- repeat across games, so an open menu or rename would act on the new
@@ -302,55 +274,14 @@ function Launcher:rememberCarts()
   if ok then pcall(SaveData.saveOptions, opts) end
 end
 
-function Launcher:installCart(data, name)
-  local CartStore = require("src.carts.CartStore")
-  local ok, cart, err = pcall(CartStore.install, data)
-  if not ok then cart, err = nil, cart end
-  self.cartRows, self.cartPlans = nil, nil
-  if not cart then
-    return self:say("Could not install " .. tostring(name or "that cart") .. ": "
-      .. tostring(err), "error")
-  end
-  if cart.base and self.ready[cart.base] ~= nil then
-    self:selectGame(cart.base)
-    self:selectCart(cart.base, cart.id)
-  end
-  local info = cart.base and GameVersion.info(cart.base)
-  self:say(("Installed %s%s."):format(tostring(cart.title or cart.id),
-    info and (" for " .. info.displayName) or ""), "info")
-  return true
+-- Installing, removing and picking carts live in src/launcher/CartsPage.lua.
+function Launcher:cartsUi()
+  self.cartsPage = self.cartsPage or require("src.launcher.CartsPage").new(self)
+  return self.cartsPage
 end
-
-function Launcher:removeCart(version, row)
-  local key = "cart:" .. tostring(row.id)
-  if self.armedDelete ~= key then
-    self.armedDelete = key
-    return self:say("Press Remove again to uninstall " .. tostring(row.title)
-      .. ". Its saves are kept.", "info")
-  end
-  self.armedDelete = nil
-  local ok, done, err = pcall(require("src.carts.CartStore").uninstall, row.id)
-  if self.cart[version] == row.id then self.cart[version] = nil end
-  self.cartRows, self.cartPlans = nil, nil
-  if not (ok and done) then
-    return self:say("Could not remove " .. tostring(row.title) .. ": "
-      .. tostring(ok and err or done), "error")
-  end
-  self:say(tostring(row.title) .. " was removed.", "info")
-end
-
-function Launcher:pickCart()
-  if self:requestHostPick("cart") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    return self:say("Drop a .g1rcart file onto this window to install it.", "info")
-  end
-  local path = FilePicker.open("Choose a custom cart", CART_KIND)
-  if not path then return end
-  local data, err = FilePicker.read(path)
-  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
-  self:installCart(data, FilePicker.basename(path))
-end
+function Launcher:installCart(data, name) return self:cartsUi():installCart(data, name) end
+function Launcher:removeCart(version, row) return self:cartsUi():removeCart(version, row) end
+function Launcher:pickCart() return self:cartsUi():pickCart() end
 
 function Launcher:slotsFor(version)
   local key = self:scopeKey(version)
@@ -605,195 +536,23 @@ end
 
 -- ------------------------------------------------------------------- mods
 
--- Installed mods as src/mods/ModLibrary.lua lists them for one game, cached
--- until something changes them.
-function Launcher:modsFor(version)
-  self.modRows = self.modRows or {}
-  local rows = self.modRows[version]
-  if rows then return rows end
-  local ok, ModLibrary = pcall(require, "src.mods.ModLibrary")
-  local okL, got = false, nil
-  if ok then okL, got = pcall(ModLibrary.list, version) end
-  rows = (okL and type(got) == "table") and got or {}
-  self.modRows[version] = rows
-  return rows
+-- The mod pages and their actions live in src/launcher/ModsPage.lua; these
+-- names stay for the rest of the launcher, main.lua and the tests.
+function Launcher:modsUi()
+  self.modsPage = self.modsPage or require("src.launcher.ModsPage").new(self)
+  return self.modsPage
 end
-
-function Launcher:toggleMod(version, row)
-  if not (row and row.id) or row.broken then return end
-  local ModLibrary = require("src.mods.ModLibrary")
-  local ok, err = pcall(ModLibrary.setEnabled, row.id, not row.enabled, version)
-  if not ok then return self:say("Could not change that mod: " .. tostring(err), "error") end
-  self.modRows, self.cartPlans = nil, nil
-  self:say(("%s is %s for %s. It applies the next time the game starts."):format(
-    row.name, row.enabled and "off" or "on", GameVersion.info(version).displayName), "info")
-end
-
-function Launcher:removeMod(row)
-  local key = "mod:" .. tostring(row and row.folder)
-  if self.armedDelete ~= key then
-    self.armedDelete = key
-    return self:say("Press Remove again to uninstall " .. tostring(row.name) .. ".", "info")
-  end
-  self.armedDelete = nil
-  local ModLibrary = require("src.mods.ModLibrary")
-  local ok, done, err = pcall(ModLibrary.uninstall, row.folder)
-  self.modRows, self.cartPlans = nil, nil
-  if not (ok and done) then
-    return self:say("Could not remove " .. tostring(row.name) .. ": "
-      .. tostring(ok and err or done), "error")
-  end
-  self:say(tostring(row.name) .. " was removed.", "info")
-end
-
-function Launcher:installMod(data, name)
-  local ModLibrary = require("src.mods.ModLibrary")
-  local ok, manifest, err = pcall(ModLibrary.installZip, data, name, { upgrade = true })
-  if not ok then manifest, err = nil, manifest end
-  self.modRows, self.cartPlans = nil, nil
-  if not manifest then
-    return self:say("Could not install " .. tostring(name or "that mod") .. ": "
-      .. tostring(err), "error")
-  end
-  local missing = ModLibrary.missingDependencies(manifest, ModLibrary.list())
-  local text = ("Installed %s."):format(manifest.name or manifest.id)
-  if #missing > 0 then
-    text = text .. " It also needs: " .. table.concat(missing, ", ") .. "."
-  end
-  self:say(text, #missing > 0 and "error" or "info")
-  return true
-end
-
--- What a mod still needs before it can load: files the player supplies
--- (required_imports, src/mods/RequiredImports.lua) and asset packs an
--- importer builds from another game (required_assets, src/import/Importers.lua).
--- Returns { file = first missing import spec, pack = first missing pack spec,
--- text = one line for the row } or nil when nothing is missing.
-function Launcher:modNeeds(row)
-  if type(row) ~= "table" then return nil end
-  -- checked once per mod list: a stored file may be hashed to verify it
-  if row.needChecked then return row.need end
-  row.needChecked = true
-  row.need = self:findModNeeds(row)
-  return row.need
-end
-
-function Launcher:findModNeeds(row)
-  local manifest = row.manifest
-  if type(manifest) ~= "table" then return nil end
-  local need = {}
-  local okR, RequiredImports = pcall(require, "src.mods.RequiredImports")
-  if okR and #(RequiredImports.specs(manifest)) > 0 then
-    local okI, rows = pcall(RequiredImports.inspect, manifest)
-    for _, r in ipairs(okI and rows or {}) do
-      if not r.present and r.required and not need.file then
-        need.file, need.text = r.spec, "Needs " .. tostring(r.name)
-          .. (r.error and (" (" .. tostring(r.error) .. ")") or "")
-      end
-    end
-  end
-  if not need.file and #(manifest.required_assets or {}) > 0 then
-    local Importers = require("src.import.Importers")
-    for _, spec in ipairs(manifest.required_assets) do
-      if not Importers.resolve(spec) then
-        local desc = Importers.get(spec.importer)
-        need.pack = spec
-        need.text = "Needs the " .. tostring(desc and desc.name or spec.importer)
-          .. " asset import"
-        break
-      end
-    end
-  end
-  return need.text and need or nil
-end
-
--- Pick the file a mod asked for and store it for that mod alone.
-function Launcher:addModFile(row, spec)
-  self.pendingModFile = { manifest = row.manifest, spec = spec, name = row.name }
-  if self:requestHostPick("required_import", "modfile") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    self.pendingModFile = nil
-    return self:say("This platform has no file picker for mod files.", "error")
-  end
-  local path = FilePicker.open("Choose " .. tostring(spec.name), { label = spec.name, exts = {} })
-  if not path then self.pendingModFile = nil return end
-  local data, err = FilePicker.read(path)
-  self:storeModFile(data, err)
-end
-
-function Launcher:storeModFile(data, err)
-  local want = self.pendingModFile
-  self.pendingModFile = nil
-  if not want then return end
-  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
-  local RequiredImports = require("src.mods.RequiredImports")
-  local ok, why = RequiredImports.importData(want.manifest, want.spec.id, data)
-  self.modRows = nil
-  if not ok then
-    return self:say(tostring(want.spec.name) .. " was not accepted: " .. tostring(why), "error")
-  end
-  self:say(("%s now has %s."):format(tostring(want.name), tostring(want.spec.name)), "info")
-end
-
--- ------------------------------------------------------- asset importers
-
--- Start an importer (src/import/Importers.lua) on a dump the player picks:
--- its job is a coroutine that writes asset packs other mods can use.
-function Launcher:runImporter(id)
-  if self.assetJob then return self:say("An import is already running.", "error") end
-  self.pendingImporter = id
-  if self:requestHostPick("required_import", "importer") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    self.pendingImporter = nil
-    return self:say("This platform has no file picker for importer sources.", "error")
-  end
-  local desc = require("src.import.Importers").get(id)
-  local path = FilePicker.open("Choose " .. tostring(desc and desc.source and desc.source.name or id),
-    { label = desc and desc.name or id, exts = desc and desc.source and desc.source.formats or {} })
-  if not path then self.pendingImporter = nil return end
-  local data, err = FilePicker.read(path)
-  self:startImporter(data, err)
-end
-
-function Launcher:startImporter(data, err)
-  local id = self.pendingImporter
-  self.pendingImporter = nil
-  if not id then return end
-  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
-  local desc = require("src.import.Importers").get(id)
-  local okM, module = pcall(require, desc and desc.module or "")
-  if not okM or type(module) ~= "table" or type(module.job) ~= "function" then
-    return self:say("That importer is not available in this build.", "error")
-  end
-  local okJ, co = pcall(module.job, data)
-  if not okJ or type(co) ~= "thread" then return self:say(tostring(co), "error") end
-  self.assetJob = { id = id, name = desc.name, co = co, done = 0, total = 1,
-    status = "Starting" }
-end
-
-function Launcher:stepImporter(budget)
-  local job = self.assetJob
-  if not job then return end
-  local clock = love.timer and love.timer.getTime
-  local deadline = clock and (clock() + (budget or 0.008))
-  repeat
-    local ok, info = coroutine.resume(job.co)
-    if not ok then
-      self.assetJob = nil
-      return self:say(tostring(job.name) .. " import failed: " .. tostring(info), "error")
-    end
-    if coroutine.status(job.co) == "dead" then
-      self.assetJob, self.modRows = nil, nil
-      return self:say(tostring(job.name) .. " assets imported.", "info")
-    end
-    if type(info) == "table" then
-      job.done, job.total = tonumber(info.done) or job.done, tonumber(info.total) or job.total
-      job.status = info.status or job.status
-    end
-  until not deadline or clock() >= deadline
-end
+function Launcher:modsFor(version) return self:modsUi():modsFor(version) end
+function Launcher:toggleMod(version, row) return self:modsUi():toggleMod(version, row) end
+function Launcher:removeMod(row) return self:modsUi():removeMod(row) end
+function Launcher:installMod(data, name) return self:modsUi():installMod(data, name) end
+function Launcher:modNeeds(row) return self:modsUi():modNeeds(row) end
+function Launcher:findModNeeds(row) return self:modsUi():findModNeeds(row) end
+function Launcher:addModFile(row, spec) return self:modsUi():addModFile(row, spec) end
+function Launcher:storeModFile(data, err) return self:modsUi():storeModFile(data, err) end
+function Launcher:runImporter(id) return self:modsUi():runImporter(id) end
+function Launcher:startImporter(data, err) return self:modsUi():startImporter(data, err) end
+function Launcher:stepImporter(budget) return self:modsUi():stepImporter(budget) end
 
 -- --------------------------------------------------------- import folder
 
@@ -846,38 +605,8 @@ end
 
 -- A file from imports/baseroms/: offer it to every installed mod still
 -- missing one; RequiredImports checks its MD5 against each.
-function Launcher:storeInboxModFile(data)
-  if not data then return false end
-  local RequiredImports = require("src.mods.RequiredImports")
-  for _, row in ipairs(require("src.mods.ModLibrary").list()) do
-    local manifest = row.manifest
-    if manifest and #(RequiredImports.specs(manifest)) > 0 then
-      local okI, rows = pcall(RequiredImports.inspect, manifest)
-      for _, r in ipairs(okI and rows or {}) do
-        if not r.present and RequiredImports.importData(manifest, r.id, data) then
-          self.modRows = nil
-          self:say(("%s now has %s."):format(tostring(row.name), tostring(r.name)), "info")
-          return true
-        end
-      end
-    end
-  end
-  self:say("No installed mod is waiting for that file.", "error")
-  return false
-end
-
-function Launcher:pickMod()
-  if self:requestHostPick("mod") then return end
-  local ok, FilePicker = pcall(require, "src.core.FilePicker")
-  if not (ok and FilePicker.available()) then
-    return self:say("Drop a mod .zip onto this window to install it.", "info")
-  end
-  local path = FilePicker.open("Choose a mod .zip", MOD_KIND)
-  if not path then return end
-  local data, err = FilePicker.read(path)
-  if not data then return self:say("Could not read that file: " .. tostring(err), "error") end
-  self:installMod(data, FilePicker.basename(path))
-end
+function Launcher:storeInboxModFile(data) return self:modsUi():storeInboxModFile(data) end
+function Launcher:pickMod() return self:modsUi():pickMod() end
 
 -- ------------------------------------------------------------------ skins
 
@@ -1330,6 +1059,10 @@ function Launcher:update(dt)
     local ok, err = pcall(self.online.update, self.online, dt)
     if not ok then self:say(tostring(err), "error") end
   end
+  if self.modsPage then
+    local ok, err = pcall(self.modsPage.update, self.modsPage, dt)
+    if not ok then self:say(tostring(err), "error") end
+  end
   if self.job then
     local state = self.job:step(0.008)
     if state == "done" then
@@ -1369,7 +1102,9 @@ end
 
 -- Escape / B: leave the current page (Mods and Carts lead back to the game).
 -- Escape / B: the same page the on-screen Back button goes to.
-local PARENT = { importers = "mods", sync = "settings" }
+local PARENT = { sync = "settings" }
+for k, v in pairs(require("src.launcher.ModsPage").PARENT) do PARENT[k] = v end
+for k, v in pairs(require("src.launcher.CartsPage").PARENT) do PARENT[k] = v end
 
 function Launcher:back()
   if self.page == "box" then return self:closeBox() end
@@ -1712,11 +1447,9 @@ function Launcher:savesChanged() self.slots = {} end
 function Launcher:resumeAfterOverlay() self:refresh() end
 function Launcher:prepareOverlayHandoff() end
 function Launcher:ignoreReturningPointer() self.pressAt, self.click = nil, nil end
--- main.lua asks a launcher to update mods before a shortcut boots; this one
--- has no mod updater, so it says so and the boot goes ahead.
-function Launcher:autoUpdateAll(done)
-  if done then done({ skipped = true }) end
-end
+-- main.lua asks a launcher to update mods before a shortcut boots
+-- (src/launcher/ModsPage.lua); done(result) runs once they are.
+function Launcher:autoUpdateAll(done, opts) return self:modsUi():autoUpdateAll(done, opts) end
 
 -- ------------------------------------------------------------------- draw
 
@@ -2129,214 +1862,9 @@ function Launcher:drawNotes(x, y, w, h, s)
   Kit.scrollEnd(cx, cy, cw, viewH, self.notesScroll, maxAt, PAL.surface)
 end
 
-function Launcher:drawMods(x, y, w, h, s)
-  local v = self.selected
-  local pad = math.floor(18 * s)
-  Kit.card(x, y, w, h)
-  local cx, cw = x + pad, w - 2 * pad
-  local cy = y + pad
-  local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
-  cy = self:pageHeader(cx, cy, cw, s, { title = "Mods",
-    subtitle = "For " .. GameVersion.info(v).displayName, accent = Theme.gameColor(v),
-    back = function() self.page = nil end, backId = "mods-back" })
-
-  local rows = self:modsFor(v)
-  local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
-  local gap = math.floor(4 * s)
-  local hint = "Or drop a mod .zip onto this window. Changes apply the next "
-    .. "time the game starts."
-  local hintH = Kit.wrapHeight("micro", hint, cw)
-  local footH = btnH + math.floor(12 * s) + hintH
-  local viewH = math.max(rowH, y + h - pad - footH - math.floor(10 * s) - cy)
-  if #rows == 0 then
-    Kit.emptyBox(cx, cy, cw, math.min(viewH, rowH * 2), "No mods installed")
-  else
-    local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
-    self.modScroll = Kit.scrollInput(self.modScroll or 0, maxAt, cx, cy, cw, viewH)
-    local py = Kit.scrollBegin(cx, cy, cw, viewH, self.modScroll, maxAt)
-    local rw = cw - Kit.scrollGutter(s)
-    local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Confirm") + math.floor(24 * s))
-    local bh = math.max(Kit.tapMin(), math.floor(32 * s))
-    for i, row in ipairs(rows) do
-      local ry = py + (i - 1) * (rowH + gap)
-      Kit.row(cx, ry, rw, rowH, false, "mod-" .. tostring(row.folder))
-      local tx = cx + math.floor(12 * s)
-      local need = not row.broken and row.supported and self:modNeeds(row) or nil
-      local textW = rw - (need and 3 or 2) * (bw + math.floor(8 * s)) - math.floor(20 * s)
-      local detail
-      if need then
-        detail = need.text
-      elseif row.broken then
-        detail = "Broken: " .. row.broken
-      elseif not row.supported then
-        detail = "Not made for this game"
-      else
-        local parts = {}
-        if row.version then parts[#parts + 1] = "v" .. tostring(row.version) end
-        if row.author then parts[#parts + 1] = "by " .. tostring(row.author) end
-        if row.experimental then parts[#parts + 1] = "experimental" end
-        detail = table.concat(parts, "  -  ")
-        if detail == "" then detail = row.id end
-      end
-      twoLines(row.name, detail, tx, ry, rowH, textW, PAL.text,
-        row.broken and PAL.red or need and PAL.yellow or PAL.muted, s)
-      local by = ry + (rowH - bh) / 2
-      local onX = cx + rw - 2 * bw - math.floor(16 * s)
-      if need then
-        local label = need.file and "Add file" or "Get pack"
-        if Kit.button(onX - bw - math.floor(8 * s), by, bw, bh, label,
-            { id = "mod-need-" .. tostring(row.folder), font = "small", kind = "accent" }) then
-          self:queue(function()
-            if need.file then self:addModFile(row, need.file)
-            else self.page = "importers" end
-          end)
-        end
-      end
-      local usable = not row.broken and row.supported
-      if Kit.button(onX, by, bw, bh, row.enabled and usable and "On" or "Off",
-          { id = "mod-toggle-" .. tostring(row.folder), font = "small",
-            kind = row.enabled and usable and "primary" or nil, enabled = usable }) then
-        self:queue(function() self:toggleMod(v, row) end)
-      end
-      local armed = self.armedDelete == "mod:" .. tostring(row.folder)
-      if row.bundled then
-        Kit.textCenter("micro", "Built in", onX + bw + math.floor(8 * s),
-          by + (bh - Kit.textHeight("micro")) / 2, bw, PAL.faint)
-      elseif Kit.button(onX + bw + math.floor(8 * s), by, bw, bh,
-          armed and "Confirm" or "Remove",
-          { id = "mod-remove-" .. tostring(row.folder), font = "small", kind = "danger" }) then
-        self:queue(function() self:removeMod(row) end, true)
-      end
-    end
-    Kit.scrollEnd(cx, cy, cw, viewH, self.modScroll, maxAt, PAL.surface)
-  end
-
-  local by = y + h - pad - btnH - hintH - math.floor(8 * s)
-  local iw = math.min(math.floor((cw - math.floor(10 * s)) / 2), math.floor(260 * s))
-  if Kit.button(cx, by, iw, btnH, "Install mod .zip",
-      { id = "mod-install", kind = "accent" }) then
-    self:queue(function() self:pickMod() end)
-  end
-  if Kit.button(cx + iw + math.floor(10 * s), by, iw, btnH, "Asset importers",
-      { id = "mod-importers" }) then
-    self:queue(function() self.page = "importers" end)
-  end
-  Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
-end
-
-local IMPORTER_STATE = { ready = "Imported", partial = "Partly imported",
-  missing = "Not imported", planned = "Coming later" }
-
-function Launcher:drawImporters(x, y, w, h, s)
-  local pad = math.floor(18 * s)
-  Kit.card(x, y, w, h)
-  local cx, cw = x + pad, w - 2 * pad
-  local cy = y + pad
-  local smallH = math.max(Kit.tapMin(), math.floor(32 * s))
-  cy = self:pageHeader(cx, cy, cw, s, { title = "Asset importers",
-    subtitle = "Some mods use art or sound from another game you own. Import it once "
-      .. "here and every mod that asks for it can use it.",
-    back = function() self.page = "mods" end, backId = "importers-back" })
-
-  local job = self.assetJob
-  if job then
-    Kit.text("small", Kit.ellipsize("small", tostring(job.name) .. ": " .. tostring(job.status), cw),
-      cx, cy, PAL.text)
-    cy = cy + Kit.textHeight("small") + math.floor(6 * s)
-    Theme.meter(cx, cy, cw, math.floor(10 * s), (job.done or 0) / math.max(1, job.total or 1), PAL.green)
-    cy = cy + math.floor(22 * s)
-  end
-  local Importers = require("src.import.Importers")
-  local entryH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(64 * s))
-  local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Import") + math.floor(28 * s))
-  for _, desc in ipairs(Importers.all()) do
-    local okS, state = pcall(Importers.state, desc.id)
-    state = okS and state or "missing"
-    Kit.row(cx, cy, cw, entryH, false, "importer-" .. desc.id)
-    local textW = cw - bw - math.floor(36 * s)
-    local line = (IMPORTER_STATE[state] or state) .. "  -  " .. tostring(desc.summary or "")
-    twoLines(desc.name, line, cx + math.floor(12 * s), cy, entryH, textW, PAL.text,
-      state == "ready" and PAL.green or PAL.muted, s)
-    if Kit.button(cx + cw - bw - math.floor(8 * s), cy + (entryH - smallH) / 2, bw, smallH,
-        state == "ready" and "Redo" or "Import",
-        { id = "importer-run-" .. desc.id, font = "small",
-          enabled = state ~= "planned" and not job }) then
-      local id = desc.id
-      self:queue(function() self:runImporter(id) end)
-    end
-    cy = cy + entryH + math.floor(4 * s)
-  end
-  return cy - y + pad
-end
-
-function Launcher:drawCarts(x, y, w, h, s)
-  local v = self.selected
-  local pad = math.floor(18 * s)
-  Kit.card(x, y, w, h)
-  local cx, cw = x + pad, w - 2 * pad
-  local cy = y + pad
-  local btnH = math.max(Kit.tapMin(), math.floor(40 * s))
-  cy = self:pageHeader(cx, cy, cw, s, { title = "Carts",
-    subtitle = "Play " .. GameVersion.info(v).displayName .. " as", accent = Theme.gameColor(v),
-    back = function() self.page = nil end, backId = "carts-back" })
-
-  local carts = self:cartsFor(v)
-  local active = self:activeCart(v)
-  local rows = { { original = true, title = "The original game",
-                   detail = "No cart: your own mods and saves" } }
-  for _, c in ipairs(carts) do rows[#rows + 1] = c end
-  local hint = "Or drop a .g1rcart file onto this window. Each cart keeps "
-    .. "its own saves."
-  local hintH = Kit.wrapHeight("micro", hint, cw)
-  local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
-  local gap = math.floor(4 * s)
-  local viewH = math.max(rowH, y + h - pad - btnH - hintH - math.floor(22 * s) - cy)
-  local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
-  self.cartScroll = Kit.scrollInput(self.cartScroll or 0, maxAt, cx, cy, cw, viewH)
-  local py = Kit.scrollBegin(cx, cy, cw, viewH, self.cartScroll, maxAt)
-  local rw = cw - Kit.scrollGutter(s)
-  local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Confirm") + math.floor(24 * s))
-  local bh = math.max(Kit.tapMin(), math.floor(32 * s))
-  for i, row in ipairs(rows) do
-    local ry = py + (i - 1) * (rowH + gap)
-    local chosen = (row.original and active == nil) or (row.id ~= nil and row.id == active)
-    local clicked, ink = Kit.row(cx, ry, rw, rowH, chosen,
-      "cart-" .. tostring(row.id or "original"))
-    local tx = cx + math.floor(12 * s)
-    local textW = rw - bw - math.floor(36 * s)
-    local detail = row.detail
-    if not detail then
-      local parts = {}
-      if row.version then parts[#parts + 1] = "v" .. tostring(row.version) end
-      if row.author then parts[#parts + 1] = "by " .. tostring(row.author) end
-      if row.seal and row.seal ~= "open" then parts[#parts + 1] = "sealed" end
-      detail = table.concat(parts, "  -  ")
-    end
-    twoLines(row.title or row.id, detail, tx, ry, rowH, textW, ink or PAL.text,
-      chosen and (ink or PAL.text) or PAL.muted, s)
-    local rbx, rby = cx + rw - bw - math.floor(8 * s), ry + (rowH - bh) / 2
-    -- a press on Remove is not also a press on its row
-    if clicked and (row.original or not Kit.hit(rbx, rby, bw, bh)) then
-      self:queue(function() self:selectCart(v, row.id) end)
-    end
-    if not row.original then
-      local armed = self.armedDelete == "cart:" .. tostring(row.id)
-      if Kit.button(rbx, rby, bw, bh,
-          armed and "Confirm" or "Remove",
-          { id = "cart-remove-" .. tostring(row.id), font = "small", kind = "danger" }) then
-        self:queue(function() self:removeCart(v, row) end, true)
-      end
-    end
-  end
-  Kit.scrollEnd(cx, cy, cw, viewH, self.cartScroll, maxAt, PAL.surface)
-
-  local by = y + h - pad - btnH - hintH - math.floor(8 * s)
-  if Kit.button(cx, by, math.min(cw, math.floor(260 * s)), btnH, "Install cart",
-      { id = "cart-install", kind = "accent" }) then
-    self:queue(function() self:pickCart() end)
-  end
-  Kit.textWrapped("micro", hint, cx, by + btnH + math.floor(8 * s), cw, PAL.faint)
-end
+function Launcher:drawMods(x, y, w, h, s) return self:modsUi():drawMods(x, y, w, h, s) end
+function Launcher:drawImporters(x, y, w, h, s) return self:modsUi():drawImporters(x, y, w, h, s) end
+function Launcher:drawCarts(x, y, w, h, s) return self:cartsUi():drawCarts(x, y, w, h, s) end
 
 -- The height the game panel needs: banner, the saves caption, one save
 -- card and the Continue / New game row.
@@ -2384,14 +1912,11 @@ function Launcher:drawPage(x, y, w, h, s)
   if self.page == "sync" and self.sync then
     return self:drawFitted("sync", x, y, w, h, s, function(l, ...) return l.sync:draw(...) end)
   end
-  if self.page == "mods" and self.selected and self.ready[self.selected] then
-    return self:drawMods(x, y, w, h, s)
+  if self.page and require("src.launcher.ModsPage").PAGES[self.page] then
+    return self:modsUi():draw(x, y, w, h, s)
   end
-  if self.page == "carts" and self.selected and self.ready[self.selected] then
-    return self:drawCarts(x, y, w, h, s)
-  end
-  if self.page == "importers" then
-    return self:drawFitted("importers", x, y, w, h, s, self.drawImporters)
+  if self.page and require("src.launcher.CartsPage").PAGES[self.page] then
+    return self:cartsUi():draw(x, y, w, h, s)
   end
   return self:drawGame(x, y, w, h, s)
 end
