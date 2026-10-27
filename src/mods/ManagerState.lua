@@ -14,6 +14,7 @@ local SaveData = require("src.core.SaveData")
 local Semver = require("src.mods.Semver")
 local Version = require("src.core.Version")
 local Theme = require("src.ui.Theme")
+local Marquee = require("src.ui.Marquee")
 local OptionRows = require("src.ui.OptionRows")
 local Strings = require("src.core.Strings")
 local ModProfile = require("src.mods.ModProfile")
@@ -42,9 +43,17 @@ local GLYPH = { staged = ".", disabled = "-", errored = "!", blocked = "?",
 local TABS = { "MODS", "PROFILES", "ERRORS" }
 local TAB_LINE = { "[MODS] PROF ERRS", "MODS [PROF] ERRS", "MODS PROF [ERRS]" }
 
-local LIST_TOP = 3   -- first content row (tile y)
-local LIST_ROWS = 11 -- single-line rows in the scroll region
+-- The screen is the 20x18 tile textbox: the frame owns column 0, column 19,
+-- row 0 and row 17, so every line below stays inside columns 1..18.  Row 1 is
+-- the banner, row 2 the tab line, row 3 a blank gap, rows 4..13 the list,
+-- row 14 the more-arrow and rows 15..16 the button hints.
+local LIST_TOP = 4   -- first content row (tile y)
+local LIST_ROWS = 10 -- tile rows in the scroll region (group gaps included)
 local DETAIL_TOP, DETAIL_ROWS = 11, 4
+local LAST_COL = 18  -- the column before the frame
+local LABEL_COL, LABEL_ROOM = 4, 15 -- row labels: columns 4..18
+local HEADER_COL, HEADER_ROOM = 2, 17
+local FOOTER_COL, FOOTER_ROOM = 1, 18
 
 -- what the mod declared it does, shown before the player enables it
 local PERMISSION_ROWS = {
@@ -583,12 +592,44 @@ function ManagerState:moveCursor(dir)
     end
   end
   -- keep the cursor inside the scroll window
-  local window = self.screen == "detail" and DETAIL_ROWS or LIST_ROWS
+  if self.screen == "detail" then
+    if self.cursor < self.scroll then
+      self.scroll = self.cursor
+    elseif self.cursor > self.scroll + DETAIL_ROWS - 1 then
+      self.scroll = self.cursor - DETAIL_ROWS + 1
+    end
+    return
+  end
   if self.cursor < self.scroll then
     self.scroll = self.cursor
-  elseif self.cursor > self.scroll + window - 1 then
-    self.scroll = self.cursor - window + 1
+    -- a header directly above the cursor scrolls in with it
+    local above = rows[self.cursor - 1]
+    if above and above.header then self.scroll = self.cursor - 1 end
   end
+  while self.scroll < self.cursor
+      and not ManagerState.layoutRows(rows, self.scroll, LIST_ROWS).at[self.cursor] do
+    self.scroll = self.scroll + 1
+  end
+end
+
+-- Which rows land on which tile line, starting at row `first`: a group
+-- header after the first drawn line takes a blank line above it, so the
+-- categories read as groups instead of one packed column.  Returns
+-- { lines = { {index, line}... }, at = {index -> line}, last = index }.
+function ManagerState.layoutRows(rows, first, capacity)
+  local out = { lines = {}, at = {}, last = first - 1 }
+  local line = 0
+  for i = first, #rows do
+    local row = rows[i]
+    local need = (row.header and line > 0) and 2 or 1
+    if line + need > capacity then break end
+    line = line + need - 1
+    out.lines[#out.lines + 1] = { index = i, line = line }
+    out.at[i] = line
+    out.last = i
+    line = line + 1
+  end
+  return out
 end
 
 function ManagerState:adjustOrTab(dir)
@@ -601,7 +642,7 @@ function ManagerState:adjustOrTab(dir)
     if row and row.adjust then return row.adjust(dir) end
     self.descScroll = math.max(1, self.descScroll + dir)
   else
-    for _ = 1, LIST_ROWS do self:moveCursor(dir) end
+    for _ = 1, LIST_ROWS - 1 do self:moveCursor(dir) end
   end
 end
 
@@ -1299,36 +1340,48 @@ local function drawTruncated(text, x, y, cols)
   Font.draw(text, x, y)
 end
 
+-- the hot row scrolls a label too long for its room (as the Gen 2 options
+-- menu does); every other row is clipped
+function ManagerState:rowLabel(row, i, room)
+  local label = tostring(row.label or "")
+  if i == self.cursor then
+    return Marquee.scroll(label, room,
+      tostring(self.screen) .. "|" .. tostring(self.tab) .. "|" .. i .. "|" .. label)
+  end
+  return Marquee.clip(label, room)
+end
+
 function ManagerState:drawRows(rows)
-  local last = math.min(#rows, self.scroll + LIST_ROWS - 1)
-  local y = LIST_TOP
-  for i = self.scroll, last do
-    local row = rows[i]
+  local scroll = self.scroll or 1
+  local layout = ManagerState.layoutRows(rows, scroll, LIST_ROWS)
+  for _, slot in ipairs(layout.lines) do
+    local i, row = slot.index, rows[slot.index]
+    local y = (LIST_TOP + slot.line) * 8
     if row.header then
-      drawTruncated(row.label, 16, y * 8, 17)
+      drawTruncated(row.label, HEADER_COL * 8, y, HEADER_ROOM)
     else
       if row.glyph and row.glyph ~= " " then
-        Font.draw(row.glyph, 16, y * 8)
+        Font.draw(row.glyph, 2 * 8, y)
       end
-      drawTruncated(row.label, 32, y * 8, 15)
+      Font.draw(self:rowLabel(row, i, LABEL_ROOM), LABEL_COL * 8, y)
       if i == self.cursor then
-        Font.drawCode(Theme.cursor, 8, y * 8)
+        Font.drawCode(Theme.cursor, 8, y)
       end
     end
-    y = y + 1
   end
-  if #rows > last then
-    Font.drawCode(Theme.moreArrow, 18 * 8, (LIST_TOP + LIST_ROWS) * 8)
+  if #rows > layout.last then
+    Font.drawCode(Theme.moreArrow, LAST_COL * 8, (LIST_TOP + LIST_ROWS) * 8)
   end
 end
 
+-- two hint lines inside the frame; a notice takes both and wraps
 function ManagerState:drawFooter(line1, line2)
   if self.notice then
-    Font.draw(self.notice, 16, 15 * 8)
-    return
+    local lines = wrap(self.notice, FOOTER_ROOM)
+    line1, line2 = lines[1], lines[2]
   end
-  if line1 then Font.draw(line1, 16, 15 * 8) end
-  if line2 then Font.draw(line2, 16, 16 * 8) end
+  if line1 then drawTruncated(line1, FOOTER_COL * 8, 15 * 8, FOOTER_ROOM) end
+  if line2 then drawTruncated(line2, FOOTER_COL * 8, 16 * 8, FOOTER_ROOM) end
 end
 
 function ManagerState:drawList()
@@ -1379,12 +1432,12 @@ function ManagerState:drawDetail()
   local last = math.min(#rows, first + DETAIL_ROWS - 1)
   local y = DETAIL_TOP
   for i = first, last do
-    drawTruncated(rows[i].label, 32, y * 8, 15)
+    Font.draw(self:rowLabel(rows[i], i, LABEL_ROOM - 1), LABEL_COL * 8, y * 8)
     if i == self.cursor then Font.drawCode(Theme.cursor, 24, y * 8) end
     y = y + 1
   end
   if #rows > last then
-    Font.drawCode(Theme.moreArrow, 19 * 8, (DETAIL_TOP + DETAIL_ROWS - 1) * 8)
+    Font.drawCode(Theme.moreArrow, LAST_COL * 8, (DETAIL_TOP + DETAIL_ROWS - 1) * 8)
   end
   self:drawFooter("A:CHOOSE B:BACK")
 end
@@ -1392,13 +1445,13 @@ end
 function ManagerState:drawPermissions()
   drawTruncated("PERMISSIONS", 16, 2 * 8, 17)
   self:drawRows(self:rowsForScreen())
-  self:drawFooter("DECLARED BY AUTHOR,", "NOT ENFORCED")
+  self:drawFooter("DECLARED BY MOD,", "NOT ENFORCED")
 end
 
 function ManagerState:drawErrors()
   drawTruncated("ERRORS", 16, 2 * 8, 17)
   self:drawRows(self:rowsForScreen())
-  self:drawFooter("UP/DOWN:SCROLL B:BACK")
+  self:drawFooter("UP/DOWN:SCROLL", "B:BACK")
 end
 
 function ManagerState:drawApply()
