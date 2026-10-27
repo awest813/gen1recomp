@@ -409,9 +409,17 @@ function Kit.endFrame()
   Kit._navPrevN = n
   -- If the focused id vanished or not set yet, park the ring on Layer 3 (Import ROM / Play)
   if (not Kit.focusId or not Kit._navSeen[Kit.focusId]) and n > 0 then
-    -- 1. Prefer ROM Action (Layer 3)
+    -- 0. A host with columns names where the ring belongs (the launcher:
+    --    the chosen save, else the chosen game)
     local chosen = nil
-    for i = 1, n do
+    if Kit.navAnchor then
+      for _, col in ipairs({ "content", "list" }) do
+        local id = Kit.navAnchor(col)
+        if id and Kit._navSeen[id] then chosen = id break end
+      end
+    end
+    -- 1. Prefer ROM Action (Layer 3)
+    for i = 1, chosen and 0 or n do
       local slot = Kit._nav[i]
       if slot and slot.id and tostring(slot.id):match("^rom%-") then
         chosen = slot.id; break
@@ -683,6 +691,9 @@ function Kit.keypressed(key)
     return FileBrowser.keypressed(key)
   end
   if Kit.focus then
+    local isDown = love and love.keyboard and love.keyboard.isDown
+    local ctrl = isDown and (isDown("lctrl") or isDown("rctrl") or isDown("lgui") or isDown("rgui"))
+    if ctrl and key == "a" then edits[#edits + 1] = "\1" return true end
     if key == "backspace" then edits[#edits + 1] = "\b" return true
     elseif key == "return" or key == "kpenter" then
       edits[#edits + 1] = "\r" return true
@@ -727,6 +738,7 @@ end
 
 function Kit.blur()
   Kit.focus = nil
+  Kit.selectAll = nil
   syncSoftKeyboard(nil)
 end
 
@@ -823,10 +835,10 @@ function Kit.row(x, y, w, h, selected, id)
   local hot = Kit.hover(x, y, w, h)
   local state = selected and "selected" or (hot and "hover" or nil)
   local ink = Theme.row(x, y, w, h, state)
-  -- The focus ring is a second inset outline, so it reads on both a black
-  -- row and a white selected one.
+  -- The focus ring is the accent, inset, so it reads on both a dark row and
+  -- a white selected one (white on white vanished).
   if focused then
-    Theme.strokeRounded(x, y, w, h, PAL.ink, 1, 2, Theme.radius())
+    Theme.strokeRounded(x + 1, y + 1, w - 2, h - 2, PAL.blue, 1, 3, Theme.radius())
   end
   local clicked = Kit.press(x, y, w, h)
     or (id ~= nil and Kit._activateId == id)
@@ -1061,7 +1073,16 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
   if focused then
     syncSoftKeyboard(id, x, y, w, h)
     for _, e in ipairs(edits) do
-      if e == "\b" then
+      -- select all (Ctrl+A, or a host that opens a field to be replaced):
+      -- the next key replaces the whole text
+      if e == "\1" then
+        Kit.selectAll = id
+      elseif Kit.selectAll == id and e ~= "\r" and e ~= "\27" then
+        value = ""
+        Kit.selectAll = nil
+      end
+      if e == "\1" then -- luacheck: ignore 542
+      elseif e == "\b" then
         -- one whole character: a UTF-8 lead byte and its continuation bytes
         value = value:gsub("[^\128-\191][\128-\191]*$", "", 1)
       elseif e == "\r" or e == "\27" then
@@ -1086,6 +1107,10 @@ function Kit.textfield(id, x, y, w, h, value, placeholder)
       Kit.text("mono", Kit.ellipsize("mono", placeholder or "", w - 2 * pad), x + pad, ty, PAL.faint)
     else
       local shown = Kit.ellipsizeLeft("mono", value, w - 2 * pad)
+      if focused and Kit.selectAll == id and value ~= "" then
+        Theme.fill(x + pad - 2, ty - 1, Kit.textWidth("mono", shown) + 4,
+          Kit.textHeight("mono") + 2, PAL.blue, 0.45)
+      end
       local tw = Kit.text("mono", shown, x + pad, ty, PAL.heading)
       if focused and (Kit.time % 1) < 0.55 then
         Theme.fill(x + pad + tw + 2, ty, math.max(1, Kit.scale),

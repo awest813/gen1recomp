@@ -2772,6 +2772,8 @@ function Launcher:drawSaveMenu(at, x, y, w, h, s, cartId, scope)
         self.renameText = slot.label or slot.name or ""
         Kit.setFocus("rename-field")
         Kit.focus = "rename-field"
+        -- the old name is selected: typing replaces it
+        Kit.selectAll = "rename-field"
       end },
     { id = "save-duplicate", label = "Duplicate", icon = "copy",
       run = function() self:duplicateSave() end },

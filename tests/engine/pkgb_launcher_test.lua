@@ -1305,6 +1305,28 @@ do
   CC.readMarker = realRead
 end
 
+-- ------------------------------------------------ text field select-all
+do
+  window(1280, 720)
+  local m = fresh()
+  m.selected, m.selectedSlot.gold = "gold", "slot2"
+  m.renaming, m.renameText = "slot2", "KRIS"
+  drawText(m)
+  Kit.focus = "rename-field"
+  Kit.selectAll = "rename-field"
+  Kit.textinput("A")
+  drawText(m)
+  eq(m.renameText, "A", "with the text selected, typing replaces it")
+  local realDown = love.keyboard.isDown
+  love.keyboard.isDown = function(k) return k == "lctrl" end
+  Kit.keypressed("a")
+  love.keyboard.isDown = realDown
+  Kit.keypressed("backspace")
+  drawText(m)
+  eq(m.renameText, "", "Ctrl+A then Backspace clears it")
+  Kit.blur()
+end
+
 -- ------------------------------------- a selected save that does not exist
 do
   local m = fresh()
