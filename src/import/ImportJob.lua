@@ -267,6 +267,27 @@ local function present(rel)
   return lfs and lfs.getInfo and lfs.getInfo(rel) ~= nil
 end
 
+-- A whole tree gone, folders included.  clearTree leaves the folders of a
+-- portable install's tree in place (empty folders are harmless to a
+-- rebuild), but a rename onto them fails: the backup worked once, then
+-- not again, and a restore could strand the old copy beside them.
+local function wipeTree(prefix, rel)
+  withPrefix(prefix, function(CacheFs)
+    local clear = CacheFs.clearTree or CacheFs.removeTree
+    clear(rel)
+    if not CacheFs.removeDir then return end
+    local lfs = love and love.filesystem
+    local function walk(r)
+      local info = lfs and lfs.getInfo and lfs.getInfo(prefix .. r)
+      if not (info and info.type == "directory") then return end
+      for _, child in ipairs(lfs.getDirectoryItems(prefix .. r) or {}) do walk(r .. "/" .. child) end
+      CacheFs.removeDir(r)
+    end
+    walk(rel)
+  end)
+end
+ImportJob._wipeTree = wipeTree
+
 -- Rename `prefix`'s marker, then its trees, aside.  Returns the record
 -- restoreBackup needs, or nil when there was nothing ready to keep or the
 -- host cannot rename (then nothing was moved).
@@ -275,10 +296,7 @@ function ImportJob._backupCache(prefix)
   if not base or not present(prefix .. CacheContract.MARKER_PATH) then return nil end
   local SUF = ImportJob.BACKUP_SUFFIX
   -- a backup a crash left behind is older than the copy now in place
-  withPrefix(prefix, function(CacheFs)
-    local clear = CacheFs.clearTree or CacheFs.removeTree
-    for _, tree in ipairs(TREES) do clear(tree .. SUF) end
-  end)
+  for _, tree in ipairs(TREES) do wipeTree(prefix, tree .. SUF) end
   os.remove(base .. "/" .. prefix .. CacheContract.MARKER_PATH .. SUF)
   local moved = {}
   local function undo()
@@ -302,20 +320,18 @@ function ImportJob._backupCache(prefix)
 end
 
 -- Put a backup back over whatever the failed import left; the marker last.
+-- Only the trees that were backed up are touched: one with no backup is
+-- still the copy that was there (a crash between the renames).
 function ImportJob._restoreBackup(prefix, backup)
   if not backup then return false end
   local SUF, base = ImportJob.BACKUP_SUFFIX, backup.base
   local ok = true
   for _, tree in ipairs(backup.trees) do
     local path = base .. "/" .. prefix .. tree
-    -- the half-built tree (or its empty folders) moves out of the way
-    if present(prefix .. tree) then os.rename(path, path .. ".failed") end
+    -- the half-built tree, folders and all, goes first
+    wipeTree(prefix, tree)
     if not os.rename(path .. SUF, path) then ok = false end
   end
-  withPrefix(prefix, function(CacheFs)
-    local clear = CacheFs.clearTree or CacheFs.removeTree
-    for _, tree in ipairs(backup.trees) do clear(tree .. ".failed") end
-  end)
   local marker = base .. "/" .. prefix .. CacheContract.MARKER_PATH
   if ok then ok = os.rename(marker .. SUF, marker) and true or false end
   return ok
@@ -323,10 +339,7 @@ end
 
 function ImportJob._dropBackup(prefix, backup)
   if not backup then return end
-  withPrefix(prefix, function(CacheFs)
-    local clear = CacheFs.clearTree or CacheFs.removeTree
-    for _, tree in ipairs(backup.trees) do clear(tree .. ImportJob.BACKUP_SUFFIX) end
-  end)
+  for _, tree in ipairs(backup.trees) do wipeTree(prefix, tree .. ImportJob.BACKUP_SUFFIX) end
   os.remove(backup.base .. "/" .. prefix .. CacheContract.MARKER_PATH .. ImportJob.BACKUP_SUFFIX)
 end
 
@@ -429,7 +442,8 @@ function ImportJob.recover(version)
   for _, tree in ipairs(TREES) do
     if present(prefix .. tree .. SUF) then trees[#trees + 1] = tree end
   end
-  pcall(clearCache, prefix)
+  -- (no clearCache: a tree with no backup was never moved, and is the old
+  -- copy; _restoreBackup replaces only the ones that were)
   local ok = ImportJob._restoreBackup(prefix, { base = base, trees = trees })
   if ok then withPrefix(prefix, function(CacheFs) CacheFs.remove(ImportJob.LOCK_PATH) end) end
   return ok

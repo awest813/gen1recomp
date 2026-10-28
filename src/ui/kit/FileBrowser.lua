@@ -244,6 +244,12 @@ function FileBrowser.goTo(path)
   local home = os.getenv("HOME") or os.getenv("USERPROFILE")
   if home then path = path:gsub("^~", home) end
   if path == "" then return end
+  -- a name typed on its own ("Downloads", "roms/red.gb") is in the folder
+  -- on screen, not wherever the app happened to start
+  if path:sub(1, 1) ~= "/" and not path:match("^%a:[/\\]") then
+    local dir = FileBrowser.currentDir or "/"
+    path = (dir == "/" and "/" or dir .. "/") .. path
+  end
   FileBrowser.pathError = nil
   local ok, h = pcall(io.popen, ("test -d %s && echo dir || (test -f %s && echo file)")
     :format(shQuote(path), shQuote(path)))
@@ -257,7 +263,7 @@ function FileBrowser.goTo(path)
     FileBrowser.pathError = "That file is not one this can open. Choose a folder or a "
       .. (MODE_LABEL[FileBrowser.mode] or "matching") .. " file."
   else
-    FileBrowser.pathError = "There is no folder called " .. path .. "."
+    FileBrowser.pathError = "Nothing called " .. path .. " was found."
   end
 end
 

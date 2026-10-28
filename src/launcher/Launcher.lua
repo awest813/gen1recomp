@@ -414,7 +414,7 @@ end
 function Launcher:sayFailure(err)
   local text = tostring(err)
   print("launcher error: " .. text)
-  local short = text:match("^[^\n]*"):gsub("^[^:]*%.lua:%d+: ", "")
+  local short = text:match("^[^\n]*"):gsub("^[^:]*%.lua:%d+: ", ""):gsub("[%.%s]+$", "")
   self:say("Something went wrong: " .. short .. ". Try again; if it keeps happening, restart PK:GB.", "error")
 end
 
@@ -549,6 +549,7 @@ function Launcher:pollHostPick()
   if okE and type(err) == "string" and err ~= "" then
     self.pendingPick, self.pendingPickFile = nil, nil
     -- closing the picker is not an error
+    self.forceNextImport = nil
     if not err:match("^cancelled:") then self:say(err, "error") end
   end
 end
@@ -570,6 +571,9 @@ function Launcher:pickPath(prompt, kind, browseMode, onPath, dropHint)
     dirs = type(dirs) == "table" and dirs or {}
     local last = type(dirs[browseMode]) == "string" and dirs[browseMode] or nil
     Kit.FileBrowser.open({ title = prompt, mode = browseMode, initialPath = last,
+      -- a cancelled "Import ROM again" must not make the next drop replace
+      -- a game without asking
+      onCancel = function() self.forceNextImport = nil end,
       onSelect = function(path)
         local dir = tostring(path):match("^(.*)/[^/]+$")
         if dir and dir ~= "" then
@@ -1225,7 +1229,9 @@ function Launcher:update(dt)
       end
       self.job = nil
       self:refresh(true)
-      if require("src.launcher.Inbox").enabled() then self:queue(function() self:scanInbox() end) end
+      -- no rescan here: the next ROM in the imports folder would start at
+      -- once and take this failure's reason off the screen (Scan again,
+      -- or the next visit to the launcher, picks it up)
     end
   end
   if #self.actions > 0 then

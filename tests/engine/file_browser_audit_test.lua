@@ -46,7 +46,12 @@ check(FileBrowser.active, "Backspace in the starting folder leaves it open")
 FileBrowser.goTo(root .. "/roms/inner")
 eq(FileBrowser.currentDir, root .. "/roms/inner", "a typed folder opens")
 FileBrowser.goTo(root .. "/nowhere")
-check(FileBrowser.pathError and FileBrowser.pathError:find("no folder", 1, true), "a missing one says so")
+check(FileBrowser.pathError and FileBrowser.pathError:find("was found", 1, true), "a missing one says so")
+-- a bare name is in the folder on screen
+FileBrowser.setDirectory(root .. "/roms")
+FileBrowser.goTo("inner")
+eq(FileBrowser.currentDir, root .. "/roms/inner", "a bare folder name opens inside the folder shown")
+FileBrowser.setDirectory(root .. "/roms")
 FileBrowser.goTo(root .. "/roms/notes.txt")
 check(FileBrowser.active and FileBrowser.pathError:find("not one this can open", 1, true),
   "a file of the wrong kind is refused")

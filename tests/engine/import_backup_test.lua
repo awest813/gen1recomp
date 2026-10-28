@@ -50,7 +50,8 @@ local realFs = {
 love.filesystem = setmetatable(realFs, { __index = love.filesystem })
 
 local CacheFs = require("src.import.CacheFs")
-CacheFs.root = function() return nil end
+local portable = false
+CacheFs.root = function() return portable and root or nil end
 CacheFs.remove = function(rel) os.remove(real((CacheFs.prefix or "") .. rel)) end
 CacheFs.read = function(rel) return realFs.read((CacheFs.prefix or "") .. rel) end
 local ImportJob = require("src.import.ImportJob")
@@ -124,6 +125,41 @@ do
   check(exists("yellow/" .. MARKER), "the game is ready again")
   eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "with its old data")
   check(not exists("yellow/" .. ImportJob.LOCK_PATH), "and no stale lock")
+end
+
+-- ---- a portable install (the cache in the game folder): again and again
+-- (its tree clearing leaves folders, which a rename onto then failed)
+do
+  portable = true
+  freshGame()
+  write("yellow/data/generated/gba/sub.lua", "sub")
+  for round = 1, 2 do
+    local backup = ImportJob._backupCache("yellow/")
+    check(backup ~= nil, "portable backup works on round " .. round)
+    write("yellow/data/generated/gba/half.lua", "half built")
+    check(ImportJob._restoreBackup("yellow/", backup), "and is restored on round " .. round)
+    eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "with the old data, round " .. round)
+    check(not exists("yellow/data/generated/gba/half.lua"), "and none of the half-built one, round " .. round)
+  end
+  local backup = ImportJob._backupCache("yellow/")
+  ImportJob._dropBackup("yellow/", backup)
+  check(not exists("yellow/data/generated.previous"), "a dropped backup leaves no empty folders")
+  portable = false
+end
+
+-- ---- a crash between the renames: the tree not yet moved is kept
+do
+  freshGame()
+  local base = root .. "/yellow/"
+  os.rename(base .. MARKER, base .. MARKER .. ".previous")
+  os.rename(base .. "data/generated", base .. "data/generated.previous")
+  write("yellow/" .. ImportJob.LOCK_PATH, "0 1")
+  local realInterrupted = ImportJob.interrupted
+  ImportJob.interrupted = function() return true end
+  check(ImportJob.recover("yellow"), "the half-made backup is recovered")
+  ImportJob.interrupted = realInterrupted
+  eq(realFs.read("yellow/assets/generated/tiles.png"), "old tiles", "the tree it never moved is still there")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "and the moved one is back")
 end
 
 os.execute("rm -rf '" .. root .. "'")
