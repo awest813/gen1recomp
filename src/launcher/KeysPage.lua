@@ -20,7 +20,7 @@ KeysPage.SECTIONS = {
     { "Q / E", "L / R (FireRed, LeafGreen)" },
     { "F1 / F2", "Quick save / quick load" },
     { "1 / 0", "Game speed faster / slower" },
-    { "2", "Colours (Game Boy games)" },
+    { "2", "Colors (Game Boy games)" },
     { "3", "Tilt" },
     { "4, - and =", "Zoom" },
     { "F10", "Mod manager (Red, Blue, Yellow)" },

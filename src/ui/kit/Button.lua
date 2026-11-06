@@ -141,7 +141,9 @@ function Button.draw(Kit, x, y, w, h, label, opts, hot, focused)
     local kind = KINDS[enabled and (opts.kind or "ghost") or "disabled"]
     fill = (enabled and opts.fill) or kind.fill
     ink = (enabled and opts.ink) or kind.ink
-    doEmboss = (opts.kind == "primary" or opts.kind == "good" or opts.kind == "accent")
+    -- A disabled control keeps the flat disabled face: an emboss would draw
+    -- a bright bar across it, brighter than on the enabled control.
+    doEmboss = enabled and (opts.kind == "primary" or opts.kind == "good" or opts.kind == "accent")
     stroke = kind.stroke
     -- Resting ghost and disabled faces use the same hairline as cards.
     -- Danger stays stronger so a destructive action is obvious before hover.

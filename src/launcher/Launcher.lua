@@ -2163,7 +2163,7 @@ function Launcher:drawSettings(x, y, w, h, s)
   cy = cy + rowH + math.floor(4 * s)
   local why = ({ env = " (POKEPORT_RELAY_ADDR)", launch = " (--relay, this run only)",
     saved = "", default = " (default)" })[source] or ""
-  Kit.text("micro", Kit.ellipsize("micro", "Connecting to " .. tostring(current) .. why, cw),
+  Kit.text("micro", Kit.ellipsize("micro", "Online uses " .. tostring(current) .. why, cw),
     cx, cy, PAL.faint)
   cy = cy + Kit.textHeight("micro") + math.floor(10 * s)
   local okU, Union = pcall(require, "src.online.union.Setting")
@@ -2283,9 +2283,12 @@ function Launcher:drawNotes(x, y, w, h, s)
       local okB, b, v = pcall(PatchNotes.body, okC and Check or nil)
       if okB then body, ver = b, v end
     end
-    self.notesText = body or "Unable to fetch patch notes."
+    -- body() answers with a placeholder sentence rather than nil when no
+    -- source has notes yet: that is a miss too, asked again shortly
+    local missing = body == nil or (okP and body == PatchNotes.MISSING)
+    self.notesText = body or (okP and PatchNotes.MISSING) or "No patch notes for this version yet."
     self.notesVersion = ver
-    self.notesMissing = body == nil
+    self.notesMissing = missing
     self.notesRetryAt = now() + 3
   end
   cy = self:pageHeader(cx, cy, cw, s, { title = "What's new",

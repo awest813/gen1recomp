@@ -126,6 +126,16 @@ eq(l.page, "online", "Online opens as a page")
 local t = drawText(l)
 check(t:find("Offline", 1, true) and t:find("Connect", 1, true), "offline, it offers Connect")
 check(t:find("relay", 1, true) ~= nil, "and names the relay it will use")
+-- with no game chosen, the page says where to pick one, not "on the left"
+-- (the Online page has no game list) and not as an error
+do
+  local was = l.selected
+  l.selected = "red"
+  local _, why = l.online:game()
+  eq(why, "Choose an imported game on the Games page to play online.",
+    "a game that is not imported points to the Games page")
+  l.selected = was
+end
 local page = l.online
 
 -- --------------------------------------------------------------- sign in

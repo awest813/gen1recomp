@@ -112,7 +112,12 @@ end
 function OnlinePage:game()
   local l = self.launcher
   local v = l.selected
-  if not (v and l.ready[v]) then return nil, "Import a game first, then pick it on the left." end
+  if not (v and l.ready[v]) then
+    for _, r in pairs(l.ready or {}) do
+      if r then return nil, "Choose an imported game on the Games page to play online." end
+    end
+    return nil, "Import a game on the Games page to play online."
+  end
   if l:activeCart(v) then
     return nil, "Online plays the original game. Choose it on the game's Carts page."
   end
@@ -1141,7 +1146,8 @@ function OnlinePage:draw(x, y, w, h, s)
   local err = Connect().error()
   local message = self.notice
     or (err and { text = tostring(err):gsub("^%l", string.upper), kind = "error", hint = not online })
-    or (not game and { text = gameWhy, kind = "error" })
+    -- a missing game is a step still to take, not a failure: plain text
+    or (not game and { text = gameWhy, kind = "info" })
   if message then
     Kit.textWrapped("small", message.text, cx, cy, cw, message.kind == "error" and PAL.red or PAL.text)
     cy = cy + Kit.wrapHeight("small", message.text, cw) + math.floor(4 * s)

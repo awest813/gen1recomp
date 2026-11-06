@@ -359,6 +359,29 @@ check(not nt:find("**", 1, true) and not nt:find("##", 1, true),
 local wrapped = l.notesLines
 drawText(l)
 check(l.notesLines == wrapped, "and wraps them once, not every frame")
+-- no notes yet: body() answers with its placeholder, which is a miss the
+-- page asks again for (it was taken as the notes and never retried)
+do
+  local MISSING = "No patch notes yet."
+  local notesBody = MISSING
+  package.loaded["src.update.PatchNotes"] = { MISSING = MISSING,
+    body = function() return notesBody, "1.4.3" end }
+  local clock = 100
+  local realTimer = love.timer.getTime
+  love.timer.getTime = function() return clock end
+  local ln = fresh()
+  ln.page = "notes"
+  check(drawText(ln):find(MISSING, 1, true) ~= nil, "What's new says when there are no notes yet")
+  check(ln.notesMissing, "and counts that as a miss")
+  notesBody, clock = "- **#13** arrived late", clock + 5
+  drawText(ln)
+  check(drawText(ln):find("arrived late", 1, true) ~= nil, "notes that arrive later replace it")
+  check(not ln.notesMissing, "and are kept")
+  love.timer.getTime = realTimer
+  package.loaded["src.update.PatchNotes"] = {
+    body = function() return "## Issues closed\n\n- **#12** cart padding", "1.4.2" end,
+  }
+end
 
 -- ------------------------------------------------------------------- mods
 local modState = { cool = true, exp = false }

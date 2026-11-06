@@ -73,7 +73,7 @@ function UI.open(imp, title, options, current, apply)
   imp._boxPopup = { title = title, options = options, current = current, apply = apply,
     scroll = 0, index = 1, query = "", reveal = true }
   if #options == 0 then imp._boxPopup.message = title == "Choose a game"
-    and "save a game first. your party and PC boxes will show up here." or "nothing here yet." end
+    and "import a game and save in it first. your party and PC boxes will show up here." or "nothing here yet." end
   if current ~= nil then
     for i, option in ipairs(options) do if option.id == current then imp._boxPopup.index = i end end
   end

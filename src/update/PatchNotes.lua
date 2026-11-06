@@ -131,6 +131,12 @@ function PatchNotes.fromRepo(engine)
   return nil, nil
 end
 
+-- What body() returns when no source has notes for this build; callers
+-- compare against it to ask again later (the update check can answer after
+-- the page first opens).
+PatchNotes.MISSING = "No patch notes for this version yet. They appear here once the "
+  .. "launcher reaches the update server, and this page tries again on its own."
+
 function PatchNotes.body(Check)
   local Version = require("src.core.Version")
   local engine = (Version and Version.engine) or "?"
@@ -149,7 +155,7 @@ function PatchNotes.body(Check)
   notes, ver = PatchNotes.fromRepo(engine)
   if notes then return notes, ver end
 
-  return "Unable to fetch patch notes.", engine
+  return PatchNotes.MISSING, engine
 end
 
 return PatchNotes
