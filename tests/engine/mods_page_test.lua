@@ -176,7 +176,7 @@ window(1280, 720)
 local l = fresh()
 l.page = "mods"
 local mt = drawText(l)
-check(mt:find("Check for updates", 1, true) and mt:find("Get mods", 1, true),
+check(mt:find("Check updates", 1, true) and mt:find("Get mods", 1, true),
   "the Mods page offers to check for updates and to get mods")
 l:modsUi():checkUpdates(true)
 eq(fetches, 2, "only mods that name a GitHub repo are checked")
@@ -585,13 +585,14 @@ do
       local c = Kit._clipRect
       local top, bottom = y, y + h
       if c then top, bottom = math.max(top, c.y), math.min(bottom, c.y + c.h) end
-      if bottom > top then rows[#rows + 1] = { top, bottom } end
+      -- with its column: the game list beside the page is not under it
+      if bottom > top then rows[#rows + 1] = { top, bottom, x, x + w } end
       return realRow(x, y, w, h, ...)
     end
     Kit.button = function(x, y, w, h, label, o)
       if label == "Install mod .zip" then
         local c = Kit._clipRect
-        footer = { c and math.max(y, c.y) or y, c and math.min(y + h, c.y + c.h) or y + h }
+        footer = { c and math.max(y, c.y) or y, c and math.min(y + h, c.y + c.h) or y + h, x, x + w }
       end
       return realButton(x, y, w, h, label, o)
     end
@@ -601,7 +602,8 @@ do
   Kit.row, Kit.button = realRow, realButton
   local overlap
   for _, r in ipairs(rows) do
-    if footer and footer[2] > footer[1] and r[1] < footer[2] and footer[1] < r[2] then overlap = true end
+    if footer and footer[2] > footer[1] and r[1] < footer[2] and footer[1] < r[2]
+        and r[3] < footer[4] and footer[3] < r[4] then overlap = true end
   end
   check(not overlap, "844x390: no visible mod row sits under Install mod .zip")
 end

@@ -110,7 +110,7 @@ function ModsPage:flow(cx, cy, cw, s, items)
   local x = cx
   for _, it in ipairs(items) do
     local bw = math.min(cw, math.max(Kit.tapMin(),
-      Kit.textWidth("small", it.label) + math.floor(28 * s)))
+      Kit.textWidth("small", it.label) + math.floor(24 * s)))
     if x > cx and x + bw > cx + cw then
       x = cx
       cy = cy + h + gap
@@ -130,7 +130,7 @@ function ModsPage.flowHeight(cw, s, items)
   local x, lines = 0, 1
   for _, it in ipairs(items) do
     local bw = math.min(cw, math.max(Kit.tapMin(),
-      Kit.textWidth("small", it.label) + math.floor(28 * s)))
+      Kit.textWidth("small", it.label) + math.floor(24 * s)))
     if x > 0 and x + bw > cw then
       x = 0
       lines = lines + 1
@@ -1448,7 +1448,7 @@ function ModsPage:drawMods(x, y, w, h, s)
     { label = "Examples", id = "mods-examples", run = function() l.page = "examples" end },
     avail > 0 and { label = ("Update all (%d)"):format(avail), id = "mods-update-all", kind = "primary",
         enabled = not busy, run = function() self:updateAll({}) end }
-      or { label = "Check for updates", id = "mods-check", enabled = not self:checking() and not busy,
+      or { label = "Check updates", id = "mods-check", enabled = not self:checking() and not busy,
         run = function() self:checkUpdates(true) end },
     { label = "Tools", id = "mods-tools", run = function() l.page = "modtools" end },
   })
@@ -1468,7 +1468,8 @@ function ModsPage:drawMods(x, y, w, h, s)
     local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
     l.modScroll = Kit.scrollInput(l.modScroll or 0, maxAt, cx, cy, cw, viewH)
     local py = Kit.scrollBegin(cx, cy, cw, viewH, l.modScroll, maxAt)
-    local rw = cw - Kit.scrollGutter(s)
+    -- the scrollbar's gutter only when there is a scrollbar
+    local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
     -- wide enough for the longest label with the button's own inset
     local longest = math.max(Kit.textWidth("small", "Add file"), Kit.textWidth("small", "Get pack"))
     local bw = math.max(Kit.tapMin(), longest + Theme.BUTTON.labelInset * s + math.floor(12 * s))
@@ -1632,7 +1633,8 @@ function ModsPage:drawExamples(x, y, w, h, s)
   local maxAt = Kit.scrollExtent(#rows * (rowH + gapR), viewH)
   self.scroll.examples = Kit.scrollInput(self.scroll.examples or 0, maxAt, cx, cy, cw, viewH)
   local py = Kit.scrollBegin(cx, cy, cw, viewH, self.scroll.examples, maxAt)
-  local rw = cw - Kit.scrollGutter(s)
+  -- the scrollbar's gutter only when there is a scrollbar
+  local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
   local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Installed") + math.floor(24 * s))
   local bh = math.max(Kit.tapMin(), math.floor(32 * s))
   for i, row in ipairs(rows) do
@@ -2028,7 +2030,8 @@ function ModsPage:drawLoadOrder(x, y, w, h, s)
   local maxAt = Kit.scrollExtent(#list * (rowH + gap), viewH)
   self.scroll.order = Kit.scrollInput(self.scroll.order or 0, maxAt, cx, cy, cw, viewH)
   local py = Kit.scrollBegin(cx, cy, cw, viewH, self.scroll.order, maxAt)
-  local rw = cw - Kit.scrollGutter(s)
+  -- the scrollbar's gutter only when there is a scrollbar
+  local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
   local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Down") + math.floor(20 * s))
   local bh = math.max(Kit.tapMin(), math.floor(32 * s))
   for i, id in ipairs(list) do
@@ -2248,7 +2251,8 @@ function ModsPage:drawCatalog(x, y, w, h, s)
   local maxAt = Kit.scrollExtent(#list * (rowH + gapR), viewH)
   self.scroll.catalog = Kit.scrollInput(self.scroll.catalog or 0, maxAt, cx, cy, cw, viewH)
   local py = Kit.scrollBegin(cx, cy, cw, viewH, self.scroll.catalog, maxAt)
-  local rw = cw - Kit.scrollGutter(s)
+  -- the scrollbar's gutter only when there is a scrollbar
+  local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
   local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Installed") + math.floor(24 * s))
   local bh = math.max(Kit.tapMin(), math.floor(32 * s))
   local first = math.max(1, math.floor((self.scroll.catalog or 0) / (rowH + gapR)))

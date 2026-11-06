@@ -2695,7 +2695,8 @@ function Launcher:drawGame(x, y, w, h, s)
     local maxAt = Kit.scrollExtent(#slots * (cardH + gap) - gap, viewH)
     self.slotScroll = Kit.scrollInput(self.slotScroll, maxAt, cx, cy, cw, viewH)
     local py = Kit.scrollBegin(cx, cy, cw, viewH, self.slotScroll, maxAt)
-    local rw = cw - Kit.scrollGutter(s)
+    -- the scrollbar's gutter only when there is a scrollbar
+    local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
     local total = GameVersion.generation(v) == 2 and 16 or 8
     for i, slot in ipairs(slots) do
       local ry = py + (i - 1) * (cardH + gap)

@@ -400,7 +400,8 @@ function CartsPage:drawCarts(x, y, w, h, s)
   local maxAt = Kit.scrollExtent(#rows * (rowH + gap), viewH)
   l.cartScroll = Kit.scrollInput(l.cartScroll or 0, maxAt, cx, cy, cw, viewH)
   local py = Kit.scrollBegin(cx, cy, cw, viewH, l.cartScroll, maxAt)
-  local rw = cw - Kit.scrollGutter(s)
+  -- the scrollbar's gutter only when there is a scrollbar
+  local rw = cw - (maxAt > 0 and Kit.scrollGutter(s) or 0)
   local bw = math.max(Kit.tapMin(), Kit.textWidth("small", "Confirm") + math.floor(24 * s))
   local sbh = math.max(Kit.tapMin(), math.floor(32 * s))
   for i, row in ipairs(rows) do
