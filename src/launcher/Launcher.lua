@@ -1997,12 +1997,14 @@ end
 -- Back button on the right, and an optional game colour mark.  Returns the
 -- y the page's content starts at.
 function Launcher:pageHeader(cx, cy, cw, s, o)
-  local backW = 0
+  local backW, backBottom = 0, cy
   if o.back then
     backW = math.max(Kit.tapMin(), Kit.textWidth("small", "Back") + Theme.space("xl", s) + Theme.space("s", s))
+    local backH = math.max(Kit.tapMin(), math.floor(32 * s))
+    backBottom = cy + backH
     -- the page's way in for the pad ring (Kit.navAnchor "content")
     self.pageEntryId = o.backId or "page-back"
-    if Kit.button(cx + cw - backW, cy, backW, math.max(Kit.tapMin(), math.floor(32 * s)), "Back",
+    if Kit.button(cx + cw - backW, cy, backW, backH, "Back",
         { id = o.backId or "page-back", font = "small", icon = "arrow-left", fullLabel = true }) then
       self:queue(o.back)
     end
@@ -2020,8 +2022,10 @@ function Launcher:pageHeader(cx, cy, cw, s, o)
       Theme.fillRounded(cx, cy + (Kit.textHeight("small") - d) / 2, d, d, o.accent, 1, d / 2)
       tx = cx + d + Theme.space("s", s)
     end
-    Kit.textWrapped("small", o.subtitle, tx, cy, textW - (tx - cx), PAL.muted)
-    cy = cy + Kit.wrapHeight("small", o.subtitle, textW - (tx - cx))
+    -- below the Back button, the subtitle has the card's whole width
+    local subW = (cy >= backBottom and cw or textW) - (tx - cx)
+    Kit.textWrapped("small", o.subtitle, tx, cy, subW, PAL.muted)
+    cy = cy + Kit.wrapHeight("small", o.subtitle, subW)
   end
   return cy + Theme.space("l", s)
 end

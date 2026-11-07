@@ -36,16 +36,16 @@ local LIST = {
   {
     id = "pmd_red",
     module = "src.import.pmd.PmdImport",
-    name = "Pokémon Mystery Dungeon",
+    name = "Pokemon Mystery Dungeon",
     status = "beta",
-    summary = "All Pokémon sprite sheets and animations from Red Rescue Team.",
+    summary = "All Pokemon sprite sheets and animations from Red Rescue Team.",
     source = {
       name = "Mystery Dungeon Red Rescue Team (USA/Australia) GBA cartridge dump",
       formats = { "gba" }, sizes = { 33554432 },
     },
     packs = {
-      { id = "sprites", kind = "sprite", name = "Pokémon sprites",
-        description = "423 Pokémon and form sheets with poses, directions and animation timing." },
+      { id = "sprites", kind = "sprite", name = "Pokemon sprites",
+        description = "423 Pokemon and form sheets with poses, directions and animation timing." },
     },
   },
   {

@@ -15,7 +15,9 @@ local function shQuote(path)
   return "'" .. tostring(path):gsub("'", "'\\''") .. "'"
 end
 local PAL = Theme.PAL
-local MODE_LABEL = { rom = "ROM", save = "Save", box = "Box save", mod = "Mod", cart = "Cart", all = "File" }
+-- used mid-sentence ("No save files in this folder."): lowercase but for
+-- names; "all" has none, so it reads "No matching files"
+local MODE_LABEL = { rom = "ROM", save = "save", box = "Box save", mod = "mod", cart = "cart" }
 local Kit = nil
 local function getKit()
   if not Kit then Kit = require("src.ui.kit.Kit") end
@@ -124,12 +126,16 @@ end
 local function scanDirectory(dir, mode)
   dir = normalizePath(dir)
   local entries = {}
+  -- ls -a lists "./" for any folder it can read, so an empty folder (or
+  -- one holding only hidden files) is told apart from a missing one
+  local readable = false
 
   local ok, handle = pcall(io.popen, string.format("ls -1apL %s 2>/dev/null", shQuote(dir)))
   if ok and handle then
     local output = handle:read("*a")
     handle:close()
     if output and #output > 0 then
+      readable = true
       for line in output:gmatch("[^\r\n]+") do
         if line ~= "./" and line ~= "../" and line ~= "." and line ~= ".." then
           -- (-L: a linked folder, as handhelds set up for their ROM
@@ -173,7 +179,7 @@ local function scanDirectory(dir, mode)
     return a.name:lower() < b.name:lower()
   end)
 
-  return entries
+  return entries, readable or #entries > 0
 end
 
 function FileBrowser.open(opts)
@@ -189,13 +195,16 @@ function FileBrowser.open(opts)
   FileBrowser.places = nil
   local initPath = opts.initialPath or FileBrowser._startDir()
   FileBrowser.currentDir = initPath
-  FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
+  local readable
+  FileBrowser.entries, readable = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   -- a remembered folder that is gone (an unplugged drive): the usual start
-  if #FileBrowser.entries == 0 and opts.initialPath then
+  if not readable and opts.initialPath then
     FileBrowser.currentDir = FileBrowser._startDir()
-    FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
+    FileBrowser.entries, readable = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   end
-  if #FileBrowser.entries == 0 and FileBrowser.currentDir ~= "/" then
+  -- only a start that cannot be read falls back to the disk root: an empty
+  -- home folder opens there and says it is empty
+  if not readable and FileBrowser.currentDir ~= "/" then
     FileBrowser.currentDir = "/"
     FileBrowser.entries = scanDirectory(FileBrowser.currentDir, FileBrowser.mode)
   end

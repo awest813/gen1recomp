@@ -305,14 +305,14 @@ function IssueReport.open(options, context)
   end
   local copied, copyResult = invoke(system.setClipboardText, url)
   if copied and copyResult ~= false then
-    return true, url, "Issue URL copied to the clipboard."
+    return true, url, "No browser opened, so the report link is copied. Paste it into a browser to report the problem."
   end
   local filesystem = love and love.filesystem or {}
   local written, writeResult = invoke(filesystem.write, "issue-report-url.txt", url)
   if written and writeResult ~= false then
-    return true, url, "Issue URL saved to issue-report-url.txt."
+    return true, url, "No browser opened, so the report link is saved to issue-report-url.txt in the save folder. Open it in a browser to report the problem."
   end
-  return false, url, "No browser, clipboard, or writable save directory is available for the issue report."
+  return false, url, "Could not open a browser, copy the report link or save it to a file."
 end
 
 IssueReport.percentEncode = percentEncode

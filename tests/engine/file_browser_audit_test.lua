@@ -1,7 +1,8 @@
 -- The in-app file browser, the ROM loading audit: a linked folder is listed;
 -- a typed or pasted path opens a folder or picks a file; a letter jumps to
 -- the next entry starting with it; Backspace in the folder it opened in no
--- longer closes it; and X only cycles quick jumps that exist.
+-- longer closes it; X only cycles quick jumps that exist; and an empty
+-- folder opens instead of jumping to the disk root.
 --   luajit tests/engine/file_browser_audit_test.lua
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
@@ -66,6 +67,20 @@ FileBrowser.cycleShortcut()
 eq(FileBrowser.currentDir, root .. "/elsewhere", "X goes to a place that exists")
 FileBrowser.keypressed("escape")
 check(not FileBrowser.active, "Esc closes")
+
+-- an empty folder (only hidden files) opens where asked, not at the disk
+-- root; a folder that is gone still falls back to the usual start
+os.execute("mkdir -p '" .. root .. "/empty/.hidden'")
+FileBrowser.open({ mode = "rom", initialPath = root .. "/empty" })
+eq(FileBrowser.currentDir, root .. "/empty", "an empty folder opens, not the disk root")
+eq(#FileBrowser.entries, 0, "and lists nothing")
+FileBrowser.keypressed("escape")
+local realStart = FileBrowser._startDir
+FileBrowser._startDir = function() return root .. "/roms" end
+FileBrowser.open({ mode = "rom", initialPath = root .. "/gone" })
+eq(FileBrowser.currentDir, root .. "/roms", "a folder that is gone opens the usual start")
+FileBrowser._startDir = realStart
+FileBrowser.keypressed("escape")
 
 os.execute("rm -rf '" .. root .. "'")
 T.finish("file browser audit")
