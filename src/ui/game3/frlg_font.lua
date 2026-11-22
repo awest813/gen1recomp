@@ -800,7 +800,6 @@ local function buildRev()
     ["'"] = 0xB4,
     ["$"] = 0xB7,
     ["¥"] = 0xB7,
-    ["\194\165"] = 0xB7,
   }
   for code, ch in pairs(TextIR.CHARMAP or {}) do
     if type(ch) == "string" and #ch > 0 and not rev[ch] then

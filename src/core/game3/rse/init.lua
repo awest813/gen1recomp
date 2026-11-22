@@ -176,9 +176,12 @@ function Rse.mapGroupNum(mapId, sess)
   local C = Constants.of(Constants.versionOf(sess or session()))
   -- pokeemerald/include/constants/map_groups.h: normalize map aliases against pret names.
   local okCatalog, MapCatalog = pcall(lazyReq, "src.import.gba.map_catalog")
-  local slot = okCatalog and MapCatalog.slotKeyFor and MapCatalog.slotKeyFor(mapId)
-  local group, num = type(slot) == "string" and slot:match("^(%d+)_(%d+)$")
-  if group and num then return tonumber(group), tonumber(num) end
+  -- (`x and s:match(...)` keeps only the first capture, so this reads both
+  -- through groupNumFor instead)
+  if okCatalog and MapCatalog.groupNumFor then
+    local group, num = MapCatalog.groupNumFor(mapId)
+    if group and num then return group, num end
+  end
   local name = "MAP_" .. mapId:sub(#prefix + 1)
   local e = C.map_groups.byName[name]
   if not e then

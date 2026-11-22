@@ -2561,9 +2561,6 @@ function Game2:applyOptions()
   end
   local Zoom = require("src.render.Zoom")
   Zoom.applyOptions(options)
-  local caps = require("src.core.Performance").applyOptions(options)
-  Zoom.allowSurvey = caps.survey
-  if not caps.survey and Zoom.offset < 0 then Zoom.offset = 0 end
   require("src.render.Tilt").applyOptions(options)
   require("src.render.Letterbox").applyOptions(options)
   require("src.render.GbcPalette").applyOptions(options)
@@ -2599,7 +2596,6 @@ function Game2:applyOptions()
   local caps = require("src.core.Performance").applyOptions(options)
   if not caps.tilt then require("src.render.Tilt").setLevel(0) end
   if not caps.shaderfx then require("src.render.ShaderFX").deactivate() end
-  local Zoom = require("src.render.Zoom")
   Zoom.allowSurvey = caps.survey
   if not caps.survey and Zoom.offset < 0 then Zoom.offset = 0 end
   if caps.fpsMax then
