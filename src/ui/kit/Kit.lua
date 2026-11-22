@@ -332,8 +332,16 @@ function Kit.beginFrame(mx, my, clicked, wheel)
   end
   Kit.mouseDown = down
   if not down then Kit._drag = nil end
+  -- a drag no scroll area could take last frame is spent, not saved up
+  if Kit._dragLeft then
+    Kit.dragAccum = (Kit.dragAccum or 0) - Kit._dragLeft
+    Kit._dragLeft = nil
+  end
   Kit.resetClip()
   Kit.blockClicks = false
+  -- as blockClicks: a pcall'd draw that set it and then threw left it on
+  -- for good, which switched every occluder off
+  Kit._overlay = false
   Kit.occlude(nil)
   if love and love.timer and love.timer.getTime then
     Kit.time = love.timer.getTime()
@@ -350,6 +358,11 @@ function Kit.beginFrame(mx, my, clicked, wheel)
   if Kit._carry then
     for _, e in ipairs(Kit._carry) do edits[#edits + 1] = e end
     Kit._carry = nil
+  end
+  -- a cancelled keyboard's old text is for the next frame's field: when the
+  -- page changed instead, it must not revert that id on some later visit
+  if Kit._restore then
+    if Kit._restore.waited then Kit._restore = nil else Kit._restore.waited = true end
   end
   local before = Kit._focusShownLast
   Kit._resolveNav()
@@ -519,8 +532,17 @@ function Kit.navigate(dir)
   Kit._ringShown = true
 end
 
+-- With the ring hidden, the first press only shows it.  A click leaves the
+-- ring, hidden, on what was clicked: Enter then fired that unseen control,
+-- and after Delete's first click that was Confirm delete.
 function Kit.activateFocused()
-  if Kit.focusId then Kit._activateId = Kit.focusId end
+  if not Kit.focusId then return false end
+  if not Kit._ringShown then
+    Kit._ringShown = true
+    return false
+  end
+  Kit._activateId = Kit.focusId
+  return true
 end
 
 function Kit.setFocus(id)
@@ -544,11 +566,20 @@ function Kit._resolveColumns(cur, dir, n)
   local colOf = Kit.navColumn
   local curCol = colOf(cur)
   local cx, cy = cur.x + cur.w / 2, cur.y + cur.h / 2
+  -- inside a popup, only its own items: the cards under it are not
+  -- reachable.  An overlay with nothing else in it (a toast's one button)
+  -- does not hold the ring: it had no way out until the toast went.
+  local keepIn = false
+  if cur.overlay then
+    for i = 1, n do
+      local c = Kit._nav[i]
+      if c.overlay and c.id ~= cur.id and colOf(c) ~= "skip" then keepIn = true break end
+    end
+  end
   local function each(fn)
     for i = 1, n do
       local c = Kit._nav[i]
-      -- inside a popup, only its own items: the cards under it are not reachable
-      if c.id ~= cur.id and colOf(c) ~= "skip" and (not cur.overlay or c.overlay) then
+      if c.id ~= cur.id and colOf(c) ~= "skip" and (not keepIn or c.overlay) then
         fn(c, colOf(c))
       end
     end
@@ -941,6 +972,14 @@ function Kit.card(x, y, w, h, variant)
   Theme.card(x, y, w, h, variant)
 end
 
+-- Enter / A on the ring's control, honoured where a click would be: not
+-- under a modal or during a page slide (Kit.button already checked; rows,
+-- toggles and fields reopened a page mid-slide, or took focus under a modal)
+local function activated(id)
+  return id ~= nil and Kit._activateId == id and not Kit.blockClicks
+end
+Kit._activated = activated
+
 function Kit.row(x, y, w, h, selected, id)
   audit("row", x, y, w, h, id or "row")
   local focused = id and Kit.focusable(id, x, y, w, h) or false
@@ -953,7 +992,7 @@ function Kit.row(x, y, w, h, selected, id)
     Theme.strokeRounded(x + 1, y + 1, w - 2, h - 2, PAL.blue, 1, 3, Theme.radius())
   end
   local clicked = Kit.press(x, y, w, h)
-    or (id ~= nil and Kit._activateId == id)
+    or activated(id)
   return clicked, ink
 end
 
@@ -1136,7 +1175,7 @@ function Kit.toggle(x, y, w, h, on, id)
       on and x or (x + w / 2), y + (h - Kit.textHeight("micro")) / 2, w / 2,
       PAL.text)
   end
-  local hitTaken = Kit.press(x, y, w, h) or (id ~= nil and Kit._activateId == id)
+  local hitTaken = Kit.press(x, y, w, h) or activated(id)
   if hitTaken then return not on, true end
   return on, false
 end
@@ -1162,8 +1201,8 @@ function Kit.textfield(id, x, y, w, h, value, placeholder, opts)
     or os.getenv("MUOS") == "1" or os.getenv("KNULLI") == "1"
     or os.getenv("POKEPORT_SBC") == "1" or os.getenv("ANBERNIC") == "1"
 
-  local clickedOrActivated = (Kit._activateId == id) or (isHandheld and Kit.press(x, y, w, h))
-  local fromPad = Kit._activateId == id and Kit._padActivate
+  local clickedOrActivated = activated(id) or (isHandheld and Kit.press(x, y, w, h))
+  local fromPad = activated(id) and Kit._padActivate
   if (isHandheld or fromPad) and clickedOrActivated and not mobile() then
     local before = value
     VirtualKeyboard.open({
@@ -1199,7 +1238,7 @@ function Kit.textfield(id, x, y, w, h, value, placeholder, opts)
   end
 
   if Kit.press(x, y, w, h) then Kit._fieldHit = true end
-  if Kit.press(x, y, w, h) or (Kit._activateId == id) then Kit.focus = id end
+  if Kit.press(x, y, w, h) or activated(id) then Kit.focus = id end
   local focused = (Kit.focus == id)
   local ended
   if focused then
@@ -1422,11 +1461,18 @@ function Kit.scrollInput(offset, maxScroll, x, y, w, h)
   local at = Kit.scrollWheel(offset, maxScroll, x, y, w, h)
   if not Kit.blockClicks and (Kit.dragAccum or 0) ~= 0
       and dragOriginIn(x, y, w, h) then
-    at = Kit.scrollClamp(at + Kit.dragAccum, maxScroll)
-    Kit.dragAccum = 0
+    -- only what this area can scroll: the rest is for a list inside it
+    -- (the save list inside a game page that scrolls), which runs later in
+    -- the frame; beginFrame drops what nothing took
+    local moved = Kit.scrollClamp(at + Kit.dragAccum, maxScroll)
+    Kit.dragAccum = Kit.dragAccum - (moved - at)
+    Kit._dragLeft = Kit.dragAccum
+    at = moved
   end
   local r = Kit._reveal
-  if r and r.clipX >= x - 1 and r.clipX <= x + w and r.clipY >= y - 1 and r.clipY <= y + h then
+  -- the area whose own corner is the clip's: an area around it would take
+  -- a reveal meant for the list inside it
+  if r and math.abs(r.clipX - x) <= 1 and math.abs(r.clipY - y) <= 1 then
     local margin = math.floor(8 * Kit.scale)
     if r.y < r.clipY then
       at = Kit.scrollClamp(at - (r.clipY - r.y) - margin, maxScroll)
