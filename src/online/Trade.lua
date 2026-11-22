@@ -479,6 +479,29 @@ local function sideFor3(handle, ref, incoming, partnerMail, warnings, partnerNam
     local sent = TeamPick.monAt(handle, ref)
     local received = deepCopy(incoming)
     NTrade.clearPartnerMail()
+    -- the other game's mail record is only a letter: it rides on a mon that
+    -- holds a mail item (unpackMon3 checked that item), and the item comes
+    -- from the mon -- the record's own itemId (unchecked) set the held item
+    if partnerMail then
+      local Mail = require("src.core.game3.mail")
+      local held = tonumber(received.item or received.heldItem)
+      if type(partnerMail) ~= "table" or not (held and Mail.isMailItem(held)) then
+        partnerMail = nil
+      else
+        local words = {}
+        for i = 1, 9 do
+          -- 0xFFFF is the game's "no word" (Mail.copy's default too)
+          local w = type(partnerMail.words) == "table" and tonumber(partnerMail.words[i]) or 0xFFFF
+          words[i] = math.max(0, math.min(0xFFFF, math.floor(w or 0xFFFF)))
+        end
+        local clean = {}
+        for k, v in pairs(partnerMail) do clean[k] = v end
+        clean.itemId, clean.words = held, words
+        clean.playerName = type(partnerMail.playerName) == "string"
+          and partnerMail.playerName:sub(1, 16) or ""
+        partnerMail = clean
+      end
+    end
     if partnerMail then
       local Mail = require("src.core.game3.mail")
       local id = tonumber(received.mail)
@@ -1231,8 +1254,11 @@ function Trade.remote(handle, link, opts)
       session = { theirParty = {}, peerName = opts.peerName },
     }, Remote3)
   end
+  -- strict unless a caller says otherwise: non-strict drops a mon it cannot
+  -- read, sliding every later index, so the digest (from the wire copy) and
+  -- the save (from the decoded list) named different mons
   local session = Protocol.TradeSession.new(data, handle.party, {
-    subset = opts.subset, strict = opts.strict, peerName = opts.peerName,
+    subset = opts.subset, strict = opts.strict ~= false, peerName = opts.peerName,
   })
   return setmetatable({
     handle = handle,
@@ -1351,9 +1377,12 @@ function Remote:update()
       elseif msg.type == "trade_abort" then
         self:_onAbort(msg)
       elseif not self.phase then
-        if msg.type == "party" then self._theirMons = msg.mons end
+        -- the party is taken once (TradeSession:handle): the copy the digest
+        -- is built from must be the one the player saw, not a later one
+        local firstParty = msg.type == "party" and session.stage == "waitParty"
+        if firstParty then self._theirMons = msg.mons end
         if msg.type == "party" and self.handle.generation == 2 then
-          self:_theirParty(msg)
+          if firstParty then self:_theirParty(msg) end
         else
           local reply = self.session:handle(msg)
           if reply then self:_send(reply) end
@@ -1636,6 +1665,8 @@ function Remote3:confirm(yes)
   if yes and self:_partnerMonValid() then status = STATUS.READY end
   if yes and status ~= STATUS.READY then self.lastResult = "partner_invalid" end
   self.phase = "waitConfirm"
+  -- the follower's own yes: the leader's START_TRADE is honoured only after it
+  self.followerReady = self.seat ~= 0 and status == STATUS.READY or nil
   if self.seat == 0 then
     self.playerConfirm = status
     self:_leaderHandle()
@@ -1711,10 +1742,18 @@ function Remote3:_followerRead(msg)
   elseif cmd == C.PARTNER_CANCEL_TRADE then
     self:_resume("partner_canceled")
   elseif cmd == C.SET_MONS_TO_TRADE then
+    -- not once this player has answered, or the exchange is under way: the
+    -- mon they are getting must stay the one they saw
+    if self.phase == "waitConfirm" or EXCHANGING[self.phase] or self.phase == "committed" then return end
     self.partnerCursor = math.floor(tonumber(msg.cursor) or 0)
     self.session.theirPick = self.partnerCursor + 1
     self.phase = "confirming"
   elseif cmd == C.START_TRADE then
+    -- only after this player confirmed (and passed _partnerMonValid): a
+    -- leader sending it early started the exchange, and the relay commit,
+    -- before they had pressed Trade
+    if self.phase ~= "waitConfirm" or not self.followerReady then return end
+    self.followerReady = nil
     self:_beginTrade()
   elseif cmd == C.PLAYER_CANCEL_TRADE then
     self:_resume("trade_canceled")

@@ -1083,4 +1083,33 @@ do
   SaveData.portableFs = realPortableFs
 end
 
+-- ------- a hostile peer (review fixes)
+do
+  local Protocol = require("src.link.Protocol")
+  local party = { gen1Mon("KADABRA", 30), gen1Mon("KADABRA", 31) }
+  local session = Protocol.TradeSession.new(GEN1, party, { strict = true })
+  session.stage = "waitParty"
+  local shown = { Protocol.packMon(gen1Mon("ALAKAZAM", 50)) }
+  session:handle({ type = "party", mons = shown })
+  T.eq(session.stage, "picking", "the peer's party arrives")
+  local seen = session.theirParty[1]
+  session:pick(1)
+  session:handle({ type = "pick", index = 1 })
+  T.eq(session.stage, "confirming", "both have picked")
+  -- the peer sends another party (a weaker mon at the same index) and a pick change
+  session:handle({ type = "party", mons = { Protocol.packMon(gen1Mon("KADABRA", 2)) } })
+  T.eq(session.theirParty[1], seen, "a party sent again after the picks is ignored")
+  session:handle({ type = "pick", index = 2 })
+  T.eq(session.stage, "cancelled", "a pick changed while confirming ends the trade")
+
+  -- out-of-range experience and an unknown status are not taken as sent
+  local packed = Protocol.packMon(gen1Mon("KADABRA", 5))
+  packed.exp, packed.status = 2 ^ 31 - 1, "lol"
+  local mon = Protocol.unpackMon(GEN1, packed, { strict = true })
+  T.check(mon and mon.level == 5, "the mon keeps its level")
+  T.check(mon and mon.exp < require("src.pokemon.Growth").expForLevel("MEDIUM_SLOW", 6),
+    "with experience inside that level's range")
+  T.eq(mon and mon.status, nil, "and no made-up status")
+end
+
 T.finish("online trade")

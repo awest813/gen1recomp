@@ -36,6 +36,28 @@ local function text(v)
   return v:sub(1, MAX_WIRE_NAME)
 end
 
+-- A peer's status is one of the conditions a party mon can keep; anything
+-- else ("lol") was written into the save as is.
+-- Gen 1 spells them like the cart's text (PSN), Gen 2 as words (poison).
+local STATUSES = {
+  [1] = { PSN = true, BRN = true, FRZ = true, PAR = true, SLP = true },
+  [2] = { poison = true, burn = true, freeze = true, paralyze = true, sleep = true },
+}
+local function statusOf(v, generation)
+  local s = text(v)
+  return s and STATUSES[generation][s] and s or nil
+end
+
+-- Experience inside its level's range (at the cap, exactly the cap's): a
+-- "Lv5" sent with millions of points reached Lv100 on its first battle.
+-- Gen 3 checks the same coherence (unpackMon3).
+local function expIn(level, sent, forLevel, maxLevel)
+  local lo = forLevel(level)
+  local hi = level < maxLevel and forLevel(level + 1) - 1 or lo
+  local v = math.floor(num(sent, lo))
+  return math.max(lo, math.min(hi, v))
+end
+
 Protocol.hello = Handshake.hello
 Protocol.checkCompat = Handshake.checkCompat
 
@@ -159,7 +181,7 @@ function Protocol.unpackMon(data, packed, opts)
   local forced = forceLevel
   local hp = forced and stats.hp
     or math.max(0, math.min(stats.hp, math.floor(num(packed.hp, stats.hp))))
-  local status = not forced and text(packed.status) or nil
+  local status = not forced and statusOf(packed.status, 1) or nil
   local sleepTurns = status == "SLP"
     and math.max(1, math.min(7, math.floor(num(packed.sleepTurns, 1)))) or nil
   -- preserve the sender's original-trainer identity (party_struct MON_OTID +
@@ -175,8 +197,8 @@ function Protocol.unpackMon(data, packed, opts)
   return {
     species = packed.species,
     level = level,
-    exp = math.max(0, math.floor(num(packed.exp,
-      Growth.expForLevel(def.growthRate, level)))),
+    exp = expIn(level, packed.exp,
+      function(l) return Growth.expForLevel(def.growthRate, l) end, 100),
     dvs = dvs,
     statExp = statExp,
     stats = stats,
@@ -345,7 +367,7 @@ function Protocol.unpackMon2(data, packed, opts)
   local forced = forceLevel
   local hp = forced and stats.hp
     or math.max(0, math.min(stats.hp, math.floor(num(packed.hp, stats.hp))))
-  local status = not forced and text(packed.status) or nil
+  local status = not forced and statusOf(packed.status, 2) or nil
   local packedOtId = num(packed.otId)
   local otId = packedOtId
     and math.max(0, math.min(65535, math.floor(packedOtId))) or nil
@@ -356,8 +378,8 @@ function Protocol.unpackMon2(data, packed, opts)
     name = def.name or packed.species,
     nickname = text(packed.nickname),
     level = level,
-    experience = math.max(0, math.floor(num(packed.experience,
-      Mon.experienceForLevel(growth, level)))),
+    experience = expIn(level, packed.experience,
+      function(l) return Mon.experienceForLevel(growth, l) end, Mon.MAX_LEVEL),
     dvs = dvs,
     statExp = statExp,
     stats = stats,
@@ -381,7 +403,8 @@ function Protocol.unpackMon2(data, packed, opts)
   }
   if packed.isEgg then
     mon.isEgg = true
-    mon.eggSteps = math.max(0, math.floor(num(packed.eggSteps, 0)))
+    -- the cart keeps it in one byte (the egg's cycle count)
+    mon.eggSteps = math.max(0, math.min(255, math.floor(num(packed.eggSteps, 0))))
   end
   -- ../pokecrystal/engine/pokemon/caught_data.asm:169-199
   if packed.caughtTime ~= nil or packed.caughtLocation ~= nil
@@ -1131,6 +1154,10 @@ function TradeSession:handle(msg)
     self.stage = "waitParty"
     return self:partyMessage()
   elseif msg.type == "party" then
+    -- once, while waiting for it: a party sent again after the picks (with
+    -- another mon at the index this player chose) swapped what they got
+    -- after they had seen it and pressed Trade
+    if self.stage ~= "waitParty" then return nil end
     self.theirParty = {}
     for _, packed in ipairs(msg.mons or {}) do
       local mon, why = Protocol.unpackMon(self.data, packed,
@@ -1147,7 +1174,16 @@ function TradeSession:handle(msg)
     end
     if self.stage == "waitParty" then self.stage = "picking" end
   elseif msg.type == "pick" then
-    self.theirPick = num(msg.index)
+    local pick = num(msg.index)
+    -- a pick changed once both sides are choosing is not the mon this
+    -- player saw when they confirmed: the trade ends rather than swaps
+    if self.theirPick ~= nil and pick ~= self.theirPick
+        and (self.stage == "confirming" or self.stage == "done") then
+      self.stage = "cancelled"
+      self.error = "the other trainer changed their POKéMON after choosing"
+      return nil
+    end
+    self.theirPick = pick
     self:advance()
   elseif msg.type == "confirm" then
     self.theirConfirm = msg.ok
