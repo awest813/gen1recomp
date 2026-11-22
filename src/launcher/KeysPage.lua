@@ -16,7 +16,7 @@ KeysPage.SECTIONS = {
     { "Z, Enter or Space", "A" },
     { "X or Backspace", "B" },
     { "Esc", "START" },
-    { "Tab", "SELECT" },
+    { "Tab or Shift", "SELECT" },
     { "Q / E", "L / R (FireRed, LeafGreen)" },
     { "F1 / F2", "Quick save / quick load" },
     { "1 / 0", "Game speed faster / slower" },
@@ -30,7 +30,7 @@ KeysPage.SECTIONS = {
     { "A / B", "A / B" },
     { "Start / Back (View)", "START / SELECT" },
     { "LB / RB", "Game speed (Game Boy games); L / R (FireRed, LeafGreen)" },
-    { "LT / RT", "Game speed (FireRed, LeafGreen)" },
+    { "LT / RT", "Game speed (every game)" },
   } },
   { "IN THIS LAUNCHER", {
     { "Arrows, Tab, d-pad or stick", "Move the highlight (hold to repeat)" },

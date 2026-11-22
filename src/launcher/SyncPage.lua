@@ -24,6 +24,16 @@ function SyncPage:engine()
   return okS and eng or nil
 end
 
+-- The engine's reasons are short phrases ("sync is busy"); the toast
+-- shows a sentence.
+local function sentence(why)
+  local t = tostring(why or "something went wrong")
+  t = t:gsub("^%l", string.upper)
+  if not t:match("[%.!?]$") then t = t .. "." end
+  return t
+end
+SyncPage._sentence = sentence
+
 -- A name for this device on the account's device list.
 local function deviceLabel()
   local os_ = love.system and love.system.getOS and love.system.getOS() or "device"
@@ -34,14 +44,16 @@ function SyncPage:create()
   local eng = self:engine()
   if not eng then return self.launcher:say("Sync is not available here.", "error") end
   local ok, why = eng:createAccount(deviceLabel())
-  if ok == false then self.launcher:say(why, "error") end
+  if ok == false then self.launcher:say(sentence(why), "error") end
 end
 
 function SyncPage:link(code1, code2)
   local eng = self:engine()
   if not eng then return self.launcher:say("Sync is not available here.", "error") end
   local ok, why = eng:linkDevice(code1, code2, deviceLabel())
-  if ok == false then self.launcher:say(why, "error") end
+  if ok == false then return self.launcher:say(sentence(why), "error") end
+  -- (left filled in, the codes would still be there after a later unlink)
+  self.code1, self.code2 = "", ""
 end
 
 function SyncPage:syncNow()
@@ -72,14 +84,14 @@ function SyncPage:unlinkDevice(id)
   local eng = self:engine()
   if not eng then return end
   local ok, why = eng:unlinkDevice(id)
-  if ok == false then l:say(why, "error") end
+  if ok == false then l:say(sentence(why), "error") end
 end
 
 function SyncPage:reissue()
   local eng = self:engine()
   if not eng then return end
   local ok, why = eng:reissueCodes()
-  if ok == false then self.launcher:say(why, "error") end
+  if ok == false then self.launcher:say(sentence(why), "error") end
 end
 
 function SyncPage:setAuto(on)
@@ -91,7 +103,7 @@ function SyncPage:resolve(key, choice)
   local eng = self:engine()
   if not eng then return end
   local ok, why = eng:resolveConflict(key, choice)
-  if ok == false then self.launcher:say(why, "error") end
+  if ok == false then self.launcher:say(sentence(why), "error") end
 end
 
 -- Pumped every frame by the launcher while an account exists or work runs.

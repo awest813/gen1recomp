@@ -78,7 +78,7 @@ function CartsPage:removeCart(version, row)
   l.cartRows, l.cartPlans = nil, nil
   if not (ok and done) then
     return l:say("Could not remove " .. tostring(row.title) .. ": "
-      .. tostring(ok and err or done), "error")
+      .. require("src.launcher.Reason")(ok, done, err) .. ".", "error")
   end
   l:say(tostring(row.title) .. " was removed.", "info")
 end
@@ -245,7 +245,7 @@ function CartsPage:breakSeal(version)
   local ok, done, err = pcall(SaveData.markSlotSealBroken, cart, slot.id)
   l.cartPlans = nil
   if not (ok and done) then
-    return l:say("Could not break the seal: " .. tostring(ok and err or done), "error")
+    return l:say("Could not break the seal: " .. require("src.launcher.Reason")(ok, done, err) .. ".", "error")
   end
   l:say("The seal on this save is broken.", "info")
 end
@@ -352,8 +352,11 @@ function CartsPage:activeItems(v)
   local pins = self:pinsToFetch(v, active)
   local missing = #pins.fetch + #pins.manual
   if missing > 0 then
-    items[#items + 1] = { label = ("Get its mods (%d)"):format(missing), id = "cart-fetch",
-      kind = "primary", enabled = #pins.fetch > 0,
+    -- with nothing to download it still answers, naming the mods to
+    -- install by hand (disabled, it never said which)
+    local label = #pins.fetch > 0 and "Get its mods (%d)" or "Missing mods (%d)"
+    items[#items + 1] = { label = label:format(missing), id = "cart-fetch",
+      kind = #pins.fetch > 0 and "primary" or nil,
       run = function() self:fetchPins(v, active) end }
   end
   local slot, broken = self:cartSave(v)

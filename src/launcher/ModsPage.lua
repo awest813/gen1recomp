@@ -255,7 +255,7 @@ function ModsPage:removeMod(row)
   self:changed()
   if not (ok and done) then
     return l:say("Could not remove " .. tostring(row.name) .. ": "
-      .. tostring(ok and err or done), "error")
+      .. require("src.launcher.Reason")(ok, done, err) .. ".", "error")
   end
   self.releases[row.id or ""] = nil
   if l.page == "mod" or l.page == "modoptions" then l.page = "mods" end
@@ -386,7 +386,7 @@ function ModsPage:removeModFile(row, fileRow)
   l.modRows = nil
   if not (ok and done) then
     return l:say("Could not remove " .. tostring(fileRow.name) .. ": "
-      .. tostring(ok and err or done), "error")
+      .. require("src.launcher.Reason")(ok, done, err) .. ".", "error")
   end
   l:say(tostring(fileRow.name) .. " was removed from " .. tostring(row.name) .. ".", "info")
 end
@@ -1344,7 +1344,7 @@ function ModsPage:removeFeed(source)
   l.armedDelete = nil
   local ok, done, err = pcall(require("src.mods.ModIndex").removeSource, source.feed)
   if not (ok and done) then
-    return l:say("Could not remove that index: " .. tostring(ok and err or done), "error")
+    return l:say("Could not remove that index: " .. require("src.launcher.Reason")(ok, done, err) .. ".", "error")
   end
   self:refreshCatalog(false)
   l:say("Removed " .. tostring(source.label or source.feed) .. ".", "info")
