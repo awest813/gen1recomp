@@ -25,6 +25,7 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts")"
@@ -56,9 +57,9 @@ jobs:
           ARTIFACTS
 
           [ "$found" -eq 1 ] || exit 0
-          commit_hash="$(printf '%s' "${{ github.event.workflow_run.head_sha }}" | cut -c1-7)"
+          commit_hash="$(printf '%s' "$HEAD_SHA" | cut -c1-7)"
           build_time="$(date -u "+%Y-%m-%d %H:%M:%S UTC")"
-          message+=$'\n\n'"**Commit**: [#$commit_hash](https://github.com/$HEAD_REPOSITORY/commit/${{ github.event.workflow_run.head_sha }})"
+          message+=$'\n\n'"**Commit**: [#$commit_hash](https://github.com/$HEAD_REPOSITORY/commit/$HEAD_SHA)"
           message+=$'\n'"**Build Time**: \`$build_time\`"
           message+=$'\n\n'"<sub>This comment was automatically generated. [View workflow run](https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)</sub>"
 

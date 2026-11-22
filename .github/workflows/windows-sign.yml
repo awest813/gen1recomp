@@ -28,6 +28,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      # What this signs must be what a release run built: the inputs are
+      # checked before anything is fetched.  A dispatch naming any commit, or
+      # a fork PR's CI run as the artifact source (its artifacts carry the
+      # same names), would otherwise go to SignPath under the project policy.
+      - name: Check the inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ inputs.sha }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "::error::version must be X.Y.Z"; exit 1; }
+          printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$' \
+            || { echo "::error::sha must be a full commit id"; exit 1; }
+          printf '%s' "$SOURCE_RUN" | grep -Eq '^[0-9]+$' \
+            || { echo "::error::source_run must be a run id"; exit 1; }
+          read -r path branch head < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" \
+            --jq '[.path, .head_branch, .head_sha] | @tsv')
+          [ "$path" = ".github/workflows/release.yml" ] \
+            || { echo "::error::source_run is not a release run ($path)"; exit 1; }
+          [ "$branch" = "$GITHUB_REF_NAME" ] \
+            || { echo "::error::source_run is on $branch, not $GITHUB_REF_NAME"; exit 1; }
+          [ "$head" = "$SHA" ] \
+            || { echo "::error::source_run built $head, not $SHA"; exit 1; }
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -73,6 +100,7 @@ jobs:
         env:
           GEN1TLS_DLL: ${{ github.workspace }}/dist/native/win-x64/gen1tls.dll
           SHADERFX_BRIDGE_REQUIRED: "1"
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [ ! -f "$GEN1TLS_DLL" ]; then
@@ -80,7 +108,7 @@ jobs:
             exit 1
           fi
           command -v peresed >/dev/null || { echo "::error::peresed missing, the exe would ship with the stock LÖVE icon"; exit 1; }
-          scripts/build.sh win --version "${{ inputs.version }}" \
+          scripts/build.sh win --version "$VERSION" \
             --game-love dist/payload/game.love
           unzip -l dist/win/gen1recomp-win64.zip | grep -F gen1tls.dll \
             || { echo "::error::Windows zip is missing gen1tls.dll"; exit 1; }

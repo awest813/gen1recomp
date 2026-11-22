@@ -34,9 +34,12 @@ on:
         required: false
         default: ""
 
+# Read-only for every job; the two that write ask for it themselves
+# (windows-sign dispatches a workflow, release publishes).  The build jobs,
+# self-hosted ones and third-party actions included, hold no write token.
 permissions:
-  contents: write
-  actions: write
+  contents: read
+  actions: read
   issues: read
   pull-requests: read
 
@@ -1038,6 +1041,9 @@ jobs:
     needs: [version, love-payload, native-tls-win, shaderfx-bridge]
     if: vars.CANONICAL_RELEASES == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     timeout-minutes: 100
     steps:
       - name: Start the Windows signing workflow
@@ -1092,6 +1098,11 @@ jobs:
     needs: [version, notes, love-payload, web, xbox-uwp, linux-arm64, linux-flatpak, desktop, windows-sign, android, ios, switch, ps4, rg34xxsp, linux-arm-sbc]
     if: vars.CANONICAL_RELEASES == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      issues: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
