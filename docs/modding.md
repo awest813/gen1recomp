@@ -1585,6 +1585,11 @@ with a full standard library that the sandbox cannot reach, so handing one
 to a mod would undo every other rule; `mod.fetch`'s workers run engine
 code, so a mod gets asynchrony without gaining any new reach.
 
+The one exception is the `compute` permission: a mod that declares it gets
+the real `love.thread`, and so the full standard library. The launcher and
+the in-game mod manager show it as unrestricted code. Prefer `mod.job`
+(below), which runs your code inside the sandbox.
+
 ## Log reporting
 
 `mod.postLog(body, opts)` is the one-way exception to the rule that a mod
