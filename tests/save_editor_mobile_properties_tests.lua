@@ -180,6 +180,9 @@ Ops.setTrainerProperty(S, "name", "MISTY")
 S.trainerDrafts = { name = "STALE" }
 Ops.openItemPicker(S, Kit, "bag")
 local revision = S.revision
+-- with unsaved edits the first press asks, and discards nothing
+check(not App.reload(), "reload with unsaved edits asks first")
+check(S.save.player.name == "MISTY", "and keeps the edits until asked again")
 check(App.reload(), "reload succeeds")
 check(S.save.player.name == "ASH", "reload restores saved trainer")
 check(#S.undoStack == 0 and #S.redoStack == 0 and not S.dirty, "reload clears history")
