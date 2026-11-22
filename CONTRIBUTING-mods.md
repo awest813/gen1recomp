@@ -391,6 +391,14 @@ Your code runs in a sandbox (`src/mods/Sandbox.lua`), not against the
 engine's globals. Every chunk you author gets it: `main.lua`, your
 `options_schema`, and anything you `load()` yourself.
 
+The sandbox keeps well-behaved mods from tripping over the engine and each
+other. It is **not a security boundary**: a mod can `require` engine
+modules (the `engine_internals` permission is a warning, not a block) and
+reach the running game through `mod.game`, and the `compute` permission
+hands it an unrestricted LÖVE thread. Treat installing a mod like
+installing a program, and say plainly in your README what yours does. The
+launcher tells players the same.
+
 The globals the sandbox took away are still *reachable*, as compat
 stand-ins (`src/mods/LegacyCompat.lua`) that answer with the new API
 underneath. A mod written before the sandbox keeps working; it logs one

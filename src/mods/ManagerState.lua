@@ -62,6 +62,8 @@ local PERMISSION_ROWS = {
   engine_internals = { glyph = "!", text = "ENGINE PATCHES" },
   network = { glyph = "!", text = "NETWORK ACCESS" },
   filesystem = { glyph = "!", text = "FILE ACCESS" },
+  -- a LOVE thread: a fresh Lua state with the whole standard library
+  compute = { glyph = "!", text = "UNRESTRICTED" },
 }
 
 local OPTION_TYPES = { toggle = true, choice = true, number = true, text = true }

@@ -1016,4 +1016,16 @@ do
     "hél", "a text option is cut by character")
 end
 
+-- mods are said to be programs, and what one asks for is shown
+do
+  eq(ModsPage.permissionText({ permissions = { "network", "compute" } }),
+    "It asks for unrestricted code (a thread the sandbox does not reach), the internet.",
+    "a mod's permissions read plainly, compute first")
+  eq(ModsPage.permissionText({ permissions = {} }), nil, "none, nothing said")
+  local lt = fresh()
+  lt.page = "mods"
+  check(drawText(lt):find("full access to this device", 1, true) ~= nil,
+    "the Mods page says mods are programs to trust")
+end
+
 T.finish("mods page")

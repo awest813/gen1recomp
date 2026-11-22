@@ -1532,6 +1532,34 @@ function ModsPage:drawSafeBanner(cx, cy, cw, s)
   return cy + th + Theme.space("s", s)
 end
 
+-- The sandbox keeps honest mods from tripping over each other; it is not a
+-- wall against a hostile one (a mod can reach engine modules, and through
+-- them the device).  Players are told so where they install mods.
+ModsPage.TRUST = "Mods are programs with full access to this device: install only ones you trust."
+
+local PERMISSION_TEXT = {
+  compute = "unrestricted code (a thread the sandbox does not reach)",
+  engine_internals = "changes to the game's own code",
+  network = "the internet",
+  filesystem = "files on this device",
+  background = "background work",
+}
+local PERMISSION_ORDER = { "compute", "engine_internals", "filesystem", "network", "background" }
+
+-- "It asks for: ..." from a manifest's permissions, or nil.
+function ModsPage.permissionText(manifest)
+  local list = type(manifest) == "table" and manifest.permissions
+  if type(list) ~= "table" then return nil end
+  local has = {}
+  for _, p in ipairs(list) do has[p] = true end
+  local out = {}
+  for _, p in ipairs(PERMISSION_ORDER) do
+    if has[p] then out[#out + 1] = PERMISSION_TEXT[p] end
+  end
+  if #out == 0 then return nil end
+  return "It asks for " .. table.concat(out, ", ") .. "."
+end
+
 function ModsPage:drawMods(x, y, w, h, s)
   local l = self.launcher
   local v = l.selected
@@ -1561,7 +1589,7 @@ function ModsPage:drawMods(x, y, w, h, s)
   local rowH = math.max(Kit.tapMin() + math.floor(8 * s), math.floor(56 * s))
   local gap = math.floor(4 * s)
   local hint = "Or drop a mod .zip onto this window. Changes apply the next "
-    .. "time the game starts."
+    .. "time the game starts. " .. ModsPage.TRUST
   local hintH = Kit.wrapHeight("micro", hint, cw)
   local footH = bh + math.floor(12 * s) + hintH
   local viewH = math.max(rowH, y + h - pad - footH - math.floor(10 * s) - cy)
@@ -1864,6 +1892,10 @@ function ModsPage:drawDetail(x, y, w, h, s)
   if row.description then cy = para("small", row.description, cx, cy, cw, PAL.text, gap) end
   local games = row.manifest and ModsPage.runsOn(row.manifest)
   if games then cy = para("micro", "Runs on " .. games, cx, cy, cw, PAL.muted, gap) end
+  -- what it asked for, before it is turned on (the in-game manager shows
+  -- the same); compute is a thread with nothing held back
+  local asks = ModsPage.permissionText(row.manifest)
+  if asks then cy = para("small", asks, cx, cy, cw, PAL.yellow, gap) end
   local upd, updInk = self:updateLine(row)
   if upd then cy = para("small", upd, cx, cy, cw, updInk, gap) end
   if row.bundled then
@@ -2297,7 +2329,7 @@ function ModsPage:drawCatalog(x, y, w, h, s)
   local cx, cw = x + pad, w - 2 * pad
   local cy = y + pad
   cy = l:pageHeader(cx, cy, cw, s, { title = "Get mods",
-    subtitle = "From the mod indexes you added", back = function() l.page = "mods" end,
+    subtitle = "From the mod indexes you added. " .. ModsPage.TRUST, back = function() l.page = "mods" end,
     backId = "catalog-back" })
   cy = self:drawJobStrip(cx, cy, cw, s)
   local rh = btnH(s)
