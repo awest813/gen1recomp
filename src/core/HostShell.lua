@@ -658,7 +658,7 @@ function HostShell.httpDownload(url, absPath, userAgent, accept, maxTime, etagPa
       local etag = { abs = etagPath }
       push(argv, "--etag-compare", etag, "--etag-save", etag)
     end
-    push(argv, "-o", { abs = absPath }, "-w", HTTP_MARK_FMT, url)
+    push(argv, "-o", { abs = absPath }, "-w", HTTP_MARK_FMT, "--", url)
     local started, readOk, out = runCurl(argv)
     if not started then return nil, "could not start download" end
     -- The file is still what the caller judges success by (-f writes nothing
@@ -705,7 +705,7 @@ function HostShell.httpGet(url, userAgent, accept, maxTime)
     if accept then
       push(argv, "-H", "Accept: " .. accept)
     end
-    push(argv, "-w", HTTP_MARK_FMT, url)
+    push(argv, "-w", HTTP_MARK_FMT, "--", url)
     local started, readOk, out = runCurl(argv)
     if not started then return nil, "could not run curl" end
     if not readOk then
@@ -801,7 +801,7 @@ function HostShell.httpPost(url, body, contentType, userAgent, maxTime)
     end
     push(argv, "-H", "Content-Length: " .. tostring(#body),
       "--data-binary", { abs = bodyPath, prefix = "@" },
-      "-w", HTTP_MARK_FMT, url)
+      "-w", HTTP_MARK_FMT, "--", url)
     local started, readOk, out = runCurl(argv)
     removeBody()
     if not started then
@@ -983,7 +983,7 @@ function HostShell.httpRequest(url, opts)
   if body then
     push(argv, "--data-binary", { abs = bodyPath, prefix = "@" })
   end
-  push(argv, "-w", HTTP_MARK_FMT, url)
+  push(argv, "-w", HTTP_MARK_FMT, "--", url)
 
   local started, readOk, out = runCurl(argv)
   cleanup()

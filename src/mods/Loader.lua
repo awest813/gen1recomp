@@ -1761,8 +1761,11 @@ function Loader:_api(mod)
   }, { __index = api.content })
   -- the mod's own directory and nothing above it: PhysFS already refuses a
   -- climb, but loader.fs is injectable and has no such floor
+  -- (the directory this mod was loaded from, closed over: api.path is a
+  -- plain field a mod can rewrite to read another mod's storage or saves)
+  local ownDir = mod.path
   function api:read(relative)
-    return loader.fs.read(SafePath.join(self.path, relative, "mod:read"))
+    return loader.fs.read(SafePath.join(ownDir, relative, "mod:read"))
   end
   api.list = listOwn
   api.info = infoOwn
@@ -2216,7 +2219,9 @@ function Loader:load(data, opts)
   -- from the next image load on.  No mods means an empty search path,
   -- which resolves every path to itself (14 §asset resolution).
   Assets.installLoader(self)
-  self.events:emit("mods.loaded", { loader = self, data = data })
+  -- no loader in the payload: mods hear every event, and the loader holds
+  -- the real filesystem and every other mod's environment
+  self.events:emit("mods.loaded", { data = data })
   self:_writeOptionSchemas()
   self:_writeLoadReport()
   self.initialized = true

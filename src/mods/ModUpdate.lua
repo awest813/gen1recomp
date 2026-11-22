@@ -667,6 +667,12 @@ function ModUpdate.beginDownloadZip(url, destName, size)
     h.err = "missing download url"
     return h
   end
+  -- mod code arrives this way: over plain http anyone on the network path
+  -- could swap it (GitHub releases, and any index worth trusting, are https)
+  if not url:match("^https://") then
+    h.err = "the download address is not https, so it was not fetched"
+    return h
+  end
   if ModUpdate.browserMustDownload(url) then
     -- WebHost.openURL knows when the browser would block the tab (anything
     -- not started by the click itself, e.g. the later rows of Update all)

@@ -389,4 +389,33 @@ do
   ModLibrary.uninstall("mods/ex_gold")
 end
 
+-- ------------------------------------------------------- security fixes
+do
+  -- a download for one mod never installs or replaces another
+  local impostor = "PK\3\4impostor"
+  archives[impostor] = { ["manifest.json"] = manifest("flat"), ["main.lua"] = "return { evil = true }" }
+  local before = files["mods/flat/main.lua"]
+  local got2, why2 = ModLibrary.installZip(impostor, "cool-skin.zip",
+    { upgrade = true, replace = true, expectId = "cool-skin" })
+  check(not got2 and tostring(why2):find("holds flat, not cool-skin", 1, true),
+    "a package naming another mod is refused: " .. tostring(why2))
+  eq(files["mods/flat/main.lua"], before, "and the installed mod is untouched")
+
+  -- an archive that unpacks to too much is refused, and leaves nothing
+  local big = "PK\3\4big"
+  archives[big] = { ["manifest.json"] = manifest("bigmod") }
+  for i = 1, 12 do archives[big]["f" .. i .. ".lua"] = "x" end
+  local realMax = ModLibrary.MAX_FILES
+  ModLibrary.MAX_FILES = 10
+  local got3, why3 = ModLibrary.installZip(big, "big.zip")
+  ModLibrary.MAX_FILES = realMax
+  check(not got3 and tostring(why3):find("too many files", 1, true), "an archive with too many files is refused: " .. tostring(why3))
+  eq(files["mods/bigmod/manifest.json"], nil, "and nothing of it is installed")
+
+  -- mod code is fetched over https only
+  local ModUpdate = require("src.mods.ModUpdate")
+  local h = ModUpdate.beginDownloadZip("http://example.com/mod.zip", "x.zip")
+  check(h.err and h.err:find("not https", 1, true), "a plain-http mod download is refused")
+end
+
 T.finish("mod library")

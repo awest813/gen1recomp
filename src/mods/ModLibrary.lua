@@ -155,14 +155,30 @@ function ModLibrary.setEnabled(id, enabled, version)
   return SaveData.saveOptions(options)
 end
 
-local function copyTree(fs, out, from, to)
+-- What an archive may unpack to.  MAX_ZIP_BYTES caps only the download: a
+-- small zip that expands to gigabytes (or millions of entries) ran the
+-- launcher out of memory or filled the disk.  Far above any real mod.
+ModLibrary.MAX_UNPACKED_BYTES = 1024 * 1024 * 1024
+ModLibrary.MAX_FILES = 20000
+ModLibrary.MAX_DEPTH = 32
+
+local function copyTree(fs, out, from, to, budget, depth)
+  budget = budget or { bytes = 0, files = 0 }
+  depth = depth or 0
+  if depth > ModLibrary.MAX_DEPTH then error("the mod's folders nest too deep", 0) end
   out.mkdir(to)
   for _, name in ipairs(fs.getDirectoryItems(from) or {}) do
     local src, dst = from .. "/" .. name, to .. "/" .. name
     local info = fs.getInfo(src)
     if info and info.type == "directory" then
-      copyTree(fs, out, src, dst)
+      copyTree(fs, out, src, dst, budget, depth + 1)
     elseif info then
+      budget.files = budget.files + 1
+      budget.bytes = budget.bytes + (tonumber(info.size) or 0)
+      if budget.files > ModLibrary.MAX_FILES then error("the mod has too many files", 0) end
+      if budget.bytes > ModLibrary.MAX_UNPACKED_BYTES then
+        error("the mod unpacks to more than 1 GB", 0)
+      end
       local body = fs.read(src)
       if type(body) ~= "string" then error("could not read " .. src, 0) end
       local ok, err = out.write(dst, body)
@@ -278,6 +294,13 @@ function ModLibrary.installZip(bytes, name, opts)
     if not manifest then err = "invalid manifest.json: " .. tostring(merr) return end
     if not tostring(manifest.id):match("^[%w_%-%.]+$") then
       err = "the mod id is not a safe folder name" return
+    end
+    -- a download for one mod (an index entry, an update) must not install
+    -- or replace another: checked before anything is written, since a
+    -- package naming an installed, trusted mod would swap its code
+    if opts.expectId ~= nil and manifest.id ~= opts.expectId then
+      err = ("the package holds %s, not %s"):format(tostring(manifest.id), tostring(opts.expectId))
+      return
     end
     -- The loader finds a mod by the id in its manifest, not by its folder
     -- name, so the copy already installed may live elsewhere (a hand-unzipped

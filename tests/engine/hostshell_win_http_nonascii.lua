@@ -154,7 +154,7 @@ osName = "OS X"
 shellCalls = 0
 HostShell.httpGet("https://x/y", "ua")
 eq(lastShell, "'curl' -sSL --proto =http,https --proto-redir =http,https --connect-timeout 10 "
-  .. "--max-time 40 -H 'User-Agent: ua' -w '\\n__gen1recomp_http__%{http_code}' 'https://x/y' 2>&1",
+  .. "--max-time 40 -H 'User-Agent: ua' -w '\\n__gen1recomp_http__%{http_code}' -- 'https://x/y' 2>&1",
   "POSIX command line unchanged")
 eq(#creates, 5, "POSIX never spawns through WinApi")
 

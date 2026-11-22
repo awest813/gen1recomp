@@ -1198,7 +1198,7 @@ function ModsPage:installBytes(job, bytes)
   end
   local ModLibrary = require("src.mods.ModLibrary")
   local ok, manifest, err, info = pcall(ModLibrary.installZip, bytes, tostring(job.id) .. ".zip",
-    { upgrade = job.upgrade, replace = job.replace })
+    { upgrade = job.upgrade, replace = job.replace, expectId = job.id })
   if not ok then manifest, err, info = nil, manifest, nil end
   if not manifest then
     -- the copy already there is the same version or newer: nothing changed
