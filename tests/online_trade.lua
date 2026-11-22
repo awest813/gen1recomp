@@ -1112,4 +1112,16 @@ do
   T.eq(mon and mon.status, nil, "and no made-up status")
 end
 
+-- ------- a peer's mod data is bounded, and its commit is not the relay's
+do
+  local Protocol = require("src.link.Protocol")
+  local big = {}
+  for i = 1, 10000 do big["k" .. i] = ("x"):rep(400) end
+  local copy = Protocol.plainCopy(big)
+  local n, longest = 0, 0
+  for _, v in pairs(copy) do n = n + 1; longest = math.max(longest, #v) end
+  T.check(n <= Protocol.EXTRA_MAX_ENTRIES, "a traded mon's mod data keeps at most the entry limit: " .. n)
+  T.check(longest <= Protocol.EXTRA_MAX_STRING, "with strings cut to the limit")
+end
+
 T.finish("online trade")

@@ -242,6 +242,9 @@ local function shaped(entry)
     entry.shape = { type = "spectate", side = entry.side, msg = msg }
     return entry.shape
   end
+  -- a peer's message never speaks as the relay (a commit or abort it sent
+  -- itself must not pass for the relay's)
+  if not entry.relay then msg.relay = nil end
   entry.shape = msg
   return msg
 end

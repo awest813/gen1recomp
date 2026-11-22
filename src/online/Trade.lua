@@ -1327,6 +1327,8 @@ function Remote:_confirmBarrier()
 end
 
 function Remote:_onCommit(msg)
+  -- only the relay's verdict: the other game could send one of its own
+  if type(msg) ~= "table" or msg.relay ~= true then return end
   if self.phase ~= "commit_wait" then return end
   if not commitMatches(msg, self.digest) then return self:_cancel("digest") end
   self._relayCommitted = true
@@ -1340,6 +1342,8 @@ function Remote:_onCommit(msg)
 end
 
 function Remote:_onAbort(msg)
+  -- only the relay's verdict: the other game could send one of its own
+  if type(msg) ~= "table" or msg.relay ~= true then return end
   if self.phase ~= "commit_wait" then return end
   journalClose(self)
   self:_cancel(tostring(msg.why or "abort"))
@@ -1847,6 +1851,8 @@ function Remote3:_noteRound(msg)
 end
 
 function Remote3:_onCommit(msg)
+  -- only the relay's verdict: the other game could send one of its own
+  if type(msg) ~= "table" or msg.relay ~= true then return end
   if self.phase ~= "commit_wait" then return end
   if not commitMatches(msg, self.digest) then return self:_cancel("digest") end
   self._relayCommitted = true
@@ -1858,6 +1864,8 @@ function Remote3:_onCommit(msg)
 end
 
 function Remote3:_onAbort(msg)
+  -- only the relay's verdict: the other game could send one of its own
+  if type(msg) ~= "table" or msg.relay ~= true then return end
   if self.phase ~= "commit_wait" then return end
   local n = tonumber(msg.n)
   if self._staleRound and n and n <= self._staleRound then

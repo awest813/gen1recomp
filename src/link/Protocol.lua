@@ -63,17 +63,28 @@ Protocol.checkCompat = Handshake.checkCompat
 
 -- the extra bag is JSON-safe by contract, the same restriction the save
 -- serializer enforces; anything else is dropped rather than trusted
-local function plainCopy(value, depth)
+-- A mon's mod data from the other game rides into the save: bounded, so one
+-- traded mon cannot carry a quarter of a megabyte (depth and string length
+-- were capped, the number of entries was not).
+Protocol.EXTRA_MAX_ENTRIES = 512
+Protocol.EXTRA_MAX_STRING = 256
+
+local function plainCopy(value, depth, budget)
   if type(value) ~= "table" then return nil end
   if (depth or 0) > 8 then return nil end
+  budget = budget or { left = Protocol.EXTRA_MAX_ENTRIES }
   local out = {}
   for k, v in pairs(value) do
+    if budget.left <= 0 then break end
     local kt, vt = type(k), type(v)
-    if kt == "string" or kt == "number" then
-      if vt == "string" or vt == "number" or vt == "boolean" then
-        out[k] = v
+    if (kt == "string" and #k <= Protocol.EXTRA_MAX_STRING) or kt == "number" then
+      if vt == "number" or vt == "boolean" then
+        out[k], budget.left = v, budget.left - 1
+      elseif vt == "string" then
+        out[k], budget.left = v:sub(1, Protocol.EXTRA_MAX_STRING), budget.left - 1
       elseif vt == "table" then
-        out[k] = plainCopy(v, (depth or 0) + 1)
+        budget.left = budget.left - 1
+        out[k] = plainCopy(v, (depth or 0) + 1, budget)
       end
     end
   end

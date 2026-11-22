@@ -757,8 +757,11 @@ function Txn:lost()
   return true
 end
 
+-- the relay's verdict only (Client marks it): the other game could send
+-- a commit or abort of its own
 local function isBarrier(m)
-  return type(m) == "table" and (m.type == "trade_commit" or m.type == "trade_abort")
+  return type(m) == "table" and m.relay == true
+    and (m.type == "trade_commit" or m.type == "trade_abort")
 end
 
 function Txn:pump(dt)
