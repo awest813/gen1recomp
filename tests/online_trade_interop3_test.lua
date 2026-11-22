@@ -159,6 +159,9 @@ local function newRelay()
         local m = {}
         for k, v in pairs(msg) do m[k] = v end
         m.seat = from
+        -- the relay's own verdicts arrive marked, as Client marks them
+        -- (acceptRoomMsg): the trade code acts only on those
+        if from == -1 then m.relay = true end
         t.inbox[#t.inbox + 1] = m
       end
     end
