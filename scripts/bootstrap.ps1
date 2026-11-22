@@ -1,4 +1,4 @@
-# Windows double-click bootstrap for the LÖVE2D Pokémon Red port.
+# Windows double-click bootstrap for running PK:GB from source.
 # Launched by Play-Windows.bat. Prompts to install any missing tools
 # (Python 3 and LÖVE via winget), runs first-time setup, then
 # starts the game. Later runs launch the game straight away.
@@ -50,7 +50,7 @@ function Find-Love {
 }
 
 Write-Host ''
-Write-Host '  Pokemon Red - LOVE2D port' -ForegroundColor Cyan
+Write-Host '  PK:GB (from source)' -ForegroundColor Cyan
 Write-Host ''
 
 # ---------------------------------------------------------------- fast path

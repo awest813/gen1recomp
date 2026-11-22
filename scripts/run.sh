@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the LÖVE2D Pokémon Red port (macOS-friendly).
+# Run PK:GB from a source checkout (macOS-friendly).
 #
 # Assumes scripts/setup.sh has been run once for at least one game (generated
 # data present and LÖVE installed). Extra arguments are passed through to LÖVE.

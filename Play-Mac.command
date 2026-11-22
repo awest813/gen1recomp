@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pokémon Red (LÖVE2D) - double-click launcher for macOS.
+# PK:GB - double-click launcher for a source checkout on macOS.
 #
 # First run: decodes a user-provided .gb file, installs anything missing,
 # builds the game data, then launches.
@@ -24,7 +24,7 @@ ask() { # ask "question" -> yes by default
   case "$a" in n|N|no|NO) return 1 ;; *) return 0 ;; esac
 }
 
-printf '\n  \033[1mPokémon Red - LÖVE2D port\033[0m\n\n'
+printf '\n  \033[1mPK:GB (from source)\033[0m\n\n'
 
 have_love() {
   command -v love >/dev/null 2>&1 && return 0
