@@ -368,11 +368,19 @@ function Launcher:say(text, kind, action)
   self.message = text and { text = text, kind = kind or "info", at = now(), action = action } or nil
 end
 
+-- How long a message stays: the kind's time at least, and long enough to
+-- read (about 18 characters a second) -- a two-sentence notice was gone in
+-- four seconds.
+function Launcher.toastLife(m)
+  local base = (m.kind == "error" or m.action) and Launcher.TOAST_ERROR or Launcher.TOAST_INFO
+  return math.max(base, 1.5 + #tostring(m.text or "") / 18)
+end
+
 function Launcher:drawToast(x, y, w, s)
   local m = self.message
   self.toastRect = nil
   if not m then return end
-  local life = (m.kind == "error" or m.action) and Launcher.TOAST_ERROR or Launcher.TOAST_INFO
+  local life = Launcher.toastLife(m)
   local age = now() - (m.at or now())
   if age > life then
     self.message = nil
@@ -387,7 +395,7 @@ function Launcher:drawToast(x, y, w, s)
   local textW = tw - 3 * pad - icon - (actW > 0 and actW + pad or 0)
   local th = Kit.wrapHeight("small", m.text, textW)
   -- an error may need the room (a ROM that is not the release, with its hash)
-  local lines = math.min(m.kind == "error" and 5 or 3, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
+  local lines = math.min(m.kind == "error" and 5 or 4, math.max(1, math.floor(th / Kit.textHeight("small") + 0.5)))
   local h = math.max(lines * Kit.textHeight("small"), m.action and actH or 0) + 2 * pad
   local bx = x + (w - tw) / 2
   -- "notice": a heads-up or a confirm-again prompt, not a success

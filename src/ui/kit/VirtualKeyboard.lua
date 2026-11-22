@@ -109,32 +109,66 @@ end
 
 VirtualKeyboard.currentRows = currentRows
 
+-- One UTF-8 character: a lead byte and its continuation bytes.
+local CHAR = "[%z\1-\127\194-\244][\128-\191]*"
+
+local function charCount(text)
+  local n = 0
+  for _ in text:gmatch(CHAR) do n = n + 1 end
+  return n
+end
+
+-- Every insertion goes through here: a key, Space, the URL keys, typed or
+-- pasted text.  maxLen counts characters (as the text fields do), and
+-- what does not fit is left off; the number pad takes digits only.
+local function insert(add)
+  add = tostring(add or "")
+  if VirtualKeyboard.mode == 4 then add = add:gsub("%D", "") end
+  local cap = VirtualKeyboard.maxLen
+  if not cap then
+    VirtualKeyboard.text = VirtualKeyboard.text .. add
+    return
+  end
+  local room = cap - charCount(VirtualKeyboard.text)
+  if room <= 0 then return end
+  local out = {}
+  for ch in add:gmatch(CHAR) do
+    if #out >= room then break end
+    out[#out + 1] = ch
+  end
+  VirtualKeyboard.text = VirtualKeyboard.text .. table.concat(out)
+end
+VirtualKeyboard._insert = insert
+
+-- Backspace takes one whole character, never half of an accented letter.
+local function backspace()
+  VirtualKeyboard.text = VirtualKeyboard.text:gsub("[^\128-\191][\128-\191]*$", "", 1)
+end
+
 local function triggerKey(key)
   if type(key) == "string" then
-    local cap = VirtualKeyboard.maxLen
-    if cap and #VirtualKeyboard.text >= cap then return end
-    VirtualKeyboard.text = VirtualKeyboard.text .. key
+    insert(key)
   elseif type(key) == "table" then
     if key.id == "shift" then
       VirtualKeyboard.mode = (VirtualKeyboard.mode == 2) and 1 or 2
     elseif key.id == "sym" then
       VirtualKeyboard.mode = (VirtualKeyboard.mode == 3) and 1 or 3
     elseif key.id == "space" then
-      VirtualKeyboard.text = VirtualKeyboard.text .. " "
+      insert(" ")
     elseif key.id == "back" then
-      VirtualKeyboard.text = VirtualKeyboard.text:sub(1, -2)
+      backspace()
     elseif key.id == "clear" then
       VirtualKeyboard.text = ""
     elseif key.id == "done" then
       VirtualKeyboard.close(true)
     elseif key.id == "url_https" then
-      VirtualKeyboard.text = VirtualKeyboard.text .. "https://"
+      insert("https://")
     elseif key.id == "url_http" then
-      VirtualKeyboard.text = VirtualKeyboard.text .. "http://"
+      insert("http://")
     elseif key.id == "url_json" then
-      VirtualKeyboard.text = VirtualKeyboard.text .. ".json"
+      insert(".json")
     elseif key.id == "url_zip" then
-      VirtualKeyboard.text = VirtualKeyboard.text .. ".zip"
+      insert(".zip")
     end
   end
 end
@@ -170,11 +204,11 @@ function VirtualKeyboard.gamepadpressed(button)
     VirtualKeyboard.close(false)
     return true
   elseif button == "x" then
-    VirtualKeyboard.text = VirtualKeyboard.text:sub(1, -2)
+    backspace()
     return true
   elseif button == "y" then
     if VirtualKeyboard.mode == 4 then return true end
-    VirtualKeyboard.text = VirtualKeyboard.text .. " "
+    insert(" ")
     return true
   elseif button == "leftshoulder" or button == "rightshoulder" then
     if VirtualKeyboard.mode == 4 then return true end
@@ -199,7 +233,7 @@ function VirtualKeyboard.keypressed(key)
     VirtualKeyboard.close(true)
     return true
   elseif key == "backspace" then
-    VirtualKeyboard.text = VirtualKeyboard.text:sub(1, -2)
+    backspace()
     return true
   end
   return false
@@ -207,12 +241,7 @@ end
 
 function VirtualKeyboard.textinput(text)
   if not VirtualKeyboard.active then return false end
-  if VirtualKeyboard.mode == 4 then text = tostring(text or ""):gsub("%D", "") end
-  local cap = VirtualKeyboard.maxLen
-  VirtualKeyboard.text = VirtualKeyboard.text .. text
-  if cap and #VirtualKeyboard.text > cap then
-    VirtualKeyboard.text = VirtualKeyboard.text:sub(1, cap)
-  end
+  insert(text)
   return true
 end
 

@@ -1047,6 +1047,16 @@ do
   clock = clock + Launcher.TOAST_ERROR
   drawText(m)
   eq(m.message, nil, "but not forever")
+  -- a long message stays long enough to read
+  local long = ("Press Update again to replace your copy of Example Mod with this build's. "
+    .. "Your copy is kept in a backup folder.")
+  m:say(long, "notice")
+  clock = clock + Launcher.TOAST_INFO + 0.1
+  drawText(m)
+  check(m.message ~= nil, "a two-sentence notice outlasts a short one")
+  clock = clock + Launcher.toastLife(m.message)
+  drawText(m)
+  eq(m.message, nil, "and still goes")
   -- a page change holds clicks until the slide settles
   m:goSection("settings")
   drawText(m)

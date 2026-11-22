@@ -79,4 +79,26 @@ do
   check(text:find("LT / RT = Game speed (every game)", 1, true), "the triggers change speed in every game")
 end
 
+-- ---- on-screen keyboard: one limit for every key, whole letters
+do
+  local VK = require("src.ui.kit.VirtualKeyboard")
+  VK.open({ force = true, text = "abc", maxLen = 5 })
+  VK.gamepadpressed("y")
+  VK._insert("https://")
+  eq(VK.text, "abc h", "Space and the URL keys keep to the limit")
+  VK.textinput("zz")
+  eq(VK.text, "abc h", "so does typed text")
+  VK.close(false)
+  VK.open({ force = true, text = "Pokémon", maxLen = 7 })
+  VK.textinput("x")
+  eq(VK.text, "Pokémon", "the limit counts letters, not bytes")
+  for _ = 1, 4 do VK.gamepadpressed("x") end
+  eq(VK.text, "Pok", "Backspace takes whole letters (é too)")
+  VK.close(false)
+  VK.open({ force = true, digits = true, maxLen = 4 })
+  VK.textinput("12a345")
+  eq(VK.text, "1234", "the number pad takes digits, up to its limit")
+  VK.close(false)
+end
+
 T.finish("launcher pages polish")
