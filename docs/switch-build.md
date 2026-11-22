@@ -185,7 +185,7 @@ or the Switch-related workflow YAML), CI runs:
 2. **Fused NRO build** only on the **main** repository
    (the repository with the `CANONICAL_RELEASES` variable set), on the self-hosted Mac runner
    (`scripts/build_switch.sh --fetch --fused`), and only when the workflow
-   head is that repo (same-repo push/PR). Fork CI never runs fused. Fork PRs into the main repo also skip Switch fused (offline selftest still runs) so untrusted head code is not executed on the self-hosted Mac; iOS device build eligibility is unchanged. Fused also waits for a successful offline selftest before starting on the Mac runner.
+   head is that repo (same-repo push/PR). Fork CI never runs fused. Fork PRs into the main repo also skip Switch fused (offline selftest still runs) so untrusted head code is not executed on the self-hosted Mac; the iOS build follows the same rule (a fork PR builds unsigned on GitHub's hosted Mac). Fused also waits for a successful offline selftest before starting on the Mac runner.
 3. On successful PR fused builds, a follow-up workflow posts a PR comment
    linking the Actions artifact named `gen1recomp-switch-nro`
    (comment tag `platform-build-result`; see

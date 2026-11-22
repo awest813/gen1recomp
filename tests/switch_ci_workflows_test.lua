@@ -117,14 +117,20 @@ do
     "switch-build requires changed=true AND canonical repository")
 end
 
--- SWFIX-04 / M7: iOS build must NOT gain the Switch fork-PR head.repo guard
+-- SWFIX-04 / M7, revised: iOS build carries the same fork-PR head.repo guard
+-- as switch-build.  The self-hosted Mac holds the Developer ID identity and
+-- notary credentials on disk; a fork PR's build_ios.sh must not run there.
 do
   local start = ci:find("ios-build:", 1, true)
   check(start ~= nil, "ios-build job present")
   local rest = ci:sub(start)
   local nextJob = rest:find("\n  [%w_-]+:", 2)
   local block = nextJob and rest:sub(1, nextJob - 1) or rest
-  mustNotContain(block, "pull_request.head.repo.full_name", "ios-build")
+  mustContain(block, "pull_request.head.repo.full_name == github.repository", "ios-build")
+  -- the runner choice itself, not only the signing steps
+  local runsOn = block:match("runs%-on:[^\n]*")
+  check(runsOn and runsOn:find("pull_request.head.repo.full_name", 1, true) ~= nil,
+    "ios-build picks the self-hosted Mac only for same-repo heads")
 end
 
 -- --- SWCI-06 / SWCI-07 / SWFIX-01: PR artifact comment (no delete-all clobber) ---
