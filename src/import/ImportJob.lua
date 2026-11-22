@@ -470,12 +470,24 @@ function ImportJob.interrupted(version)
 end
 
 -- An import cut off (the app quit or crashed) after it had moved the
--- previous copy aside: put that copy back, so the game is playable again
--- instead of "the last import did not finish".  True when it was restored.
+-- previous copy aside, or one whose restore failed: put that copy back, so
+-- the game is playable again instead of "the last import did not finish".
+-- True when it was restored.
+--
+-- The backup's marker is what says a copy is waiting, not the lock: a
+-- restore that failed outright (a rename refused) ends the job and drops
+-- its lock, and the copy must still come back on a later try.  Every step
+-- is safe to repeat, so a crash during a restore is finished next time:
+-- trees already back have no backup and are kept (the list says the old
+-- copy had them), and the marker moves last.
+--
+-- A finished import that quit before deleting its backup leaves both
+-- markers; the backup is then only taking space, and is deleted.
 function ImportJob.recover(version)
   local info = GameVersion.info(version)
-  if not (info and ImportJob.interrupted(version)) then return false end
+  if not info then return false end
   local prefix = info.cachePrefix
+  if running[prefix] or lockedElsewhere(prefix) then return false end
   local base = realBase()
   if not base then return false end
   local SUF = ImportJob.BACKUP_SUFFIX
@@ -486,11 +498,19 @@ function ImportJob.recover(version)
   for _, tree in ipairs(TREES) do
     if present(prefix .. tree .. SUF) then trees[#trees + 1] = tree end
   end
+  local function unlock()
+    withPrefix(prefix, function(CacheFs) CacheFs.remove(ImportJob.LOCK_PATH) end)
+  end
+  if present(prefix .. CacheContract.MARKER_PATH) then
+    ImportJob._dropBackup(prefix, { base = base, trees = trees })
+    unlock()
+    return false
+  end
   -- (no clearCache: _restoreBackup keeps a tree the renames never reached,
   -- and removes one the old copy never had, from the list written first)
   local ok = ImportJob._restoreBackup(prefix,
     { base = base, trees = trees, had = readTreeList(base, prefix) })
-  if ok then withPrefix(prefix, function(CacheFs) CacheFs.remove(ImportJob.LOCK_PATH) end) end
+  if ok then unlock() end
   return ok
 end
 

@@ -1214,9 +1214,14 @@ function Launcher:update(dt)
       if self.opts.onImported then return self.opts.onImported(version) end
     elseif state == "error" then
       self.inboxRom = nil -- left in the imports folder, not retried this session
-      local kept = self.job.restored
-        and (" Your previous copy of " .. GameVersion.info(self.job.version).displayName
-          .. " is still there, ready to play.") or ""
+      local name = GameVersion.info(self.job.version).displayName
+      local kept = ""
+      if self.job.restored then
+        kept = " Your previous copy of " .. name .. " is still there, ready to play."
+      elseif self.job.restored == false then
+        -- the old copy is still set aside; the next start puts it back
+        kept = " Your previous copy of " .. name .. " is kept safe and comes back the next time PK:GB starts."
+      end
       if self.job.detail == ImportJob.CANCELLED then
         self:say("Import cancelled." .. kept, "info")
       else

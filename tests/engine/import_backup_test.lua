@@ -213,5 +213,83 @@ do
   eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "and the moved one is back")
 end
 
+-- ---- a crash during the restore itself, at each step: the next launch
+-- finishes it (the lock is still there, as the job held it throughout)
+local function crashedRestore(step)
+  freshGame()
+  local base = root .. "/yellow/"
+  ImportJob._backupCache("yellow/")
+  write("yellow/data/generated/half.lua", "half built")
+  write("yellow/assets/generated/half.png", "half built")
+  write("yellow/" .. ImportJob.LOCK_PATH, "0 1")
+  -- the restore runs as far as `step`, then the app dies
+  ImportJob._wipeTree("yellow/", "data/generated")
+  if step >= 2 then os.rename(base .. "data/generated.previous", base .. "data/generated") end
+  if step >= 3 then
+    ImportJob._wipeTree("yellow/", "assets/generated")
+    os.rename(base .. "assets/generated.previous", base .. "assets/generated")
+  end
+  check(ImportJob.recover("yellow"), "a restore cut off at step " .. step .. " is finished")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "step " .. step .. ": the old data is back")
+  eq(realFs.read("yellow/assets/generated/tiles.png"), "old tiles", "step " .. step .. ": and the old assets")
+  check(not exists("yellow/assets/generated/half.png"), "step " .. step .. ": without the half-built assets")
+  check(exists("yellow/" .. MARKER), "step " .. step .. ": the game is ready again")
+  check(not exists("yellow/" .. MARKER .. ".previous"), "step " .. step .. ": the backup marker is used up")
+  check(not exists("yellow/" .. ImportJob.LOCK_PATH), "step " .. step .. ": and the lock is gone")
+end
+for step = 1, 3 do crashedRestore(step) end
+
+-- ---- a restore that fails outright (a rename refused) ends the job and
+-- drops its lock; the old copy still comes back on the next try
+do
+  freshGame()
+  local job = setmetatable({ version = "yellow", prefix = "yellow/", state = "working",
+    gameName = "Pokemon Yellow", ownsTree = true, lockedAt = os.time() }, ImportJob)
+  write("yellow/" .. ImportJob.LOCK_PATH, "0 1")
+  job.backup = ImportJob._backupCache("yellow/")
+  write("yellow/data/generated/half.lua", "half built")
+  local realRename = os.rename
+  os.rename = function(from, to)
+    if from:match("data/generated%.previous$") then return nil, "refused" end
+    return realRename(from, to)
+  end
+  job:fail("disk full")
+  os.rename = realRename
+  eq(job.restored, false, "the failed restore is reported")
+  check(not exists("yellow/" .. ImportJob.LOCK_PATH), "the job's lock is gone")
+  check(exists("yellow/data/generated.previous/maps.lua"), "the old data is still kept aside")
+  check(ImportJob.recover("yellow"), "and the next try puts it back, with no lock")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "with the old data")
+  eq(realFs.read("yellow/assets/generated/tiles.png"), "old tiles", "and the old assets")
+  check(exists("yellow/" .. MARKER), "ready to play")
+end
+
+-- ---- a finished import that quit before deleting its backup: the new
+-- copy stays, and the backup is deleted
+do
+  freshGame()
+  ImportJob._backupCache("yellow/")
+  write("yellow/data/generated/maps.lua", "new maps")
+  write("yellow/assets/generated/tiles.png", "new tiles")
+  write("yellow/" .. MARKER, "ok")
+  write("yellow/" .. ImportJob.LOCK_PATH, "0 1")
+  eq(ImportJob.recover("yellow"), false, "a finished import is not rolled back")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "new maps", "the new data stays")
+  check(not exists("yellow/data/generated.previous"), "the leftover backup is deleted")
+  check(not exists("yellow/assets/generated.previous"), "all of it")
+  check(not exists("yellow/" .. MARKER .. ".previous"), "with its marker")
+  check(not exists("yellow/" .. MARKER .. ".previous.trees"), "and its list")
+end
+
+-- ---- another process importing the game right now is left alone
+do
+  freshGame()
+  ImportJob._backupCache("yellow/")
+  write("yellow/" .. ImportJob.LOCK_PATH, os.time() .. " ")
+  eq(ImportJob.recover("yellow"), false, "a live import elsewhere is not touched")
+  check(exists("yellow/data/generated.previous/maps.lua"), "its backup stays")
+  os.remove(real("yellow/" .. ImportJob.LOCK_PATH))
+end
+
 os.execute("rm -rf '" .. root .. "'")
 T.finish("import backup")
