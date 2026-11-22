@@ -281,6 +281,19 @@ function LinkBattle2.new(game, net, opts)
       endAsDraw(s, Strings("%s ran from the battle!", who))
       return
     end
+    -- a switch out of Wrap or Mean Look (the party menu refuses it, as
+    -- Battle:switchLocked does for this side): the peer's game was modified,
+    -- and taking it let a trapped mon escape.  It ends the battle as a draw,
+    -- which a peer could already force, rather than handing it the escape.
+    if theirMsg.kind == "switch" then
+      local trapped = (battle:volatile(battle.enemy).wrapCount or 0) > 0
+        or battle:volatile(battle.player).trapsTarget == true
+      if trapped then
+        endAsDraw(s, Strings("%s's game sent a switch it could not make, so the battle ended.",
+          theirName))
+        return
+      end
+    end
     local myAction = decodeAction(battle, myMsg, battle.player)
     local theirAction = decodeAction(battle, theirMsg, battle.enemy)
     local events = battle:takeLinkTurn(myAction, theirAction)

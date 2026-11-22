@@ -87,12 +87,32 @@ end
 -- decode a wire action message against whichever battler it belongs to
 -- (the opponent's, from a real participant's perspective; either side's,
 -- from a spectator's)
+-- A move the peer could not have chosen (no PP, the Disabled slot) is not
+-- run: both copies agree on PP and Disable (the turn hash covers them), so a
+-- peer that sends one has modified its game, and its turn is spent instead
+-- (its own copy then disagrees, which ends the match as a desync draw).
+local function usableMove(battler, i)
+  local mv = battler.curMoves and battler.curMoves[i]
+  return mv ~= nil and (tonumber(mv.pp) or 0) > 0 and battler.disabledSlot ~= i
+end
+local function anyUsableMove(battler)
+  for i = 1, #(battler.curMoves or {}) do
+    if usableMove(battler, i) then return true end
+  end
+  return false
+end
+local STRUGGLE = function() return { id = "STRUGGLE", pp = 1, struggle = true } end
+
 local function decodeWireAction(s, msg, battler)
   if msg.kind == "move" then
     local slot = math.max(1, math.min(#battler.curMoves, math.floor(msg.slot or 1)))
-    return battler.curMoves[slot]
+    if usableMove(battler, slot) then return battler.curMoves[slot] end
+    if not anyUsableMove(battler) then return STRUGGLE() end
+    return nil
   elseif msg.kind == "struggle" then
-    return { id = "STRUGGLE", pp = 1, struggle = true }
+    -- only when nothing else is left, as the menu decides it
+    if anyUsableMove(battler) then return nil end
+    return STRUGGLE()
   elseif msg.kind == "locked" then
     return s:lockedAction(battler)
   end
@@ -100,6 +120,8 @@ local function decodeWireAction(s, msg, battler)
   -- makes no attack this turn
   return nil
 end
+
+LinkBattle._decodeWireAction = decodeWireAction
 
 -- canonical (host-side-first) state hash, unchanged since v1: it stays on
 -- the wire as `value` so a pre-mod peer still compares something it agrees
@@ -498,11 +520,21 @@ function LinkBattle.new(game, net, opts)
                         and math.max(1, math.min(#theirParty,
                                                  math.floor(theirMsg.index or 1)))
                         or nil
+    -- not into a fainted mon or the one already out (the party menu offers
+    -- neither): a fainted switch-in soaked an attack for free
+    if theirSwitch then
+      local target = theirParty[theirSwitch]
+      if not target or (tonumber(target.hp) or 0) <= 0 or target == s.enemy.mon then
+        theirSwitch = nil
+      end
+    end
 
     -- items go first (RFC 0021).  Ours is already on our copies -- the
     -- bag applied it before the turn was submitted -- so only the peer's
     -- is applied here, on our copies of their side, with their lines.
-    if theirMsg.kind == "item" then
+    -- only in a mode that allows items: the receiving side applied the
+    -- peer's item even when the match had none
+    if theirMsg.kind == "item" and s.linkItemsAllowed then
       s:act(function()
         local lines = LinkItems.apply(s, theirMsg, {
           battler = s.enemy, party = theirParty,
@@ -673,6 +705,7 @@ function LinkBattle.new(game, net, opts)
   -- the item rides the wire as the turn's action, and both machines
   -- resolve it before the moves (resolveLockstep).  The clock: a bag open
   -- over the menu is not the menu, so opts.turnLimit waits at the bag.
+  self.linkItemsAllowed = opts.items and true or nil
   if opts.items then
     self.openItems = BattleState.openItems
     self.itemUsed = function(s, messages, o)
@@ -980,6 +1013,8 @@ function LinkBattle.newSpectator(game, net, opts)
       { guestMsg, s.enemy, guestParty, s.player, hostParty, guestName },
     }) do
       local msg = entry[1]
+      -- (a spectator is not told the mode and decides nothing: it shows what
+      -- both sides sent)
       if msg.kind == "item" then
         s:act(function()
           local lines = LinkItems.apply(s, msg, {
