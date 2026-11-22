@@ -267,4 +267,81 @@ C.room = nil
 window(390, 844)
 drawText(l)
 
+-- --------------------------------------------------------- review fixes
+do
+  local Client = package.loaded["src.online.Client"]
+  local Connect = package.loaded["src.online.Connect"]
+  window(1280, 720)
+  C.state = "online"
+  local rl = fresh({ noUpdateCheck = true })
+  rl:openOnline()
+  local pg = rl.online
+
+  -- an older invite closing is not news about the one waiting now
+  pg.outgoing = { handle = { id = "inv2", state = "sent" }, name = "B" }
+  pg:inviteClosed({ id = "inv1", why = "timeout" })
+  check(pg.outgoing ~= nil, "A's invite timing out leaves the wait for B")
+  pg.outgoing = pg.outgoing or { handle = { id = "inv2", state = "sent" }, name = "B" }
+  pg:inviteClosed({ id = "inv1", why = "accepted" })
+  check(pg.outgoing and not pg.outgoing.accepted, "and A accepting is not B accepting")
+  pg.outgoing = pg.outgoing or { handle = { id = "inv2", state = "sent" }, name = "B" }
+  pg:inviteClosed({ id = "inv2", why = "declined" })
+  eq(pg.outgoing, nil, "B's own answer ends the wait")
+
+  -- an invite Client could not send says so at once
+  Client.invite = function() return { state = "closed", why = "offline" } end
+  pg.outgoing = nil
+  pg:invitePlayer({ id = "u9", name = "GONE" }, "battle")
+  eq(pg.outgoing, nil, "an unsent invite is not waited on")
+  check(pg.notice and pg.notice.kind == "error", "and says it was not sent")
+  -- one Client closed without an event (a reconnect) ends the wait
+  pg.outgoing = { handle = { id = "inv3", state = "closed", why = "offline" }, name = "C" }
+  pg:update(0)
+  eq(pg.outgoing, nil, "a silently closed invite ends the wait")
+
+  -- reconnecting that gives up does not leave "Reconnecting..." up
+  pg.wasOnline, pg.lost = true, nil
+  C.state = "reconnecting"
+  pg:watchConnection()
+  check(pg.notice.text:find("Reconnecting", 1, true), "a drop says it is reconnecting")
+  C.state = "error"
+  pg:watchConnection()
+  check(pg.notice.text:find("Press Connect", 1, true), "giving up says to connect again: " .. pg.notice.text)
+  C.state = "online"
+  pg:watchConnection()
+
+  -- a rename while online is for the next connection
+  pg:rename("NEWNAME")
+  check(pg.notice.text:find("next time you connect", 1, true), "a rename online says when it applies")
+
+  -- trade failures read as sentences
+  eq(require("src.launcher.OnlinePage").tradeWhy("digest"),
+    "the two games did not agree on what was traded, so nothing changed", "a digest mismatch reads plainly")
+  eq(require("src.launcher.OnlinePage").tradeWhy("weird_code"), "the other trainer's game stopped it",
+    "an unknown code is not shown raw")
+  eq(require("src.launcher.OnlinePage").tradeWhy("the other trainer left"), "the other trainer left",
+    "a sentence is kept")
+
+  -- Close room only expects "closed" when it was sent; Kick says when it failed
+  Client.closeRoom = function() return false end
+  pg:closeRoom()
+  eq(pg.closing, nil, "a close that was not sent expects nothing")
+  Client.kick = function() return false end
+  pg:kick({ id = "u1", name = "RIVAL" })
+  check(pg.notice.text:find("Could not remove", 1, true), "a kick that was not sent says so")
+
+  -- a timed-out request is finished, so a late reply cannot complete the next
+  local req = { id = nil }
+  pg.pending, pg.pendingAge = req, 0
+  pg:update(require("src.launcher.OnlinePage").JOIN_TIMEOUT + 1)
+  check(req.done and req.error == "timeout", "a timed-out request is closed for Client too")
+
+  -- Ready belongs to one save
+  pg.readied, pg.readiedKey = true, "gold:slotOther"
+  pg:update(0)
+  eq(pg.readied, nil, "choosing another save takes Ready back")
+  check(pg.notice.text:find("another save", 1, true), "and says why")
+  C.state = "offline"
+end
+
 T.finish("online page")

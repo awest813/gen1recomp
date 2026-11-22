@@ -303,6 +303,12 @@ function OnlinePage:rename(text)
   local ok, why = Connect().setName(text)
   if not ok then return self:say(why or "That name won't work.", "error") end
   self.nameDraft = Connect().name() or text
+  -- the relay learns a name when this device connects; there is no rename
+  -- for a live connection, so while online it is the next one's
+  if self:online() then
+    return self:say(("Others will see you as %s from the next time you connect."):format(
+      tostring(self.nameDraft)), "info")
+  end
   self:say("You are " .. tostring(self.nameDraft) .. " online.", "info")
 end
 
@@ -311,6 +317,7 @@ function OnlinePage:disconnect()
   self.wasOnline, self.autoJoin = nil, nil
   pcall(Connect().disconnect)
   self.pending, self.inviteToken, self.pinPrompt, self.outgoing = nil, nil, nil, nil
+  self.closing, self.lateRequest = nil, nil
 end
 
 function OnlinePage:online()
@@ -427,19 +434,26 @@ function OnlinePage:leave()
   self:endTrade()
   pcall(Client().leaveRoom)
   self.team, self.teamOrder = {}, {}
-  self.readied, self.inviteToken, self.lastResult = nil, nil, nil
+  self.readied, self.inviteToken, self.lastResult, self.closing = nil, nil, nil, nil
 end
 
 -- Host only: remove a trainer from the room, or close it for everyone.
 function OnlinePage:kick(player)
   if not (player and player.id) then return end
-  call("kick", player.id)
+  local ok, sent = call("kick", player.id)
+  if not (ok and sent ~= false) then
+    return self:say("Could not remove " .. tostring(player.name or "that trainer")
+      .. ": the relay is not connected.", "error")
+  end
   self:say("Removed " .. tostring(player.name or "that trainer") .. " from the room.", "info")
 end
 
 function OnlinePage:closeRoom()
-  self.closing = true
-  call("closeRoom")
+  -- only a close that was sent expects the relay's "closed" back; left set,
+  -- a later room the host closed read "You closed the room."
+  local room = Client().room()
+  local ok, sent = call("closeRoom")
+  self.closing = (ok and sent ~= false) and (room and room.room or true) or nil
 end
 
 function OnlinePage:isHost(room)
@@ -532,6 +546,10 @@ function OnlinePage:invitePlayer(entry, kind)
   self:advertise(profile)
   local ok, handle = call("invite", entry.id, activity, detail, profile)
   if not ok then return self:say("The invite could not be sent.", "error") end
+  -- Client closes an invite it could not send at once, with no event
+  if type(handle) == "table" and handle.state == "closed" then
+    return self:say(OnlinePage.inviteClosedText(handle), "error")
+  end
   self.outgoing = { handle = handle, name = entry.name, activity = activity, to = entry.id }
   self:say(("Inviting %s to %s..."):format(tostring(entry.name or "?"),
     OnlinePage.activityText(activity)), "info")
@@ -638,6 +656,7 @@ function OnlinePage:ready()
   self.myPacked, self.myTeam = packed, team
   Client().ready(packed, digest(packed))
   self.readied = true
+  self.readiedKey = game.version .. ":" .. tostring(game.slotId)
   self.lastResult = nil
   self:say("Ready. The battle starts when everyone is ready.", "info")
 end
@@ -646,7 +665,7 @@ end
 function OnlinePage:unready()
   if not self.readied then return end
   pcall(Client().ready, {}, nil)
-  self.readied, self.myTeam = nil, nil
+  self.readied, self.myTeam, self.readiedKey = nil, nil, nil
   self:say("Not ready. Change your team, then ready up again.", "info")
 end
 
@@ -668,6 +687,11 @@ function OnlinePage:startMatch(p)
       seats = p.seats, match = p.match, room = p.room, players = p.players,
     }
   else
+    -- (update unreadies a changed save; this is the frame it raced)
+    if self.readiedKey and self.readiedKey ~= game.version .. ":" .. tostring(game.slotId) then
+      self.readied, self.myTeam, self.readiedKey = nil, nil, nil
+      return self:say("The battle could not start: you chose another save after readying.", "error")
+    end
     local team = self.myTeam
     local tour = select(2, call("tournament"))
     local entered = tour and tourPicks[tour.tour]
@@ -732,9 +756,17 @@ function OnlinePage:onEvent(event, payload)
     if payload == nil then
       self:endTrade()
       self.readied, self.myTeam, self.inviteToken, self.lastResult = nil, nil, nil, nil
+      -- (self.closing stays: the relay's "closed" comes after the room goes)
     else
       self.pinPrompt = nil
+      -- a room of its own: a close asked for in an earlier one is over
+      if self.closing and self.closing ~= payload.room then self.closing = nil end
       if self.outgoing and self.outgoing.accepted then self.outgoing = nil end
+      if self.lateRequest and not self.pending then
+        -- the answer came after "The relay didn't answer"
+        self.lateRequest = nil
+        self:say("The relay answered late: you are in the room now.", "info")
+      end
     end
   elseif event == "invite_in" and type(payload) == "table" then
     local from = payload.from and payload.from.name or "A trainer"
@@ -778,16 +810,26 @@ function OnlinePage:inviteClosed(msg)
   end
   local out = self.outgoing
   if not out then return end
+  -- an invite closing is news about this one only when it is this one: a
+  -- trainer invited before Stop waiting, or an incoming invite from before
+  -- this page, closes too
+  local mine = out.handle and out.handle.id
+  if msg.id ~= nil and mine ~= nil and msg.id ~= mine then return end
   if msg.why == "accepted" or msg.why == "crossed" then
     out.accepted = true
     self:say(("%s accepted. Opening the room..."):format(tostring(out.name)), "info")
     return
   end
   self.outgoing = nil
+  self:say(OnlinePage.inviteClosedText(msg),
+    (msg.why == "declined" or msg.why == "timeout") and "info" or "error")
+end
+
+function OnlinePage.inviteClosedText(msg)
   local Protocol2 = require("src.online.Protocol2")
   local ok, text = pcall(Protocol2.inviteClosedText, msg)
-  self:say(ok and text or ("The invite closed: " .. tostring(msg.why)),
-    (msg.why == "declined" or msg.why == "timeout") and "info" or "error")
+  if ok and type(text) == "string" then return text end
+  return "The invite could not be sent."
 end
 
 -- ------------------------------------------------------------ tournaments
@@ -964,15 +1006,31 @@ function OnlinePage:watchConnection()
     self.lost = true
     self.pending, self.pinPrompt = nil, nil
     if state == "reconnecting" then
+      self.lost = "reconnecting"
       self:say("Connection lost. Reconnecting...", "error")
     else
-      local err = Connect().error() or (select(2, call("error")))
-      self:say("Connection lost" .. (err and (": " .. tostring(err)) or ".")
-        .. " Press Connect to try again.", "error")
+      self:sayLost()
+    end
+  elseif self.lost == "reconnecting" and state ~= "reconnecting"
+      and state ~= "connecting" and state ~= "ticket" then
+    -- reconnecting gave up (or was stopped): "Reconnecting..." would stay
+    -- up for good over a page that says Not connected
+    self.lost = true
+    if state == "offline" then
+      self.wasOnline, self.lost = nil, nil
+      self:say(nil)
+    else
+      self:sayLost()
     end
   elseif state == "offline" then
     self.wasOnline, self.lost = nil, nil
   end
+end
+
+function OnlinePage:sayLost()
+  local err = Connect().error() or (select(2, call("error")))
+  self:say("Connection lost" .. (err and (": " .. tostring(err)) or ".")
+    .. " Press Connect to try again.", "error")
 end
 
 -- A request answered: report what went wrong, or open the PIN prompt.
@@ -1007,6 +1065,16 @@ end
 function OnlinePage:update(dt)
   pcall(function() require("src.online.Trade").pumpPending(dt) end)
   self:watchConnection()
+  -- Ready was for one save: another chosen in the launcher (or another
+  -- game) would start the battle with the old save's packed team
+  if self.readied and self.readiedKey then
+    local game = self:game()
+    local key = game and (game.version .. ":" .. tostring(game.slotId))
+    if key ~= self.readiedKey then
+      self:unready()
+      self:say("You chose another save, so you are not ready any more. Pick a team, then ready up.", "info")
+    end
+  end
   local pending = self.pending
   if pending then
     if pending.done then
@@ -1015,10 +1083,21 @@ function OnlinePage:update(dt)
     else
       self.pendingAge = (self.pendingAge or 0) + (dt or 0)
       if self.pendingAge > OnlinePage.JOIN_TIMEOUT then
+        -- finished here, so Client does not match a late reply to it -- or,
+        -- a host request having no room id, to the next Host pressed
+        pending.done, pending.error, pending.reason = true, "timeout", "timeout"
         self.pending, self.pendingInfo = nil, nil
+        self.lateRequest = true
         self:say("The relay didn't answer. Try again.", "error")
       end
     end
+  end
+  -- an invite Client closed without an event (a reconnect that could not
+  -- resume): waiting on it would never end
+  local out = self.outgoing
+  if out and not out.accepted and type(out.handle) == "table" and out.handle.state == "closed" then
+    self.outgoing = nil
+    self:say(OnlinePage.inviteClosedText(out.handle), "info")
   end
   self:takeLaunchInvite()
   local room = Client().room()
@@ -1035,7 +1114,9 @@ function OnlinePage:update(dt)
   if self.trade then
     local ok, stage = pcall(self.trade.update, self.trade)
     if not ok then
-      self:say(stage, "error")
+      print("online trade error: " .. tostring(stage))
+      self:say("The trade stopped: " .. require("src.launcher.Reason")(false, stage)
+        .. ". Try again; if it keeps happening, restart PK:GB.", "error")
       self:endTrade()
     elseif stage == "committed" then
       self:say("Trade complete. The save was updated.", "info")
@@ -1044,14 +1125,34 @@ function OnlinePage:update(dt)
       self.team, self.teamOrder = {}, {}
       self:endTrade()
     elseif stage == "cancelled" then
-      local why = self.trade.session and self.trade.session.error
-      self:say("The trade was cancelled" .. (why and (": " .. tostring(why)) or "."), "error")
+      local why = OnlinePage.tradeWhy(self.trade.session and self.trade.session.error)
+      self:say("The trade was cancelled" .. (why and (": " .. why .. ".") or "."), "error")
       self:endTrade()
     end
   end
 end
 
 -- ------------------------------------------------------------------- text
+
+-- Why a trade was cancelled, for "The trade was cancelled: <why>.".  The
+-- trade code and the other side send short codes ("digest", or whatever
+-- trade_abort carried); those read as a sentence, an unknown one as the
+-- other side stopping it.
+local TRADE_WHY = {
+  digest = "the two games did not agree on what was traded, so nothing changed",
+  abort = "the other trainer stopped it",
+  both_canceled = "one of you cancelled",
+  ["no seat"] = "you were not in a trading seat",
+  ["no room"] = "the room closed",
+}
+function OnlinePage.tradeWhy(why)
+  if why == nil or why == false or why == "" then return nil end
+  local text = tostring(why)
+  if TRADE_WHY[text] then return TRADE_WHY[text] end
+  text = require("src.launcher.Reason")(true, nil, text)
+  if not text:find(" ", 1, true) then return "the other trainer's game stopped it" end
+  return text
+end
 
 function OnlinePage.formatName(profile)
   return FORMAT_BY_RULESET[profile and profile.rulesetId or ""]
