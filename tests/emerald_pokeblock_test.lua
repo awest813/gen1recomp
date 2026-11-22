@@ -65,7 +65,20 @@ local function numbers(s)
 end
 
 local pokeblockC = readPret("src/pokeblock.c")
+-- The table the rest of the suite runs on comes from the ROM; the pret
+-- source, when it is checked out, is only what it is compared against.
+-- (Read only under the pret check, the table was empty without the tree,
+-- and every flavor check below failed.)
 local compat = {}
+do
+  local S = require("src.import.gba.syms").of("emerald")
+  local off = S.off("gPokeblockFlavorCompatibilityTable")
+  for i = 0, 124 do
+    local v = rom:get(off + i)
+    if v >= 128 then v = v - 256 end
+    compat[i] = v
+  end
+end
 if pokeblockC then
   -- pokeemerald/src/pokeblock.c:136
   local body = pokeblockC:match("gPokeblockFlavorCompatibilityTable%b[]%s*=%s*(%b{})")
@@ -75,14 +88,9 @@ if pokeblockC then
     if vals then for _, n in ipairs(numbers(vals)) do rows[#rows + 1] = n end end
   end
   eq(#rows, 125, "pret compatibility table has 25 x 5 entries")
-  local S = require("src.import.gba.syms").of("emerald")
-  local off = S.off("gPokeblockFlavorCompatibilityTable")
   local same = true
   for i = 0, 124 do
-    local v = rom:get(off + i)
-    if v >= 128 then v = v - 256 end
-    compat[i] = v
-    if v ~= rows[i + 1] then same = false end
+    if compat[i] ~= rows[i + 1] then same = false end
   end
   check(same, "ROM gPokeblockFlavorCompatibilityTable equals pret source")
 

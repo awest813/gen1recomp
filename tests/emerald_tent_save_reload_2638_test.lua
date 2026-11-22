@@ -94,7 +94,9 @@ if hasCache then
     Schema.ensureMonBall(m)
     original[i] = m
   end
-  love = love or require("tests.love_stub")
+  -- (no love stub here: SaveData writes through the fake portableFs below,
+  -- and installing one mid-run turned the Emerald cache lookup off, so the
+  -- tent tables read later were "missing from the cache")
   local oldFs, files, writeFault = SaveData.portableFs, {}, nil
   SaveData.portableFs = function()
     return {

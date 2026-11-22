@@ -207,6 +207,28 @@ if ok then
   end
   eq(i, 78, "gRematchTable parsed from pret (78)")
 end
+-- Without the pret tree, the table the game itself uses: the imported
+-- cache's trainers pack (same rows, 0-based).  Read only from pret, the
+-- table was empty without the tree and every rematch check below failed.
+if not ok then
+  local identity, home = os.getenv("POKEPORT_IDENTITY"), os.getenv("HOME")
+  local roots = { os.getenv("POKEPORT_EMERALD_CACHE") }
+  if identity and identity ~= "" and home then
+    roots[#roots + 1] = home .. "/Library/Application Support/LOVE/" .. identity .. "/emerald"
+    roots[#roots + 1] = home .. "/.local/share/love/" .. identity .. "/emerald"
+  end
+  for _, root in ipairs(roots) do
+    local h = root and io.open(root .. "/data/generated/gba/trainers.lua", "rb")
+    if h then
+      local pack = load(h:read("*a"), "@trainers.lua", "t", {})()
+      h:close()
+      if type(pack) == "table" and type(pack.rematches) == "table" then
+        rematches = pack.rematches
+        break
+      end
+    end
+  end
+end
 local Trainers = require("src.core.game3.scripting.trainers")
 local CINDY, CINDY_3, CINDY_4 = C.trainers.byName.TRAINER_CINDY_1, C.trainers.byName.TRAINER_CINDY_3,
   C.trainers.byName.TRAINER_CINDY_4

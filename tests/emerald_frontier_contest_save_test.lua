@@ -8,7 +8,8 @@ if not Dataset.cache():read("data/generated/gba/rse/contest_gfx/manifest.lua") t
   print("SKIP Emerald cache required: emerald_frontier_contest_save_test")
   os.exit(0)
 end
-love = require("tests.love_stub")
+-- (no love stub: with one installed the Emerald cache lookup stops, and
+-- the script bundle the new game runs came up empty)
 require("src.import.gba.versions").select("emerald")
 local C = require("src.core.game3.constants").of("emerald")
 require("src.core.game3.pokemon").install(nil)
@@ -115,7 +116,9 @@ local oldYield, oldCL, oldLink = Natives.yieldHost, package.loaded["src.core.gam
 Natives.yieldHost = function() return true end
 local code, aborted = 0, 0
 local transport = { RESULT = { OK = 0, ERROR = 1 }, FLAG = { IS_LINK = 1, IS_WIRELESS = 2 },
-  newSession = function(_, opts) return { flags = opts.flags, abort = function() aborted = aborted + 1 end } end }
+  newSession = function(_, opts) return { flags = opts.flags, abort = function() aborted = aborted + 1 end } end,
+  -- as ContestLink.flagsFor: the link flag, and the wireless one for a wireless room
+  flagsFor = function(_, wireless) return wireless and 3 or 1 end }
 transport.beginTransfer = function(opts)
   return { session = opts.session, contest = { category = 1, rank = 0 }, step = function() return code end }
 end

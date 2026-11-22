@@ -69,7 +69,14 @@ eq(#man.palettes.ch_bg, 64, "charges bg palette is four banks")
 local py = io.popen("python3 -c 'import PIL' 2>&1")
 local pyOut = py and py:read("*a") or "x"
 if py then py:close() end
-if pyOut == "" then
+-- the pixel comparisons need the pret tree's PNGs; without it they skip
+-- (they failed as "got nil") and the ROM-only checks above still run
+local probeFile = io.open(PRET .. "/graphics/rayquaza_scene/scene_1/groudon.png", "rb")
+if probeFile then probeFile:close() end
+if pyOut == "" and not probeFile then
+  print("[info] pret PNGs not found under " .. PRET .. "; pixel comparisons skipped")
+end
+if pyOut == "" and probeFile then
   local tmp = os.tmpname()
   local cmp = {
     { "df_groudon.png", "graphics/rayquaza_scene/scene_1/groudon.png" },

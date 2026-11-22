@@ -88,7 +88,14 @@ eq(man.sprites.ash.frames, 2, "ash sheet holds the two 64x64 frames (field_weath
 local py = io.popen("python3 -c 'import PIL' 2>&1")
 local pyOut = py and py:read("*a") or "x"
 if py then py:close() end
-if pyOut == "" then
+-- the pixel comparisons need the pret tree's PNGs; without it they skip
+-- (they failed as "got nil") and the ROM-only checks above still run
+local probeFile = io.open(PRET .. "/graphics/cable_car/cable_car.png", "rb")
+if probeFile then probeFile:close() end
+if pyOut == "" and not probeFile then
+  print("[info] pret PNGs not found under " .. PRET .. "; pixel comparisons skipped")
+end
+if pyOut == "" and probeFile then
   local tmp = os.tmpname()
   local cmp = {
     { "cable_car.png", "graphics/cable_car/cable_car.png" },
