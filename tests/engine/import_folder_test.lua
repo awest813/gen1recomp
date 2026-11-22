@@ -88,5 +88,46 @@ l:scanInbox()
 eq(got.cart, "hard.g1rcart", "until Scan again")
 check(before == "hard.g1rcart", "it was tried once at first")
 
+-- ---- a save that asks first (an emulator's clock data) leaves the folder
+-- only once it has imported: "no", a newer question or a change of game
+-- leaves the player's file where it was
+do
+  for k in pairs(disk) do disk[k] = nil end
+  disk["imports/saves/gold/a.sav"] = "SAVE A"
+  disk["imports/saves/gold/b.sav"] = "SAVE B"
+  local imported = {}
+  package.loaded["src.import.SaveFileIO"] = {
+    importToSlot = function(source, _, force)
+      if force then imported[#imported + 1] = source return true end
+      return false, nil, { needsConfirm = true, size = 32768 + 48 }
+    end,
+  }
+  local m = Launcher.new(function() end, { noUpdateCheck = true })
+  m.importData = function() end
+  m:update(0)
+  check(m.saveConfirm ~= nil, "a save with clock data asks first")
+  eq(disk["imports/saves/gold/a.sav"], "SAVE A", "the first, set aside for the second's question, stays")
+  local asked = m.saveConfirm.name
+  m:confirmSave(false)
+  eq(disk["imports/saves/gold/" .. asked], "SAVE " .. asked:sub(1, 1):upper(),
+    "answered no, its file stays in the folder")
+  m:update(0)
+  check(m.saveConfirm ~= nil and m.saveConfirm.name ~= asked, "the other save is asked about next")
+  local second = m.saveConfirm.name
+  m:selectGame("red")
+  eq(m.saveConfirm, nil, "a change of game sets the question aside")
+  eq(disk["imports/saves/gold/" .. second], "SAVE " .. second:sub(1, 1):upper(),
+    "and keeps its file")
+  m:selectGame("gold")
+  m:scanInbox()
+  eq(m.saveConfirm and m.saveConfirm.name, second, "the next scan asks again")
+  m:confirmSave(true)
+  eq(#imported, 1, "yes imports it")
+  eq(disk["imports/saves/gold/" .. second], nil, "and only then is its file taken")
+  eq(disk["imports/saves/gold/" .. asked], "SAVE " .. asked:sub(1, 1):upper(),
+    "the one answered no is still there")
+  package.loaded["src.import.SaveFileIO"] = nil
+end
+
 love.filesystem = realFs
 T.finish("import folder")

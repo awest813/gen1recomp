@@ -185,6 +185,9 @@ function FileBrowser.open(opts)
   FileBrowser.onCancel = opts.onCancel
   FileBrowser.selectedIdx = 1
   FileBrowser.page = 1
+  -- the list starts at its top, by its highlighted first row, and the path
+  -- bar holds no complaint from the last browse
+  FileBrowser.scroll, FileBrowser.followSel, FileBrowser.pathError = 0, false, nil
 
   FileBrowser.places = nil
   local initPath = opts.initialPath or FileBrowser._startDir()

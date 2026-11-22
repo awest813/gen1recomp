@@ -270,12 +270,12 @@ function Launcher:cartProblem(version) return self:cartsUi():cartProblem(version
 
 -- Leave the per-save state behind when the game or cart changes: slot ids
 -- repeat across games, so an open menu or rename would act on the new
--- game's save.  A pending import question is answered "no" (its file is
--- cleaned up).
+-- game's save.  A pending import question is dropped unanswered (an
+-- imports-folder file stays to be asked about again).
 function Launcher:clearSaveState()
   self.renaming, self.saveMenu, self.saveMenuRect = nil, nil, nil
   self.gameMenu, self.gameMenuRect = nil, nil
-  if self.saveConfirm then self:confirmSave(false) end
+  if self.saveConfirm then self:confirmSave(false, "dropped") end
 end
 
 function Launcher:selectGame(v)
@@ -429,8 +429,6 @@ end
 function Launcher:importData(data, name, force)
   local picked = self.pickedRomPath
   self.pickedRomPath = nil
-  force = force or self.forceNextImport
-  self.forceNextImport = nil
   if self.job and self.job.state == "working" then
     return self:say(("An import is already running, so %s was not imported. Try it again when this one finishes.")
       :format(tostring(name or "that file")), "error")
@@ -486,7 +484,10 @@ end
 
 -- `as` names what the picked file is for when it differs from the picker's
 -- filter (a Box save is picked with the "sav" filter).
-function Launcher:requestHostPick(kind, as)
+-- `force` rides along to the ROM import (pickRom's Import ROM again); it
+-- ends with the pick, so a closed picker cannot make a later drop replace a
+-- game without asking.
+function Launcher:requestHostPick(kind, as, force)
   local sys, mode = hostPicker()
   if not sys then return false end
   if mode == "savedir" and PICKED[kind] then
@@ -499,12 +500,13 @@ function Launcher:requestHostPick(kind, as)
     return true
   end
   self.pendingPick, self.pendingPickFile = as or kind, mode == "savedir" and PICKED[kind] or nil
+  self.pendingPickForce = force or nil
   return true
 end
 
 -- Hand a picked file to what asked for it.  `path` is absolute; `read`
 -- returns its bytes; `release` deletes it once nothing needs it.
-function Launcher:takePick(kind, path, name, read, release)
+function Launcher:takePick(kind, path, name, read, release, force)
   if kind == "sav" then
     -- by path: SaveFileIO only takes raw bytes for a bare 32 KiB image,
     -- and a Gen 2 save (RTC footer) or a Gen 3 one is larger
@@ -521,7 +523,7 @@ function Launcher:takePick(kind, path, name, read, release)
   end
   if kind == "cart" then return self:installCart(data, name) end
   if kind == "mod" then return self:installMod(data, name) end
-  return self:importData(data, name)
+  return self:importData(data, name, force)
 end
 
 -- Collect a finished host pick; called from update().
@@ -530,30 +532,30 @@ function Launcher:pollHostPick()
   if not sys then return end
   local kind = self.pendingPick
   local file = self.pendingPickFile
+  local force = self.pendingPickForce
   if file then
     local lfs = love.filesystem
     if lfs.getInfo(file) then
-      self.pendingPick, self.pendingPickFile = nil, nil
+      self.pendingPick, self.pendingPickFile, self.pendingPickForce = nil, nil, nil
       return self:takePick(kind, lfs.getSaveDirectory() .. "/" .. file, file,
         function() return lfs.read(file) end,
-        function() pcall(lfs.remove, file) end)
+        function() pcall(lfs.remove, file) end, force)
     end
   else
     local okP, path = pcall(sys.getPickedFile)
     if okP and type(path) == "string" and path ~= "" then
-      self.pendingPick = nil
+      self.pendingPick, self.pendingPickForce = nil, nil
       local FilePicker = require("src.core.FilePicker")
       return self:takePick(kind, path, FilePicker.basename(path),
         function() return FilePicker.read(path) end,
-        function() pcall(os.remove, path) end)
+        function() pcall(os.remove, path) end, force)
     end
   end
   local okE, err = false, nil
   if type(sys.getPickError) == "function" then okE, err = pcall(sys.getPickError) end
   if okE and type(err) == "string" and err ~= "" then
-    self.pendingPick, self.pendingPickFile = nil, nil
+    self.pendingPick, self.pendingPickFile, self.pendingPickForce = nil, nil, nil
     -- closing the picker is not an error
-    self.forceNextImport = nil
     if not err:match("^cancelled:") then self:say(err, "error") end
   end
 end
@@ -575,9 +577,6 @@ function Launcher:pickPath(prompt, kind, browseMode, onPath, dropHint)
     dirs = type(dirs) == "table" and dirs or {}
     local last = type(dirs[browseMode]) == "string" and dirs[browseMode] or nil
     Kit.FileBrowser.open({ title = prompt, mode = browseMode, initialPath = last,
-      -- a cancelled "Import ROM again" must not make the next drop replace
-      -- a game without asking
-      onCancel = function() self.forceNextImport = nil end,
       onSelect = function(path)
         local dir = tostring(path):match("^(.*)/[^/]+$")
         if dir and dir ~= "" then
@@ -602,12 +601,14 @@ end
 
 -- `force`: the file picked replaces a game already imported (its menu's
 -- Import ROM again, with no remembered file to read).
+-- `force` goes with this pick only: a closed dialog or browser, or a file
+-- that cannot be read, leaves nothing behind for a later drop.
 function Launcher:pickRom(force)
-  self.forceNextImport = force or nil
-  if self:requestHostPick("rom") then return end
+  force = force or nil
+  if self:requestHostPick("rom", nil, force) then return end
   self:pickPath("Choose a Pokemon ROM", ROM_KIND, "rom", function(path)
     self:rememberRomSource(path)
-    readPicked(self, path, function(data, name) self:importData(data, name) end)
+    readPicked(self, path, function(data, name) self:importData(data, name, force) end)
   end, "Drop a .gb, .gbc or .gba file onto this window to import it.")
 end
 
@@ -654,8 +655,16 @@ function Launcher:scanInbox()
         else
           local was = self.selected
           self.selected = item.version
+          -- the file goes only once it has imported: a "no", a failure or a
+          -- question dropped unanswered leaves the player's copy in place
+          -- (dropped: asked again on the next scan)
           ok = self:importSave(lfs.getSaveDirectory() .. "/" .. item.path, item.name, nil,
-            function() Inbox.take(item) end)
+            function(outcome)
+              if outcome == "dropped" then self.inboxTried[item.path] = nil return end
+              if outcome == "imported" then Inbox.take(item) end
+              -- answered: a save set aside for this question is asked next
+              self:queue(function() self:scanInbox() end)
+            end)
           if ok == "confirm" then ok = nil else self.selected = was end
         end
       elseif item.kind == "rom" then
@@ -842,7 +851,7 @@ function Launcher:importSave(source, name, force, cleanup)
   self.slots[v] = nil
   if not ok and type(info) == "table" and info.needsConfirm then
     -- one question at a time: an earlier unanswered one is dropped cleanly
-    if self.saveConfirm then self:confirmSave(false) end
+    if self.saveConfirm then self:confirmSave(false, "dropped") end
     self.saveConfirm = { source = source, name = name, cleanup = cleanup, version = v,
       extra = (tonumber(info.size) or 32768) - 32768 }
     self:say(("%s has %d extra bytes after the save (an emulator's clock data). "
@@ -864,16 +873,20 @@ function Launcher:editSave()
   self.opts.onEditSave(v, id)
 end
 
-function Launcher:confirmSave(yes)
+-- `cleanup` hears how it ended: "imported", "failed", "declined" (no), or
+-- "dropped" (`why`: the question was set aside unanswered, by a change of
+-- game or a newer question).
+function Launcher:confirmSave(yes, why)
   local c = self.saveConfirm
   self.saveConfirm = nil
   if not c then return end
+  local outcome = why or "declined"
   if yes and c.version == self.selected then
-    self:importSave(c.source, c.name, true)
-  else
+    outcome = self:importSave(c.source, c.name, true) == true and "imported" or "failed"
+  elseif not why then
     self:say(nil)
   end
-  if c.cleanup then c.cleanup() end
+  if c.cleanup then c.cleanup(outcome) end
 end
 
 function Launcher:pickSave()
@@ -992,6 +1005,9 @@ function Launcher:deleteSave()
   local ok, err = self:store(v).delete(id)
   self.slots[key], self.selectedSlot[key] = nil, nil
   if ok == false then return self:say("Could not delete: " .. tostring(err), "error") end
+  -- its menu (Delete keeps it open for the second press) goes with it: left
+  -- set, it swallowed the next B and kept Start from playing
+  self.saveMenu, self.saveMenuRect, self.renaming = nil, nil, nil
   self:say("Save deleted.", "info")
 end
 
@@ -3373,6 +3389,14 @@ function Launcher:draw()
     self:drawToast(x, y + Theme.space("xs", s), w, s)
   end
   self.toastAnchor = nil
+  -- the Box page's toast and prompts go under the file browser and the
+  -- keyboard: drawn after them, the toast sat over the browser's Cancel and
+  -- took its presses.  While the browser is open they take no clicks; while
+  -- typing, a prompt is what is being typed into, so it still does.
+  if self.page == "box" then
+    Kit.blockClicks = browsing and true or false
+    self:drawBoxOverlays(s)
+  end
   if browsing then
     local W, H = love.graphics.getDimensions()
     Kit.FileBrowser.draw({ s = s, W = W, H = H })
@@ -3381,10 +3405,6 @@ function Launcher:draw()
     local W, H = love.graphics.getDimensions()
     Kit.blockClicks = false
     Kit.VirtualKeyboard.draw({ s = s, W = W, H = H })
-  end
-  if self.page == "box" then
-    Kit.blockClicks = false
-    self:drawBoxOverlays(s)
   end
   Kit.holdFocus = t < 1
   Kit.endFrame()
