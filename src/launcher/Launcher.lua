@@ -340,8 +340,10 @@ function Launcher:slotsFor(version)
 end
 
 function Launcher:queue(fn, keepArmed)
-  if not keepArmed and self.armedDelete then
-    self.armedDelete = nil
+  -- an example's "Press Update again" (ModsPage:installExample) is armed
+  -- the same way, and must not wait for good either
+  if not keepArmed and (self.armedDelete or self.armedUpdate) then
+    self.armedDelete, self.armedUpdate = nil, nil
     -- its "Press ... again" prompt goes with it, not on for seconds after
     local m = self.message
     if m and tostring(m.text):match("^Press .* again") then self.message = nil end

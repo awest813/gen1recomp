@@ -42,9 +42,17 @@ function OptionValue.coerce(row, stored)
     if type(stored) ~= "string" then
       if type(stored) == "number" then stored = tostring(stored) else return default end
     end
+    -- maxLen counts characters, as the launcher's field does: cut by
+    -- bytes, a name with an accented letter at the limit ended mid-letter
     local maxLen = tonumber(row.maxLen)
     if maxLen and maxLen >= 0 and #stored > maxLen then
-      stored = stored:sub(1, maxLen)
+      local out, n = {}, 0
+      for ch in stored:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        n = n + 1
+        if n > maxLen then break end
+        out[n] = ch
+      end
+      stored = table.concat(out)
     end
     return stored
   end

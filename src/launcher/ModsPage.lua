@@ -244,6 +244,28 @@ function ModsPage:toggleMod(version, row)
     row.name, row.enabled and "off" or "on", gameName(version)), "info")
 end
 
+-- Drop the download queued or running for `id` (its transfer cannot be
+-- interrupted: it finishes in the background and nothing is installed from
+-- it, as with Stop).  True when there was one.
+function ModsPage:cancelJob(id)
+  if not id then return false end
+  local dropped = false
+  for i = #self.queue, 1, -1 do
+    if self.queue[i].id == id then table.remove(self.queue, i) dropped = true end
+  end
+  local job = self.current
+  if job and job.id == id and job.stage ~= "install" then
+    self.current = nil
+    if job.h and job.stage == "download" then
+      self.abandoned = self.abandoned or {}
+      self.abandoned[#self.abandoned + 1] = job
+    end
+    if job.batch then job.batch.total = math.max(0, (job.batch.total or 1) - 1) end
+    dropped = true
+  end
+  return dropped
+end
+
 function ModsPage:removeMod(row)
   local l = self.launcher
   local key = "mod:" .. tostring(row and row.folder)
@@ -252,6 +274,8 @@ function ModsPage:removeMod(row)
     return l:say("Press Remove again to uninstall " .. tostring(row.name) .. ".", "notice")
   end
   l.armedDelete = nil
+  -- an update or install still on its way would put the mod straight back
+  self:cancelJob(row.id)
   local ModLibrary = require("src.mods.ModLibrary")
   local ok, done, err = pcall(ModLibrary.uninstall, row.folder)
   self:changed()
@@ -280,6 +304,13 @@ function ModsPage:installMod(data, name)
     end
     return l:say("Could not install " .. tostring(name or "that mod") .. ": "
       .. require("src.launcher.Reason")(true, nil, err) .. ".", "error")
+  end
+  -- a copy installed by hand (the web build's download, dropped in) may be
+  -- the update the page was offering
+  local r = self.releases[manifest.id or ""]
+  if r and r.best then
+    local order = require("src.mods.Semver").compare(r.best.version, manifest.version)
+    if order ~= nil and order <= 0 then r.status = "current" end
   end
   local missing = ModLibrary.missingDependencies(manifest, ModLibrary.list())
   local text = ("Installed %s."):format(manifest.name or manifest.id)
@@ -525,12 +556,20 @@ function ModsPage:orderList(version)
     end
   end
   local opts = self.launcher:options()
-  return require("src.mods.LoadOrder").materialize(opts.modOrder, entries), byId
+  -- the saved order is shared by every game and keeps ids of mods since
+  -- removed: the page shows only this game's installed mods (as the
+  -- in-game manager does), and moves among them (`full` keeps the rest)
+  local full = require("src.mods.LoadOrder").materialize(opts.modOrder, entries)
+  local shown = {}
+  for _, id in ipairs(full) do
+    if byId[id] then shown[#shown + 1] = id end
+  end
+  return shown, byId, full
 end
 
 function ModsPage:moveOrder(version, id, delta)
-  local list = self:orderList(version)
-  local moved, changed = require("src.mods.LoadOrder").move(list, id, delta)
+  local shown, _, full = self:orderList(version)
+  local moved, changed = require("src.mods.LoadOrder").moveWithin(full, shown, id, delta)
   if not changed then return false end
   local SaveData = require("src.core.SaveData")
   local opts = self.launcher:options()
@@ -860,9 +899,35 @@ function ModsPage:pumpChecks()
   if self.reportChecks and not self:checking() then
     self.reportChecks = nil
     local n = self:availableCount()
-    self.launcher:say(n > 0 and (("%d %s an update."):format(n, n == 1 and "mod has" or "mods have"))
-      or "Your mods are up to date.", "info")
+    local failed, why = self:failedChecks()
+    if n > 0 then
+      self.launcher:say(("%d %s an update."):format(n, n == 1 and "mod has" or "mods have")
+        .. (failed > 0 and (" " .. ModsPage.checkFailedText(failed, why)) or ""), "info")
+    elseif failed > 0 then
+      self.launcher:say(ModsPage.checkFailedText(failed, why), "error")
+    else
+      self.launcher:say("Your mods are up to date.", "info")
+    end
   end
+end
+
+-- How many of the updatable mods' last checks failed, and the first reason.
+-- (A failed check is not "up to date": nothing is known.)
+function ModsPage:failedChecks(rows)
+  local n, why = 0, nil
+  for _, row in ipairs(rows or self:updatableRows()) do
+    local r = self.releases[row.id]
+    if r and r.status == "error" then
+      n = n + 1
+      why = why or r.err
+    end
+  end
+  return n, why
+end
+
+function ModsPage.checkFailedText(n, why)
+  return ("Could not check %s for updates: %s. Check the connection, then try again."):format(
+    n == 1 and "1 mod" or (n .. " mods"), require("src.launcher.Reason")(true, nil, why))
 end
 
 function ModsPage:availableCount()
@@ -967,7 +1032,9 @@ function ModsPage:stop()
     self.launcher:say("Stopped getting " .. tostring(job.name) .. ".", "info")
   end
   if b and b.phase == "checking" then
-    self.checks = {}
+    -- every check ends, a "Check for updates" pressed before this one too:
+    -- its report would follow "Stopped" with "Your mods are up to date."
+    self.checks, self.reportChecks = {}, nil
     self:finishBatch()
   end
 end
@@ -979,14 +1046,21 @@ function ModsPage:finishBatch()
   local l = self.launcher
   local result = { ok = not b.cancelled and #b.failures == 0,
     cancelled = b.cancelled == true, updated = b.updated, total = b.total,
-    failures = b.failures }
+    failures = b.failures, checkFailed = b.checkFailed or 0 }
   local text, kind
   if b.cancelled then
     text = ("Stopped after updating %d of %d."):format(b.updated, b.total)
+  elseif b.total == 0 and (b.checkFailed or 0) > 0 then
+    -- nothing could be checked: not "up to date".  (Still ok for a
+    -- shortcut's auto-update, so an offline device boots the game.)
+    text, kind = ModsPage.checkFailedText(b.checkFailed, b.checkWhy), "error"
   elseif b.total == 0 then
     text = "Your mods are up to date."
   elseif #b.failures == 0 then
     text = ("Updated %d %s."):format(b.updated, b.updated == 1 and "mod" or "mods")
+    if (b.checkFailed or 0) > 0 then
+      text, kind = text .. " " .. ModsPage.checkFailedText(b.checkFailed, b.checkWhy), "error"
+    end
   else
     text = ("Updated %d of %d. %s"):format(b.updated, b.total, table.concat(b.failures, " "))
     kind = "error"
@@ -1006,6 +1080,7 @@ function ModsPage:pumpBatch()
       if self.checks[row.id] then return end
     end
     b.phase = "installing"
+    b.checkFailed, b.checkWhy = self:failedChecks(b.rows)
     for _, row in ipairs(b.rows) do
       local r = self.releases[row.id]
       if r and r.status == "available" and r.best and r.best.zip and not self:queued(row.id) then
@@ -1058,9 +1133,19 @@ function ModsPage:pumpInstalls()
   if job.stage == "releases" then
     local done, releases, err = ModUpdate.pumpFetchReleases(job.h)
     if not done then return end
+    -- a pin keeps the manifest's version ("1.2", "0.3.0-beta.1"), a
+    -- release its tag ("v1.2.0"): compared as versions, not as text (the
+    -- sha256 still checks the file)
+    local Semver = require("src.mods.Semver")
+    local function same(rel)
+      if rel.version == job.version then return true end
+      local order = Semver.compare(rel.tag, job.version)
+      if order == nil then order = Semver.compare(rel.version, job.version) end
+      return order == 0
+    end
     local found
     for _, rel in ipairs(releases or {}) do
-      if rel.version == job.version and rel.zip then found = rel break end
+      if rel.zip and same(rel) then found = rel break end
     end
     if not found then
       return self:finishJob(job, false, err or ("no release " .. tostring(job.version)
@@ -1112,11 +1197,25 @@ function ModsPage:installBytes(job, bytes)
     return true
   end
   local ModLibrary = require("src.mods.ModLibrary")
-  local ok, manifest, err = pcall(ModLibrary.installZip, bytes, tostring(job.id) .. ".zip",
+  local ok, manifest, err, info = pcall(ModLibrary.installZip, bytes, tostring(job.id) .. ".zip",
     { upgrade = job.upgrade, replace = job.replace })
-  if not ok then manifest, err = nil, manifest end
+  if not ok then manifest, err, info = nil, manifest, nil end
   if not manifest then
-    if tostring(err):find("already installed", 1, true) then return true end
+    -- the copy already there is the same version or newer: nothing changed
+    local got = type(info) == "table" and info.exists and info.manifest
+    if got then
+      if job.id and got.id ~= job.id then
+        return false, ("the package holds %s, not %s"):format(tostring(got.id), tostring(job.id))
+      end
+      -- an update that installed nothing is not "Updated" (an author who
+      -- tagged a release but left manifest.json at the old version)
+      if job.verb == "Updated" then
+        return false, ("its package says version %s, which is not newer than yours"):format(
+          tostring(got.version))
+      end
+      job.version = got.version or job.version
+      return true
+    end
     return false, tostring(err)
   end
   if job.id and manifest.id ~= job.id then
@@ -1656,7 +1755,8 @@ function ModsPage:drawExamples(x, y, w, h, s)
         { id = "example-install-" .. tostring(row.name), font = "small",
           kind = (row.outdated or not row.installed) and row.supported ~= false and "primary" or nil,
           enabled = row.outdated or not row.installed }) then
-      l:queue(function() self:installExample(row) end)
+      -- (keepArmed: this press may be Update's second)
+      l:queue(function() self:installExample(row) end, true)
     elseif clicked and not Kit.clickIn(bx, by, bw, bh) then
       local name = row.name
       l:queue(function() self.exampleName, l.page = name, "example" end)
@@ -1710,7 +1810,7 @@ function ModsPage:drawExample(x, y, w, h, s)
   end
   if row.installed then
     items[1] = row.outdated
-      and { label = "Update", id = "example-detail-update", kind = "primary",
+      and { label = "Update", id = "example-detail-update", kind = "primary", keepArmed = true,
             run = function() self:installExample(row) end }
       or { label = "Installed", id = "example-detail-installed", enabled = false }
     items[2] = { label = "Open in Mods", id = "example-detail-open", run = function()

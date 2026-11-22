@@ -917,4 +917,103 @@ do
   Kit.setFocus(nil)
 end
 
+-- -------------------------------------------------------- review fixes
+do
+  -- load order shows only this game's installed mods; a removed one and
+  -- another game's stay in the saved order, unseen
+  local lo = fresh()
+  opts.modOrder = { "cool", "ghost", "fancy", "plain" }
+  local shown = lo:modsUi():orderList("gold")
+  local joined = table.concat(shown, ",")
+  check(not joined:find("ghost", 1, true) and joined:sub(1, 16) == "cool,fancy,plain",
+    "the load order lists only installed mods: " .. joined)
+  lo:modsUi():moveOrder("gold", "cool", 1)
+  eq(table.concat(lo:modsUi():orderList("gold"), ","):sub(1, 16), "fancy,cool,plain",
+    "Down moves past the next installed mod, not a removed one")
+  check(table.concat(opts.modOrder, ","):find("ghost", 1, true), "the saved order keeps the rest")
+  lo.page = "loadorder"
+  check(not drawText(lo):find("ghost", 1, true), "and the page never shows it")
+  opts.modOrder = {}
+
+  -- a check that could not run is not "up to date"
+  local realPumpF = ModUpdate.pumpFetchReleases
+  ModUpdate.pumpFetchReleases = function(h)
+    h.pumps = h.pumps + 1
+    if h.pumps < 2 then return false end
+    return true, nil, "API rate limit exceeded"
+  end
+  local lc = fresh()
+  lc:modsUi().releases = {}
+  lc:modsUi():checkUpdates(true)
+  pump(lc, 4)
+  check(lc.message and lc.message.text:find("Could not check 2 mods for updates", 1, true),
+    "a failed check says so: " .. tostring(lc.message and lc.message.text))
+  eq(lc.message.kind, "error", "as an error")
+  local res
+  lc = fresh()
+  lc:modsUi().releases = {}
+  lc:autoUpdateAll(function(r) res = r end)
+  pump(lc, 20)
+  check(res and res.ok and res.checkFailed == 2, "Update all reports the failed checks (and still boots)")
+  check(not lc.message.text:find("up to date", 1, true), "and does not call the mods up to date")
+  ModUpdate.pumpFetchReleases = realPumpF
+
+  -- an update whose package is not newer installs nothing, and says so
+  installed.cool.version = "1.0.0"
+  local realZip = ModLibrary.installZip
+  ModLibrary.installZip = function(_, _, o)
+    return nil, "cool is already installed", { exists = true, manifest = { id = "cool", version = "1.0.0" } }
+  end
+  local lu = fresh()
+  lu:modsUi().releases = { cool = { status = "available",
+    best = { version = "1.2.0", zip = { url = "https://dl/cool-1.2.0.zip" } } } }
+  local coolRow
+  for _, row in ipairs(lu:modsFor("gold")) do if row.id == "cool" then coolRow = row end end
+  lu:modsUi():updateMod(coolRow)
+  pump(lu, 10)
+  check(lu.message and lu.message.kind == "error"
+    and lu.message.text:find("not newer than yours", 1, true),
+    "a no-op update is not 'Updated': " .. tostring(lu.message and lu.message.text))
+  ModLibrary.installZip = realZip
+
+  -- removing a mod drops its queued update, so it does not come back
+  local lr = fresh()
+  lr:modsUi().releases = { cool = { status = "available",
+    best = { version = "1.2.0", zip = { url = "https://dl/cool-1.2.0.zip" } } } }
+  lr:modsUi():updateMod(coolRow)
+  check(lr:modsUi():queued("cool"), "the update is queued")
+  local before = #zips
+  lr:modsUi():removeMod(coolRow)
+  lr:modsUi():removeMod(coolRow)
+  check(not lr:modsUi():queued("cool"), "Remove drops it")
+  pump(lr, 12)
+  eq(#zips, before, "and nothing is installed after the remove")
+
+  -- a pin's version is compared as a version ("2.5" is v2.5.0)
+  local lp = fresh()
+  lp:modsUi():enqueue({ kind = "mod", id = "base", name = "base", repo = "pins/base",
+    version = "2.5", sha256 = ("%064x"):format(#"ZIP:base:2.5.0"), replace = true, verb = "Installed" })
+  pump(lp, 14)
+  eq(zips[#zips].bytes, "ZIP:base:2.5.0", "a pin written 2.5 fetches release 2.5.0")
+
+  -- installing the new version by hand ends "Update available"
+  local lh = fresh()
+  lh:modsUi().releases = { cool = { status = "available", best = { version = "1.2.0" } } }
+  lh:modsUi():installMod("ZIP:cool:1.2.0", "cool.zip")
+  eq(lh:modsUi().releases.cool.status, "current", "a hand-installed update is up to date")
+
+  -- an example's "Press Update again" ends with the next other action
+  local la2 = fresh()
+  la2.armedUpdate = "example_x"
+  la2:queue(function() end)
+  eq(la2.armedUpdate, nil, "another action disarms Update")
+  la2.armedUpdate = "example_x"
+  la2:queue(function() end, true)
+  eq(la2.armedUpdate, "example_x", "its own second press does not")
+
+  -- a text option's limit counts letters, not bytes
+  eq(require("src.mods.OptionValue").coerce({ type = "text", maxLen = 3, default = "" }, "héllo"),
+    "hél", "a text option is cut by character")
+end
+
 T.finish("mods page")
