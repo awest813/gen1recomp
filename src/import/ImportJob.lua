@@ -514,6 +514,20 @@ function ImportJob.recover(version)
   return ok
 end
 
+-- Whether `version` has a previous copy set aside and no ready copy in
+-- its place: a restore that failed, or an import cut off part way.
+-- recover puts it back.  Only looks for two files.
+function ImportJob.backupWaiting(version)
+  local info = GameVersion.info(version)
+  local base = info and realBase()
+  if not base then return false end
+  local marker = base .. "/" .. info.cachePrefix .. CacheContract.MARKER_PATH
+  local f = io.open(marker .. ImportJob.BACKUP_SUFFIX, "rb")
+  if not f then return false end
+  f:close()
+  return not present(info.cachePrefix .. CacheContract.MARKER_PATH)
+end
+
 local function extractorFor(version)
   local gen = GameVersion.generation(version)
   if gen == 3 then return require("src.import.RomExtractorGen3") end

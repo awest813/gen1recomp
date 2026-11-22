@@ -176,6 +176,10 @@ function Launcher:refresh(recheck)
       end
       self.ready[v] = cacheReady(v)
       self.stale[v] = not self.ready[v] and cacheStale(v)
+      if not self.ready[v] then
+        local okW, waiting = pcall(ImportJob.backupWaiting, v)
+        if okW and waiting then self.stale[v] = "waiting" end
+      end
       -- an import that quit part way reads like one an update left behind
       if not self.ready[v] and not self.stale[v] then
         local okI, interrupted = pcall(ImportJob.interrupted, v)
@@ -1163,6 +1167,7 @@ end
 
 function Launcher:update(dt)
   self:stickRepeat(dt or 0)
+  if self.restoreRetry and not self.job then self:tryRestores(dt or 0) end
   pcall(self.pollExport, self)
   if self.assetJob then self:stepImporter(0.008) end
   local okP, errP = pcall(self.pollHostPick, self)
@@ -1219,8 +1224,9 @@ function Launcher:update(dt)
       if self.job.restored then
         kept = " Your previous copy of " .. name .. " is still there, ready to play."
       elseif self.job.restored == false then
-        -- the old copy is still set aside; the next start puts it back
-        kept = " Your previous copy of " .. name .. " is kept safe and comes back the next time PK:GB starts."
+        -- the old copy is still set aside; tryRestores keeps at it
+        kept = " Your previous copy of " .. name .. " is kept safe; PK:GB will keep trying to put it back."
+        self:scheduleRestore(self.job.version)
       end
       if self.job.detail == ImportJob.CANCELLED then
         self:say("Import cancelled." .. kept, "info")
@@ -1790,7 +1796,9 @@ function Launcher:autoReimport()
   -- another game, or an import that never comes out ready, looped forever
   self.autoTried = self.autoTried or {}
   for _, v in ipairs(self.games) do
-    if self.stale and self.stale[v] and self:romSource(v) and not self.autoTried[v] then
+    -- (a copy set aside is put back, not imported over)
+    local stale = self.stale and self.stale[v]
+    if stale and stale ~= "waiting" and self:romSource(v) and not self.autoTried[v] then
       self.autoTried[v] = true
       self:reimport(v)
       return self:importing()
@@ -1858,12 +1866,68 @@ function Launcher:ignoreReturningPointer() self.pressAt, self.click = nil, nil e
 -- (src/launcher/ModsPage.lua); done(result) runs once they are.
 function Launcher:autoUpdateAll(done, opts) return self:modsUi():autoUpdateAll(done, opts) end
 
+-- ---------------------------------------------- putting a copy back
+--
+-- A failed import whose old copy could not be renamed back (a file in use,
+-- say) leaves that copy set aside.  The launcher tries again by itself,
+-- waiting longer each time, and the game's page has a button for it; the
+-- next start tries too (refresh -> ImportJob.recover).
+Launcher.RESTORE_WAITS = { 2, 5, 15, 30, 60 }
+
+function Launcher:scheduleRestore(version)
+  self.restoreRetry = self.restoreRetry or {}
+  self.restoreRetry[version] = { tries = 0, wait = Launcher.RESTORE_WAITS[1] }
+end
+
+-- True when the copy is back.  `byHand` reports a failure too.
+function Launcher:restorePrevious(version, byHand)
+  local okR, restored = pcall(ImportJob.recover, version)
+  restored = okR and restored
+  local name = GameVersion.info(version).displayName
+  if restored then
+    if self.restoreRetry then self.restoreRetry[version] = nil end
+    self.ready[version] = nil
+    self:refresh(true)
+    self:say("Your previous copy of " .. name .. " is back, ready to play.", "info")
+  elseif byHand then
+    self:refresh(true)
+    if self.stale and self.stale[version] == "waiting" then
+      self:say("Could not put " .. name .. " back yet. Close any program using PK:GB's files, then try again.", "error")
+    end
+  end
+  return restored
+end
+
+function Launcher:tryRestores(dt)
+  for version, r in pairs(self.restoreRetry) do
+    r.wait = r.wait - dt
+    if r.wait <= 0 then
+      if self:restorePrevious(version, false) then
+        -- (restorePrevious cleared the entry)
+      else
+        r.tries = r.tries + 1
+        local waits = Launcher.RESTORE_WAITS
+        local okW, waiting = pcall(ImportJob.backupWaiting, version)
+        if not (okW and waiting) or r.tries >= #waits then
+          -- nothing left to restore, or out of tries: the button and the
+          -- next start remain
+          self.restoreRetry[version] = nil
+        else
+          r.wait = waits[r.tries + 1]
+        end
+      end
+    end
+  end
+  if next(self.restoreRetry) == nil then self.restoreRetry = nil end
+end
+
 -- ------------------------------------------------------------------- draw
 
 local function statusText(self, version)
   if self.job and self.job.version == version then return "Importing", PAL.yellow end
   if self.ready[version] then return "Ready", PAL.green end
   if self.stale and self.stale[version] == "interrupted" then return "Import stopped", PAL.yellow end
+  if self.stale and self.stale[version] == "waiting" then return "Copy set aside", PAL.yellow end
   if self.stale and self.stale[version] then return "Update needed", PAL.yellow end
   return "Not imported", PAL.muted
 end
@@ -1953,7 +2017,7 @@ function Launcher:drawGameList(x, y, w, h, s)
       elseif not ready then
         -- a game an update left behind says so, and imports from its file
         local stale = self.stale and self.stale[v]
-        local chip = stale and "Update" or "Import"
+        local chip = stale and stale ~= "waiting" and "Update" or "Import"
         local cw = Kit.textWidth("micro", "Import") + Theme.BUTTON.labelInset * s + Theme.space("s", s)
         -- a full tap target where the row has room for one
         local ch = math.min(rowH - Theme.space("s", s), math.max(Kit.tapMin(), math.floor(28 * s)))
@@ -2605,7 +2669,21 @@ function Launcher:drawGame(x, y, w, h, s)
 
   if not ready then
     local stale = self.stale and self.stale[v]
-    local help = stale == "interrupted"
+    if stale == "waiting" then
+      local note = "Your previous copy of this game is set aside and could not be put back yet "
+        .. "(another program may be using its files). PK:GB keeps trying; you can also try now. "
+        .. "Your saves are kept."
+      Kit.textWrapped("small", note, cx, cy, cw, PAL.text)
+      cy = cy + Kit.wrapHeight("small", note, cw) + Theme.space("m", s)
+      local pw = math.min(cw, math.floor(260 * s))
+      if Kit.button(cx, cy, pw, btnH, "Put it back",
+          { id = "restore-previous", kind = "accent", icon = "refresh-cw", fullLabel = true }) then
+        self:queue(function() self:restorePrevious(v, true) end)
+      end
+      cy = cy + btnH + Theme.space("l", s)
+    end
+    local help = stale == "waiting" and "Or import it again from your ROM."
+      or stale == "interrupted"
       and "The last import of this game did not finish. Import it again; your saves are kept."
       or stale and ("This game was imported by an older version of PK:GB and has to be imported again. "
         .. "Your saves are kept.")
@@ -2618,8 +2696,10 @@ function Launcher:drawGame(x, y, w, h, s)
     local bw = math.min(cw, math.floor(260 * s))
     if source then
       -- the file it came from last time is still there: one press
+      -- (Put it back is the main button while a copy is set aside)
       if Kit.button(cx, cy, bw, btnH, "Import again",
-          { id = "reimport", kind = "accent", icon = "refresh-cw", fullLabel = true }) then
+          { id = "reimport", kind = stale ~= "waiting" and "accent" or nil, icon = "refresh-cw",
+            fullLabel = true }) then
         self:queue(function() self:reimport(v) end)
       end
       if cw >= 2 * bw + Theme.space("m", s) then
