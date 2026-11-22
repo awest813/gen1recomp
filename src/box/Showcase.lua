@@ -279,7 +279,11 @@ function Showcase.export(state,index,fs)
     Showcase.draw(state,stage,0,0,1136,432)
   end)
   love.graphics.pop()
-  if not ok then canvas:release();return nil,tostring(err) end
+  if not ok then
+    canvas:release()
+    print("showcase draw error: "..tostring(err))
+    return nil,"The stage could not be drawn: "..tostring(err):match("^[^\n]*"):gsub("^[^:]*%.lua:%d+: ",""):gsub("[%.%s]+$","").."."
+  end
   local data=canvas:newImageData();canvas:release()
   local bytes=data:encode("png"):getString();data:release()
   local path="box/showcase/"..digest(bytes)..index..".png"

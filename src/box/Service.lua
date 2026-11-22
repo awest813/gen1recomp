@@ -391,7 +391,15 @@ end
 function Service:exportGCI()
   local bytes, why = require("src.box.GCI").export(self.state)
   if not bytes then return nil, why end
-  local path = "box/exports/pokemon-box-" .. self.state.revision .. (#bytes == 0x76040 and ".gci" or ".sav")
+  -- the revision repeats (a restored backup, another device's sync), so
+  -- the name never reuses one already there: it may be the only copy
+  local ext = #bytes == 0x76040 and ".gci" or ".sav"
+  local base = "box/exports/pokemon-box-" .. self.state.revision
+  local path, n = base .. ext, 1
+  while self.fs.getInfo(path) do
+    n = n + 1
+    path = base .. "-" .. n .. ext
+  end
   if not self.fs.createDirectory("box/exports") then return nil, "Could not create the export folder." end
   local ok, err = self.fs.write(path, bytes)
   if not ok or self.fs.read(path) ~= bytes then return nil, err or "The exported file could not be verified." end

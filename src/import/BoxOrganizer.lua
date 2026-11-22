@@ -146,7 +146,7 @@ local function previewActions(imp,s,o,layout,report,why,x,y,w,m,api,compact)
   api.button(imp,x+(w+gap)/2,y,(w-gap)/2,h,"organize-apply",
     compact and "Apply" or o.target=="pc" and "Apply to game" or "Apply to Box",function()
       if api.perform(imp,function() return s.service:applyOrganize(o.preview) end,
-        o.target=="pc" and "Game PC arranged. Saved and backed up." or "Box arranged. Previous layout backed up.") then changed(o) end
+        o.target=="pc" and "Game PC arranged. Saved and backed up." or "Box arranged.") then changed(o) end
     end,false,not o.preview or o.preview.report.moved==0 or why~=nil,"save")
   return y+h
 end

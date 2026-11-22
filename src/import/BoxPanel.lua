@@ -36,6 +36,9 @@ function BoxPanel.refresh(imp)
   require("src.ui.kit.Transition").clear("box")
   Catalog.reset()
   local previous = imp._boxState or {}
+  -- Reload answers "Box changed outside this screen. Reload...": that
+  -- sticky toast goes with the stale view
+  if previous.diskStale then UI.toast(imp, nil) end
   local service, why = Service.open()
   local s = { service = service, notice = why or (service and service.recoveryNotice), noticeKind = why and "error" or "info",
     sources = Service.sources(),
@@ -125,7 +128,13 @@ end
 local function perform(imp, operation, text)
   local s = state(imp)
   local called, ok, why = pcall(operation)
-  if not called then why, ok = ok, nil end
+  if not called then
+    -- an error from the Box code: the log keeps it whole, the player gets
+    -- a sentence without file and line
+    print("box error: " .. tostring(ok))
+    why, ok = "Something went wrong: " .. require("src.launcher.Reason")(false, ok)
+      .. ". Nothing was changed; try again.", nil
+  end
   s._latestBackup = nil
   if not ok then
     s.notice, s.noticeKind = tostring(why or "Box operation failed."), "error"
@@ -776,7 +785,14 @@ local function drawBody(imp, s, x, y, w, _, m)
         end }
       end
       UI.open(imp, "Box theme", options, box.theme or "Launcher", function(theme)
-        perform(imp, function() return s.service:theme(s.box, theme, theme == "Showcase" and box.wallpaper or nil) end, "Theme saved.")
+        -- the Box keeps its Showcase wallpaper under any theme (it shows
+        -- only with Showcase): another theme dropped it, which then disabled
+        -- Showcase.  The music goes with Showcase (Store.validate allows it
+        -- nowhere else); picking Showcase again wiped it.  Back on Showcase
+        -- without it, the saved stage's own music plays.
+        perform(imp, function()
+          return s.service:theme(s.box, theme, box.wallpaper, theme == "Showcase" and box.showcaseMusic or nil)
+        end, "Theme saved.")
       end)
     end },
   }

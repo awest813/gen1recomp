@@ -504,12 +504,18 @@ function Tools.draw(imp, s, x, y, w, m, api)
     end
     local backup = cached.path
     button("sync-restore", "Restore sync backup", function()
-      s._latestBackup = nil
-      local ok, why = sync:restoreBoxBackup(backup)
-      if ok then
-        local fresh = require("src.import.BoxPanel").refresh(imp)
-        fresh.notice, fresh.noticeKind = "Box and linked saves restored.", "ok"
-      else s.notice, s.noticeKind = why, "error" end
+      -- it puts the whole Box and every linked save back to the backup's
+      -- time, so it asks first (as every other Box-wide change does)
+      UI.confirm(imp, "Restore sync backup?", "The Box and every linked game save go back to the "
+        .. "backup. Progress since then is set aside as a backup of its own, so restoring again "
+        .. "undoes this.", "Restore", function()
+        s._latestBackup = nil
+        local ok, why = sync:restoreBoxBackup(backup)
+        if ok then
+          local fresh = require("src.import.BoxPanel").refresh(imp)
+          fresh.notice, fresh.noticeKind = "Box and linked saves restored. Restore again to undo.", "ok"
+        else s.notice, s.noticeKind = why, "error" end
+      end)
     end, not backup or sync:busy(), w - h - gap)
     UI.help(imp, "Backup", x + w - h, y, h); nextRow()
   elseif page == "Showcase" then
