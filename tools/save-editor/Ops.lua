@@ -53,6 +53,24 @@ local function speciesName(S, species)
 end
 Ops.speciesName = speciesName
 
+local function itemName(S, id)
+  local def = S.data and S.data.items and S.data.items[id]
+  return tostring((def and def.name) or id)
+end
+
+local function moveName(S, id)
+  local def = id ~= nil and S.data and S.data.moves and S.data.moves[id]
+  return tostring((type(def) == "table" and def.name) or id)
+end
+
+-- A Lua error as the editor shows it: the first line, without the file and
+-- line it came from (the log keeps the whole of it).
+function Ops.errText(err)
+  local text = tostring(err)
+  print("save editor error: " .. text)
+  return (text:match("^[^\n]*"):gsub("^[^:]*%.lua:%d+: ", ""):gsub("[%.%s]+$", ""))
+end
+
 local function stampNewMon(S, mon)
   if Gen.ofState(S) == 3 then
     mon.ot = (S.save.player and S.save.player.name) or S.save.name or "RED"
@@ -168,16 +186,18 @@ end
 -- Two-click confirm for destructive verbs.  The first call arms `id` and
 -- returns false; a second call with the same id inside ARM_SECONDS returns
 -- true and disarms.  Panels label the button through Ops.armLabel.
-function Ops.arm(S, id, msg)
+-- `target` (a mon, an item) pins the confirm to what was armed: the second
+-- press acts on that, not on whatever is selected by then.
+function Ops.arm(S, id, msg, target)
   local t = now()
-  if S.armed == id then
+  if S.armed == id and S.armedTarget == target then
     local at = S.armedAt
     if not (t and at and (t - at) > Ops.ARM_SECONDS) then
       S.armed, S.armedAt = nil, nil
       return true
     end
   end
-  S.armed, S.armedAt = id, t
+  S.armed, S.armedAt, S.armedTarget = id, t, target
   S.status = msg
   Toast.show(S, msg, "warn", { hold = Ops.ARM_SECONDS })
   return false
@@ -196,13 +216,15 @@ end
 
 function Ops.disarm(S)
   if S.armed and S.toast and S.toast.kind == "warn" and S.toast.text == S.status then Toast.clear(S) end
-  S.armed, S.armedAt = nil, nil
+  S.armed, S.armedAt, S.armedTarget = nil, nil, nil
 end
 
 -- ------------------------------------------------------------------ party
 function Ops.selectParty(S, index)
   local mon = S.save.party[index]
   if not mon then return false end
+  -- a confirm armed for the mon that was selected ends with it
+  if S.selectedParty ~= index then Ops.disarm(S) end
   S.selectedParty = index
   S.editingMon = mon
   Ops.note(S, ("Selected party slot %d (%s)"):format(index, speciesName(S, mon.species)))
@@ -226,7 +248,7 @@ function Ops.partyRemove(S)
   local mon = S.save.party[index]
   if not mon then return Ops.say(S, "No party slot selected") end
   if not Ops.arm(S, "party-remove",
-      ("Remove %s from slot %d? Click again to confirm"):format(speciesName(S, mon.species), index)) then
+      ("Remove %s from slot %d? Click again to confirm"):format(speciesName(S, mon.species), index), mon) then
     return false
   end
   table.remove(S.save.party, index)
@@ -264,7 +286,7 @@ function Ops.setLevel(S, mon, level)
   if not mon then return false end
   local want = clamp(math.floor(level), 1, 100)
   if want == mon.level then
-    return Ops.say(S, want == 1 and "Level is already 1" or "Level is already 100", "info")
+    return Ops.say(S, ("Level is already %d"):format(want), "info")
   end
   MonOps.setLevel(S.data, mon, want, Gen.ofState(S))
   return Ops.mark(S, ("%s is now Lv%d"):format(speciesName(S, mon.species), mon.level))
@@ -336,7 +358,7 @@ function Ops.setSpecies(S, mon, id)
     mon.stats, mon.hp, mon.name = wasStats, wasHp, wasName
     mon.types, mon.gender, mon.shiny, mon.unownLetter, mon.maxHp =
       wasTypes, wasGender, wasShiny, wasUnown, wasMaxHp
-    return Ops.say(S, ("Could not set %s: %s"):format(tostring(id), tostring(err)))
+    return Ops.say(S, ("Could not set %s: %s"):format(speciesName(S, id), Ops.errText(err)))
   end
   syncPartyMailSpecies(S, mon)
   return Ops.mark(S, ("Species set to %s"):format(speciesName(S, id)))
@@ -740,7 +762,7 @@ function Ops.clearMove(S, mon, slot)
   end
   local id = moveId(mon, slot)
   if Gen.ofState(S) == 3 then MonOps.clearMove(mon, slot) else mon.moves[slot] = nil end
-  return Ops.mark(S, ("Cleared move slot %d (%s)"):format(slot, id))
+  return Ops.mark(S, ("Cleared move slot %d (%s)"):format(slot, moveName(S, id)))
 end
 
 function Ops.setExperience(S, mon, value)
@@ -1244,7 +1266,16 @@ function Ops.boxes(S)
   return Gen.ensureBoxes(S.save)
 end
 
+-- Where the selection may sit after a mon leaves a box.  Gen 3 boxes are
+-- 30 fixed slots with gaps, where `#` is any border (the highlight jumped to
+-- an unrelated mon, the next Release's target); a Gen 1 / 2 box is a list.
+function Ops.boxLastSlot(S, box)
+  if Gen.ofState(S) == 3 then return Ops.boxCapacity(S) end
+  return #box
+end
+
 function Ops.selectBox(S, index)
+  if S.selectedBox ~= index then Ops.disarm(S) end
   S.selectedBox = clamp(index, 1, Ops.boxCount(S))
   S.selectedBoxSlot = 1
   S.save.currentBox = S.selectedBox
@@ -1260,6 +1291,7 @@ function Ops.stepBox(S, delta)
 end
 
 function Ops.selectBoxSlot(S, index)
+  if S.selectedBoxSlot ~= index then Ops.disarm(S) end
   local box = Ops.boxes(S)[S.selectedBox]
   S.selectedBoxSlot = clamp(index, 1, Ops.boxCapacity(S))
   local mon = box[S.selectedBoxSlot]
@@ -1305,7 +1337,7 @@ function Ops.withdraw(S)
     boxRemove(S, box, S.selectedBoxSlot)
     table.insert(S.save.party, mon)
   end
-  S.selectedBoxSlot = clamp(S.selectedBoxSlot, 1, math.max(#Ops.boxes(S)[S.selectedBox], 1))
+  S.selectedBoxSlot = clamp(S.selectedBoxSlot, 1, math.max(Ops.boxLastSlot(S, Ops.boxes(S)[S.selectedBox]), 1))
   S.selectedParty = #S.save.party
   return Ops.mark(S, ("Withdrew %s to party slot %d"):format(speciesName(S, mon.species), #S.save.party))
 end
@@ -1315,12 +1347,12 @@ function Ops.release(S)
   local mon = box[S.selectedBoxSlot]
   if not mon then return Ops.say(S, "No box slot selected") end
   if not Ops.arm(S, "box-release",
-      ("Release %s permanently? Click again to confirm"):format(speciesName(S, mon.species))) then
+      ("Release %s permanently? Click again to confirm"):format(speciesName(S, mon.species)), mon) then
     return false
   end
   boxRemove(S, box, S.selectedBoxSlot)
   if S.editingMon == mon then S.editingMon = nil end
-  S.selectedBoxSlot = clamp(S.selectedBoxSlot, 1, math.max(#box, 1))
+  S.selectedBoxSlot = clamp(S.selectedBoxSlot, 1, math.max(Ops.boxLastSlot(S, box), 1))
   return Ops.mark(S, ("Released %s"):format(speciesName(S, mon.species)))
 end
 
@@ -1439,8 +1471,8 @@ local function changeG3(S, pc, id, quantity, msg)
     return Ops.say(S, "Item change refused: quantity or storage capacity")
   end
   local where = pc and "PC storage" or "the bag"
-  if quantity <= 0 then return Ops.mark(S, ("Removed %s from %s"):format(tostring(id), where)) end
-  return Ops.mark(S, (msg or "%s x%d in %s"):format(tostring(id), quantity, where))
+  if quantity <= 0 then return Ops.mark(S, ("Removed %s from %s"):format(itemName(S, id), where)) end
+  return Ops.mark(S, (msg or "%s x%d in %s"):format(itemName(S, id), quantity, where))
 end
 
 local function g3Max(S, id, pc)
@@ -1829,11 +1861,6 @@ function Ops.moveCount(S, toPc, id)
     toHave = itemQty(toPc and Ops.pcItems(S) or inv, id)
   end
   return math.max(0, math.min(fromHave, slotMax(S, id) - toHave))
-end
-
-local function itemName(S, id)
-  local def = S.data and S.data.items and S.data.items[id]
-  return tostring((def and def.name) or id)
 end
 
 local function moveG3(S, toPc, id, n)
@@ -2347,7 +2374,7 @@ function Ops.setHeldItem(S, mon, id)
     mon.item = nil
     mon.heldItem = nil
     syncPartyMailHeldItem(S, mon, was, nil)
-    return Ops.mark(S, ("Cleared held item (%s)"):format(tostring(was)))
+    return Ops.mark(S, ("Cleared held item (%s)"):format(itemName(S, was)))
   end
   local def = S.data.items[id]
   if not def then

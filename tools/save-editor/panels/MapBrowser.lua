@@ -193,13 +193,17 @@ local function goToWarp(S, warp)
     and def.destMap ~= "LAST_MAP"
     and def.destMap ~= S.mapId
   then
-    S.save.lastOutdoor = { id = S.mapId, x = def.x, y = def.y }
+    -- the browser remembers where it came out, as the game would, but in
+    -- its own state: browsing wrote the save's lastOutdoor unseen (not
+    -- dirty, not undoable), and every building exit then led there
+    S.browseOutdoor = { id = S.mapId, x = def.x, y = def.y }
   end
-  if def.destMap == "LAST_MAP" and not S.save.lastOutdoor then
+  local outdoor = S.browseOutdoor or S.save.lastOutdoor
+  if def.destMap == "LAST_MAP" and not outdoor then
     Ops.say(S, "Can't follow warp: no remembered outdoor map")
     return
   end
-  local ok, destMap, dx, dy = pcall(Warp.destination, S.data, def, S.save.lastOutdoor)
+  local ok, destMap, dx, dy = pcall(Warp.destination, S.data, def, outdoor)
   if not ok then
     Ops.say(S, "Warp failed: " .. tostring(destMap))
     return

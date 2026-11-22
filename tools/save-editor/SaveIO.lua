@@ -78,17 +78,59 @@ function SaveIO.choosePath()
   return nil
 end
 
-function SaveIO.backupPath(path)
-  local stamp = os.date("%Y%m%d-%H%M%S")
-  return path .. ".bak-" .. stamp
-end
-
-function SaveIO.load(path)
+local function readFile(path)
   local f, err = io.open(path, "rb")
   if not f then return nil, err end
   local body = f:read("*a")
   f:close()
-  return SaveData.decode(body)
+  return body
+end
+SaveIO.readFile = readFile
+
+-- One per save, never reused: two saves in the same second kept only the
+-- second, which overwrote the copy from before any edit.
+function SaveIO.backupPath(path)
+  local base = path .. ".bak-" .. os.date("%Y%m%d-%H%M%S")
+  local candidate, n = base, 1
+  while true do
+    local f = io.open(candidate, "rb")
+    if not f then return candidate end
+    f:close()
+    n = n + 1
+    candidate = base .. "-" .. n
+  end
+end
+
+-- The game's own copies beside a save (src/core/SaveData.lua slotNames):
+-- it stages a write in .tmp and keeps the last good save in .bak, and
+-- loads them, in that order, when the main file is missing or corrupt.
+SaveIO.GAME_RECOVERY = { ".tmp", ".bak" }
+-- The editor's own staging file: never the game's .tmp, which may be the
+-- only copy of the progress.
+SaveIO.EDIT_TMP = ".editor-tmp"
+
+-- Returns save, err, recoveredFrom (".tmp" / ".bak" when the main file
+-- was missing or corrupt, as the game would), and the main file's bytes
+-- as read (nil when there was none) for SaveIO.changedOnDisk.
+function SaveIO.load(path)
+  local body, err = readFile(path)
+  if body then
+    local save, derr = SaveData.decode(body)
+    if type(save) == "table" then return save, nil, nil, body end
+    err = derr or "the file could not be read"
+  end
+  for _, suffix in ipairs(SaveIO.GAME_RECOVERY) do
+    local copy = readFile(path .. suffix)
+    local save = copy and SaveData.decode(copy)
+    if type(save) == "table" then return save, nil, suffix, body end
+  end
+  return nil, err, nil, body
+end
+
+-- Whether the main file is no longer what was loaded (the game or a sync
+-- wrote it since): saving then would replace that progress.
+function SaveIO.changedOnDisk(path, loadedBody)
+  return readFile(path) ~= loadedBody
 end
 
 function SaveIO.save(path, data)
@@ -112,7 +154,7 @@ function SaveIO.save(path, data)
       return false, bcerr
     end
   end
-  local tmp = path .. ".tmp"
+  local tmp = path .. SaveIO.EDIT_TMP
   local f, err = io.open(tmp, "wb")
   if not f then return false, err end
   local wok, werr = f:write(encoded)
@@ -127,12 +169,20 @@ function SaveIO.save(path, data)
     return false, cerr
   end
   local ok, rerr = os.rename(tmp, path)
-  if not ok then
-    -- Windows may need remove-first; try best-effort
-    os.remove(path)
-    ok, rerr = os.rename(tmp, path)
+  if not ok and existing then
+    -- Windows will not rename onto a file: move it aside (not delete it),
+    -- and put it back if the new one still will not go in
+    local aside = path .. ".editor-old"
+    os.remove(aside)
+    if os.rename(path, aside) then
+      ok, rerr = os.rename(tmp, path)
+      if ok then os.remove(aside) else os.rename(aside, path) end
+    end
   end
-  if not ok then return false, tostring(rerr) end
+  if not ok then
+    os.remove(tmp)
+    return false, tostring(rerr)
+  end
   return true
 end
 

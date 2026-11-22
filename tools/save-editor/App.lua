@@ -124,13 +124,20 @@ local function applyLoaded(path, statusVerb)
   Kit.blur()
   S.path = path
   local existed = fileExists(path)
-  local save, err = SaveIO.load(path)
+  local save, err, recovered, diskBody = SaveIO.load(path)
   local kind = "ok"
+  S.diskBody, S._overwriteArmed = diskBody, nil
   if save then
     S.save = save
     S.status = statusVerb .. " " .. path
     S.loadError = false
     S.allowSave = true
+    if recovered then
+      -- what the game itself would load: its staged or last good copy
+      S.status = statusVerb .. " the game's recovery copy (" .. recovered .. ") of " .. path
+        .. ": the main file was " .. (existed and "unreadable" or "missing")
+      kind = "warn"
+    end
   elseif existed then
     S.save = Gen.newGame(S.version)
     S.status = "Corrupt save at "
@@ -169,15 +176,28 @@ local function applyLoaded(path, statusVerb)
   S.mobileInspector = nil
   S._quitArmed = false
   S._openArmed = false
+  S._reloadArmed = false
+  S.browseOutdoor = nil
   S.editingMon = nil
   Ops.disarm(S)
+  -- a save from another generation (opened or dropped into this game's
+  -- editor) would be hydrated and edited against this game's species, moves
+  -- and items: stats recomputed from the wrong table, and saved
+  local GameVersion = require("src.core.GameVersion")
+  local sessionGen = S.version and GameVersion.info(S.version) and GameVersion.generation(S.version)
+  if save and sessionGen and Gen.of(S.save) ~= sessionGen then
+    S.loadError, S.allowSave = true, false
+    S.status = "That save is for another game. Open it from that game's page in the launcher"
+    Toast.show(S, S.status, "error", { sticky = true })
+    return
+  end
   local prepared, prepareError = pcall(function()
     Gen.ensureBoxes(S.save)
     Gen.hydrateSave(Data, S.save)
   end)
   if not prepared then
     S.loadError, S.allowSave = true, false
-    S.status = "Save disabled: " .. tostring(prepareError)
+    S.status = "Save disabled: " .. Ops.errText(prepareError)
     Toast.show(S, S.status, "error", { sticky = true })
     return
   end
@@ -417,13 +437,22 @@ function App.save()
   if Gen.ofState(S) == 3 then
     local prepared, result = pcall(require("Game3Adapter").export, S.save)
     if not prepared then
-      Ops.say(S, "Save failed: " .. tostring(result))
+      Ops.say(S, "Save failed: " .. Ops.errText(result))
       return false
     end
     output = result
   end
+  -- the game or a sync wrote this file since it was opened: saving now
+  -- would replace that progress, so the first press says so
+  if SaveIO.changedOnDisk(S.path, S.diskBody) and not S._overwriteArmed then
+    S._overwriteArmed = true
+    Ops.say(S, "This save changed on disk since you opened it (the game or sync wrote it). "
+      .. "Reload to see it, or Save again to replace it with your edits", "warn")
+    return false
+  end
   local ok, err = SaveIO.save(S.path, output)
   if ok then
+    S.diskBody, S._overwriteArmed = SaveIO.readFile(S.path), nil
     S.dirty = false
     S.historySavedToken = S.historyToken or 0
     S._quitArmed = false
@@ -435,10 +464,18 @@ function App.save()
   return false
 end
 
-function App.reload()
+-- Unsaved edits arm a confirm first, as Open and Close do: Reload (or
+-- Ctrl+R, read as "refresh") discarded them, undo history and all.
+function App.reload(force)
   if S.missingCache then
     return Ops.say(S, S.missingCache)
   end
+  if S.dirty and not force and not S._reloadArmed then
+    S._reloadArmed = true
+    Ops.say(S, "Unsaved changes,  Reload again to discard them", "warn")
+    return false
+  end
+  S._reloadArmed = false
   local save, err = SaveIO.load(S.path)
   if save then
     applyLoaded(S.path, "Reloaded")
