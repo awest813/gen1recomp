@@ -240,6 +240,26 @@ function Launcher:scopeKey(version)
 end
 
 -- SaveData's slot calls for the game's current scope.
+-- A deleted save is told to sync, so it goes from the account too: left
+-- out, the next sync saw it only on the server and downloaded it back.
+-- `id` is read before the file goes (the slot's identity goes with it).
+local function syncDeleted(version, playthroughId)
+  if type(playthroughId) ~= "string" or playthroughId == "" then return end
+  pcall(function()
+    local SyncEngine = require("src.sync.SyncEngine")
+    local eng = SyncEngine._shared or SyncEngine.shared()
+    if not (eng and eng.noteSaveDeleted) then return end
+    eng:noteSaveDeleted(require("src.sync.SyncState").key(version, playthroughId))
+  end)
+end
+
+local function deleting(version, id, read, delete)
+  local okI, playthroughId = pcall(read)
+  local ok, err = delete()
+  if ok ~= false then syncDeleted(version, okI and playthroughId or nil) end
+  return ok, err
+end
+
 function Launcher:store(version)
   local SaveData = require("src.core.SaveData")
   local cart = self:activeCart(version)
@@ -249,7 +269,10 @@ function Launcher:store(version)
       active = function() return SaveData.activeCartSlot(cart) end,
       setActive = function(id) return SaveData.setActiveCartSlot(cart, id) end,
       create = function() return SaveData.createCartSlot(cart) end,
-      delete = function(id) return SaveData.deleteCartSlot(cart, id) end,
+      delete = function(id)
+        return deleting(version, id, function() return SaveData.cartSlotPlaythroughId(cart, id) end,
+          function() return SaveData.deleteCartSlot(cart, id) end)
+      end,
       rename = function(id, name) return SaveData.renameCartSlot(cart, id, name) end,
       cart = cart,
     }
@@ -259,7 +282,10 @@ function Launcher:store(version)
     active = function() return SaveData.activeSlot(version) end,
     setActive = function(id) return SaveData.setActiveSlot(version, id) end,
     create = function() return SaveData.createSlot(version) end,
-    delete = function(id) return SaveData.deleteSlot(version, id) end,
+    delete = function(id)
+      return deleting(version, id, function() return SaveData.slotPlaythroughId(version, id) end,
+        function() return SaveData.deleteSlot(version, id) end)
+    end,
     rename = function(id, name) return SaveData.renameSlot(version, id, name) end,
   }
 end

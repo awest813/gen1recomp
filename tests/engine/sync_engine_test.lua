@@ -175,7 +175,8 @@ do
   pump(eng)
   T.eq(#saves.writes, 1, "the remote-only save is written locally")
   T.eq(saves.writes[1].version, "gold", "into the right game")
-  T.eq(saves.writes[1].mode, "replace", "as that playthrough's slot")
+  -- "fill": into that playthrough's slot only if this device has no copy
+  T.eq(saves.writes[1].mode, "fill", "as that playthrough's slot, where none is here")
   T.eq(SyncState.rev(eng.state, "gold/xyz"), 4, "and its rev is remembered")
   T.eq(eng.phase, "idle", "the engine settles")
   T.eq(transport.sent[2].url, "http://sync.test/sync/save?id=xyz&version=gold",
@@ -1029,6 +1030,106 @@ do
   T.eq(#saves.writes, 1, "which is downloaded")
   for _, req in ipairs(transport.sent) do
     T.check(req.method ~= "DELETE", "and never deleted")
+  end
+end
+
+-- ------------------------------------------------------------ review fixes
+local function sentMethod(transport, method, path)
+  for _, req in ipairs(transport.sent) do
+    if req.method == method and req.url:find(path, 1, true) then return req end
+  end
+end
+
+-- keep both: a failed download of the other copy uploads nothing over it
+do
+  local eng, transport = conflictEngine()
+  eng:syncNow()
+  pump(eng)
+  transport.routes["GET /sync/save"] = { code = 500, body = '{"error":"boom"}' }
+  local before = #transport.sent
+  eng:resolveConflict("red/abc", "both")
+  pump(eng)
+  for i = before + 1, #transport.sent do
+    T.check(transport.sent[i].method ~= "PUT", "keep both does not upload when the other copy failed to arrive")
+  end
+  T.eq(SyncState.rev(eng.state, "red/abc"), 7, "and keeps the revision it had")
+end
+
+-- a delete elsewhere does not take a save played here since the last sync
+do
+  local state = linkedState()
+  SyncState.setRev(state, "red/abc", 7, 500)
+  local eng, transport, saves = engine({
+    ["GET /sync/state"] = { code = 200,
+      body = '{"saves":{},"deleted":{"red/abc":{"rev":8,"deletedAt":999999}}}' },
+    ["PUT /sync/save"] = { code = 200, body = '{"ok":true,"rev":9}' },
+  }, { saveEntry("red", "abc", 800, 650) }, state)
+  eng:syncNow()
+  pump(eng)
+  T.eq(#saves.removed, 0, "progress since the last sync is not deleted")
+  T.check(sentMethod(transport, "PUT", "/sync/save") ~= nil, "it is uploaded again")
+end
+
+-- a server copy older than the last synced one is not downloaded over this save
+do
+  local state = linkedState()
+  SyncState.setRev(state, "red/abc", 9, 700)
+  local eng, _, saves = engine({
+    ["GET /sync/state"] = { code = 200, body = '{"saves":{"red/abc":{"rev":3,"meta":{"savedAt":100}}}}' },
+    ["GET /sync/save"] = { code = 200,
+      body = '{"rev":3,"meta":{"savedAt":100},"blob":"return { player = { name = \\"OLD\\" } }"}' },
+  }, { saveEntry("red", "abc", 700, 650) }, state)
+  eng:syncNow()
+  pump(eng)
+  T.eq(#saves.writes, 0, "a revision going backwards writes nothing")
+  T.eq(eng.phase, "conflict", "and asks instead")
+end
+
+-- an upload reply with no revision is not "Ready"
+do
+  local eng = engine({
+    ["GET /sync/state"] = { code = 200, body = '{"saves":{}}' },
+    ["PUT /sync/save"] = { code = 200, body = '{"ok":true}' },
+  }, { saveEntry("red", "abc", 700, 650) })
+  eng:syncNow()
+  pump(eng)
+  T.eq(eng.phase, "error", "an unconfirmed upload is an error")
+  T.eq(SyncState.rev(eng.state, "red/abc"), nil, "and records no revision")
+end
+
+-- a game that opens the save while its download is on the way keeps it
+do
+  local state = linkedState()
+  SyncState.setRev(state, "red/abc", 7, 700)
+  local eng
+  local engRef = {}
+  eng = engine({
+    ["GET /sync/state"] = { code = 200, body = '{"saves":{"red/abc":{"rev":9,"meta":{"savedAt":760}}}}' },
+    ["GET /sync/save"] = function()
+      engRef.eng:protectPlaythrough("red", "abc") -- the game starts on it
+      return { code = 200, body = '{"rev":9,"meta":{"savedAt":760},"blob":"return { player = {} }"}' }
+    end,
+  }, { saveEntry("red", "abc", 700, 650) }, state)
+  engRef.eng = eng
+  local saves = eng.saves
+  eng:syncNow()
+  pump(eng)
+  T.eq(#saves.writes, 0, "the open save is not written over")
+  T.eq(SyncState.rev(eng.state, "red/abc"), 7, "and keeps its revision for the next sync")
+  eng:protectPlaythrough(nil, nil)
+end
+
+-- the default store: a download must be the save asked for, and a whole one
+do
+  local store = SyncEngine.defaultSaves and SyncEngine.defaultSaves()
+  if store then
+    local ok, err = store.write("red", "abc", "return {}", "replace")
+    T.eq(ok, nil, "an empty save is refused: " .. tostring(err))
+    ok, err = store.write("red", "abc", 'return { version = "gold", player = {} }', "replace")
+    T.eq(ok, nil, "a save for another game is refused: " .. tostring(err))
+    ok, err = store.write("red", "abc",
+      'return { player = {}, meta = { playthroughId = "zzz" } }', "replace")
+    T.eq(ok, nil, "another playthrough's save is refused: " .. tostring(err))
   end
 end
 

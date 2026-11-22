@@ -98,6 +98,9 @@ local function wireVersion(save, scope)
   return GameVersion.get()
 end
 
+-- (defined below; the default save store's write checks a download with it)
+local contents
+
 local function slotForPlaythrough(options, version, playthroughId)
   local root = (type(options) == "table" and type(options.playthroughIds) == "table")
     and options.playthroughIds or {}
@@ -229,10 +232,20 @@ function SyncEngine.defaultSaves()
       return out
     end,
 
-    write = function(version, playthroughId, blob, mode)
+    write = function(version, playthroughId, blob, mode, expect)
       local SaveData = saveApi()
       local save = SaveData.decode(blob)
       if type(save) ~= "table" then return nil, "the downloaded save is unreadable" end
+      -- the save asked for, and a whole one: a reply for another game or
+      -- playthrough (or an empty table) must not take this slot
+      if not contents(blob) then return nil, "the downloaded save is not a complete save" end
+      if type(save.version) == "string" and save.version ~= version then
+        return nil, "the server sent a save for another game"
+      end
+      local sentId = type(save.meta) == "table" and save.meta.playthroughId or nil
+      if mode ~= "new" and sentId ~= nil and sentId ~= playthroughId then
+        return nil, "the server sent a different save"
+      end
       save.version = save.version or version
       local options = SaveData.loadOptions()
       local scopeKey, slotId, created
@@ -241,6 +254,22 @@ function SyncEngine.defaultSaves()
         save.meta.playthroughId = SaveData.newPlaythroughId()
       else
         scopeKey, slotId = slotForPlaythrough(options, version, playthroughId)
+        if slotId then
+          local cartOf = cartOfScope(scopeKey)
+          local current
+          if cartOf then current = SaveData.readCartSlotSource(cartOf, slotId)
+          else current = SaveData.readSlotSource(scopeKey, slotId) end
+          -- "fill" is for a save this device lacks: a copy is here, the scan
+          -- just could not read it, so it is left alone
+          if mode == "fill" and current then
+            return false, "a save on this device could not be read, so it was left as it is"
+          end
+          -- the save changed since the sync looked (the game saved): kept,
+          -- and the next sync compares the two
+          if expect ~= nil and current ~= expect then
+            return false, "a save changed while it synced, so it was kept for the next sync"
+          end
+        end
       end
       if not slotId then
         local cartId = blobCart(save)
@@ -327,7 +356,7 @@ local function snapshot(value, seen)
   return out
 end
 
-local function contents(blob, decoded)
+contents = function(blob, decoded)
   if type(blob) ~= "string" or blob == "" or #blob > SyncClient.MAX_BLOB then return nil end
   local ok, save = true, decoded
   if save == nil then ok, save = pcall(saveApi().decode, blob) end
@@ -846,21 +875,29 @@ function SyncEngine:_planFrom(remoteState)
       end
       local remoteRev = row and tonumber(row.rev)
       local remoteChanged = row ~= nil and remoteRev ~= knownRev
+      -- a server copy older than the one this device last synced (a server
+      -- restored from backup, a bad reply) is not news: compared, never
+      -- downloaded over this save
+      local remoteBehind = remoteChanged and remoteRev ~= nil and knownRev ~= nil
+        and remoteRev < knownRev
       local tomb = not row and type(tombs[key]) == "table" and tombs[key] or nil
+      -- deleted elsewhere: only a save with no progress here since the last
+      -- sync goes with it.  One played since is uploaded again, whatever the
+      -- two devices' clocks say (they decided it before).
       local buried = tomb ~= nil and knownRev ~= nil
         and (tonumber(tomb.rev) or 0) >= knownRev
-        and not (localChanged and liveStamp
-          and liveStamp > (unixSeconds(tomb.deletedAt) or 0))
+        and not localChanged
       if buried then
         self:_removeLocal(entry, key, tomb)
       elseif not row then
         self:_queueUpload(entry, key, false)
-      elseif localChanged and remoteChanged then
+      elseif (localChanged and remoteChanged) or remoteBehind then
         self:_queueComparison(entry, key, row)
       elseif localChanged then
         self:_queueUpload(entry, key, false)
       elseif remoteChanged and key ~= self.protectedKey then
-        self:_queueDownload(key, entry.version, entry.playthroughId, "replace")
+        self:_queueDownload(key, entry.version, entry.playthroughId, "replace", nil,
+          { expect = entry.blob })
       end
     end
   end
@@ -879,7 +916,10 @@ function SyncEngine:_planFrom(remoteState)
     if not seen[key] and not self._boxKeys[key] and key ~= self.protectedKey then
       local version, id = SyncState.splitKey(key)
       if version and id then
-        self:_queueDownload(key, version, id, "replace", tonumber(row.rev))
+        -- "fill": only where this device has no readable copy -- a save the
+        -- scan left out (unreadable, a cart list that failed) is not
+        -- overwritten unseen
+        self:_queueDownload(key, version, id, "fill", tonumber(row.rev))
       end
     end
   end
@@ -1222,6 +1262,12 @@ function SyncEngine:_queueUpload(entry, key, force)
     })
     eng:_request(handle, err, function(e, res)
       local data = res.data or {}
+      -- a reply with no revision (a proxy's page) did not store anything
+      -- that can be built on: not "Ready"
+      if not tonumber(data.rev) then
+        e:_fail("the server did not confirm the upload")
+        return
+      end
       SyncState.setRev(e.state, key, tonumber(data.rev),
         unixSeconds(entry.meta and entry.meta.savedAt))
       e:_persist()
@@ -1242,9 +1288,14 @@ function SyncEngine:_queueUpload(entry, key, force)
   end)
 end
 
-function SyncEngine:_queueDownload(key, version, playthroughId, mode, knownRev)
+-- opts: expect = the local blob the plan saw (the write is skipped if the
+-- save changed since), after = run once the save is written (keep both's
+-- upload waits for the other copy to be safe first).
+function SyncEngine:_queueDownload(key, version, playthroughId, mode, knownRev, opts)
+  opts = opts or {}
   self:_enqueue(function(eng)
     if eng:_newBoxMember(key) then return end
+    if mode ~= "new" and key == eng.protectedKey then return end
     eng.phase = "downloading"
     eng.status = "Downloading saves..."
     local handle, err = eng.client:getSave(version, playthroughId)
@@ -1255,8 +1306,14 @@ function SyncEngine:_queueDownload(key, version, playthroughId, mode, knownRev)
         e:_fail("the server sent no save data")
         return
       end
+      -- checked again as the reply lands: a game may have opened this save
+      -- (a launch while syncing), or saved over it, since the plan
+      if mode ~= "new" and key == e.protectedKey then
+        if not e:busy() then e:_finish() end
+        return
+      end
       local slotId, detail, cartId =
-        e.saves.write(version, playthroughId, data.blob, mode)
+        e.saves.write(version, playthroughId, data.blob, mode, opts.expect)
       if slotId == false then
         e.skipped = e.skipped or {}
         e.skipped[#e.skipped + 1] =
@@ -1285,6 +1342,7 @@ function SyncEngine:_queueDownload(key, version, playthroughId, mode, knownRev)
       }
       e.changed = true
       e:_persist()
+      if opts.after then opts.after(e) end
       if not e:busy() then e:_finish() end
     end)
   end)
@@ -1328,10 +1386,14 @@ function SyncEngine:resolveConflict(key, choice)
     self:_queueDownload(key, conflict.version, conflict.playthroughId,
       "replace", conflict.remoteRev)
   elseif choice == "both" then
+    -- this device's copy replaces the other on the server only once that
+    -- copy is safe here: a download that failed (or was skipped) left the
+    -- forced upload to delete the save the player chose to keep
     self:_queueDownload(key, conflict.version, conflict.playthroughId,
-      "new", conflict.remoteRev)
-    SyncState.setRev(self.state, key, conflict.remoteRev, nil)
-    self:_queueUpload(conflict.entry, key, true)
+      "new", conflict.remoteRev, { after = function(e)
+        SyncState.setRev(e.state, key, conflict.remoteRev, nil)
+        e:_queueUpload(conflict.entry, key, true)
+      end })
   else
     return false, "unknown resolution"
   end

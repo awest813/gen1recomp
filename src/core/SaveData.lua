@@ -876,6 +876,10 @@ SaveData.LAUNCHER_KEYS = {
   "boxMusicVol", "boxCryVol", "romSources", "lastVersion", "activeCart", "modSort",
 }
 
+-- Options another part of the app owns and writes itself; a game session's
+-- copy of them is never authoritative (writeOptions).
+SaveData.ENGINE_KEYS = { "saveSync" }
+
 function SaveData.launcherKeys()
   local out = {}
   for _, key in ipairs(SaveData.LAUNCHER_KEYS) do out[#out + 1] = key end
@@ -924,6 +928,12 @@ writeOptions = function(opts, fs, launcherFromDisk)
   applyCartOverlay(onDisk)
   if launcherFromDisk and type(opts) == "table" and type(onDisk) == "table" then
     for _, key in ipairs(SaveData.launcherKeys()) do
+      opts[key] = deepCopy(onDisk[key])
+    end
+    -- the sync engine's bookkeeping too: it is written behind the game's
+    -- back (SyncState.save) while a game runs, and the game's copy, read at
+    -- load, put revisions and conflicts back to how they were at the start
+    for _, key in ipairs(SaveData.ENGINE_KEYS) do
       opts[key] = deepCopy(onDisk[key])
     end
   end

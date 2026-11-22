@@ -1100,6 +1100,14 @@ function Game2:syncEngine()
     end
     self._syncEngineRef = eng
   end
+  -- the save this game has open: sync must not download over it while it
+  -- runs (src/core/Game.lua does the same for Gen 1)
+  if type(eng.protectPlaythrough) == "function" then
+    local meta = self.save and self.save.meta
+    eng:protectPlaythrough(
+      (self.save and self.save.version) or require("src.core.GameVersion").get(),
+      type(meta) == "table" and meta.playthroughId or nil)
+  end
   return eng
 end
 
