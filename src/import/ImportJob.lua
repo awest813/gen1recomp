@@ -288,6 +288,29 @@ local function wipeTree(prefix, rel)
 end
 ImportJob._wipeTree = wipeTree
 
+-- Which trees the previous copy had, written beside its marker before
+-- anything moves.  After a crash, a tree with no backup is either one the
+-- renames never reached (the old copy: keep it) or one the new import made
+-- that the old copy never had (half built: remove it); only this list
+-- tells them apart.
+local function treeListPath(base, prefix)
+  return base .. "/" .. prefix .. CacheContract.MARKER_PATH .. ImportJob.BACKUP_SUFFIX .. ".trees"
+end
+
+local function readTreeList(base, prefix)
+  local f = io.open(treeListPath(base, prefix), "rb")
+  if not f then return nil end
+  local text = f:read("*a") or ""
+  f:close()
+  local known = {}
+  for _, tree in ipairs(TREES) do known[tree] = true end
+  local had = {}
+  for line in text:gmatch("[^\r\n]+") do
+    if known[line] then had[line] = true end
+  end
+  return had
+end
+
 -- Rename `prefix`'s marker, then its trees, aside.  Returns the record
 -- restoreBackup needs, or nil when there was nothing ready to keep or the
 -- host cannot rename (then nothing was moved).
@@ -298,42 +321,62 @@ function ImportJob._backupCache(prefix)
   -- a backup a crash left behind is older than the copy now in place
   for _, tree in ipairs(TREES) do wipeTree(prefix, tree .. SUF) end
   os.remove(base .. "/" .. prefix .. CacheContract.MARKER_PATH .. SUF)
+  os.remove(treeListPath(base, prefix))
+  local had, names = {}, {}
+  for _, tree in ipairs(TREES) do
+    if present(prefix .. tree) then had[tree] = true; names[#names + 1] = tree end
+  end
+  -- (a host that cannot write the list still backs up; recovery then
+  -- leaves alone any tree it has no backup of, as it did before)
+  local lf = io.open(treeListPath(base, prefix), "wb")
+  if lf then lf:write(table.concat(names, "\n"), "\n"); lf:close() end
   local moved = {}
   local function undo()
     for i = #moved, 1, -1 do os.rename(moved[i] .. SUF, moved[i]) end
+    os.remove(treeListPath(base, prefix))
     return nil
   end
   -- the marker first: a crash halfway must not leave it over a gap
   local marker = base .. "/" .. prefix .. CacheContract.MARKER_PATH
-  if not os.rename(marker, marker .. SUF) then return nil end
+  if not os.rename(marker, marker .. SUF) then return undo() end
   moved[1] = marker
   local trees = {}
   for _, tree in ipairs(TREES) do
-    if present(prefix .. tree) then
+    if had[tree] then
       local path = base .. "/" .. prefix .. tree
       if not os.rename(path, path .. SUF) then return undo() end
       moved[#moved + 1] = path
       trees[#trees + 1] = tree
     end
   end
-  return { base = base, trees = trees }
+  return { base = base, trees = trees, had = had }
 end
 
 -- Put a backup back over whatever the failed import left; the marker last.
--- Only the trees that were backed up are touched: one with no backup is
--- still the copy that was there (a crash between the renames).
+-- A tree that was backed up replaces the half-built one.  A tree with no
+-- backup is kept when the old copy had it (a crash between the renames
+-- never moved it) and removed when it did not (the failed import made it).
+-- With no record of what the old copy had (`backup.had` nil), trees with
+-- no backup are left alone.
 function ImportJob._restoreBackup(prefix, backup)
   if not backup then return false end
-  local SUF, base = ImportJob.BACKUP_SUFFIX, backup.base
+  local SUF, base, had = ImportJob.BACKUP_SUFFIX, backup.base, backup.had
+  local moved = {}
+  for _, tree in ipairs(backup.trees) do moved[tree] = true end
   local ok = true
-  for _, tree in ipairs(backup.trees) do
+  for _, tree in ipairs(TREES) do
     local path = base .. "/" .. prefix .. tree
-    -- the half-built tree, folders and all, goes first
-    wipeTree(prefix, tree)
-    if not os.rename(path .. SUF, path) then ok = false end
+    if moved[tree] then
+      -- the half-built tree, folders and all, goes first
+      wipeTree(prefix, tree)
+      if not os.rename(path .. SUF, path) then ok = false end
+    elseif had and not had[tree] then
+      wipeTree(prefix, tree)
+    end
   end
   local marker = base .. "/" .. prefix .. CacheContract.MARKER_PATH
   if ok then ok = os.rename(marker .. SUF, marker) and true or false end
+  if ok then os.remove(treeListPath(base, prefix)) end
   return ok
 end
 
@@ -341,6 +384,7 @@ function ImportJob._dropBackup(prefix, backup)
   if not backup then return end
   for _, tree in ipairs(backup.trees) do wipeTree(prefix, tree .. ImportJob.BACKUP_SUFFIX) end
   os.remove(backup.base .. "/" .. prefix .. CacheContract.MARKER_PATH .. ImportJob.BACKUP_SUFFIX)
+  os.remove(treeListPath(backup.base, prefix))
 end
 
 -- Another process importing this game right now (two windows, or a second
@@ -442,9 +486,10 @@ function ImportJob.recover(version)
   for _, tree in ipairs(TREES) do
     if present(prefix .. tree .. SUF) then trees[#trees + 1] = tree end
   end
-  -- (no clearCache: a tree with no backup was never moved, and is the old
-  -- copy; _restoreBackup replaces only the ones that were)
-  local ok = ImportJob._restoreBackup(prefix, { base = base, trees = trees })
+  -- (no clearCache: _restoreBackup keeps a tree the renames never reached,
+  -- and removes one the old copy never had, from the list written first)
+  local ok = ImportJob._restoreBackup(prefix,
+    { base = base, trees = trees, had = readTreeList(base, prefix) })
   if ok then withPrefix(prefix, function(CacheFs) CacheFs.remove(ImportJob.LOCK_PATH) end) end
   return ok
 end

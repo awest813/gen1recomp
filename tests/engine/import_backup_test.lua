@@ -162,5 +162,56 @@ do
   eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "and the moved one is back")
 end
 
+-- ---- a tree the old copy never had: the failed import made it, so it goes
+local function dataOnlyGame()
+  os.execute("rm -rf '" .. real("yellow") .. "'")
+  write("yellow/" .. MARKER, "ok")
+  write("yellow/data/generated/maps.lua", "old maps")
+end
+do
+  dataOnlyGame()
+  local backup = ImportJob._backupCache("yellow/")
+  write("yellow/assets/generated/half.png", "half built")
+  check(ImportJob._restoreBackup("yellow/", backup), "a failed import with a new tree is undone")
+  check(not exists("yellow/assets/generated"), "the tree the old copy never had is removed")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "and the old data is back")
+  check(not exists("yellow/" .. MARKER .. ".previous.trees"), "leaving no tree list behind")
+end
+
+-- ---- the same after a crash: the list written before the renames tells
+-- a tree the import made from one the renames never reached
+do
+  dataOnlyGame()
+  ImportJob._backupCache("yellow/")
+  write("yellow/data/generated/half.lua", "half built")
+  write("yellow/assets/generated/half.png", "half built")
+  write("yellow/" .. ImportJob.LOCK_PATH, "0 1")
+  local realInterrupted = ImportJob.interrupted
+  ImportJob.interrupted = function() return true end
+  check(ImportJob.recover("yellow"), "an interrupted import that made a new tree is recovered")
+  ImportJob.interrupted = realInterrupted
+  check(not exists("yellow/assets/generated"), "the new tree is removed")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "the old data is back")
+  check(not exists("yellow/data/generated/half.lua"), "without the half-built data")
+  check(exists("yellow/" .. MARKER), "and the game is ready again")
+end
+
+-- ---- a crash between the renames, with the list: the unmoved tree stays
+do
+  freshGame()
+  local base = root .. "/yellow/"
+  local f = assert(io.open(base .. MARKER .. ".previous.trees", "wb"))
+  f:write("data/generated\nassets/generated\n"); f:close()
+  os.rename(base .. MARKER, base .. MARKER .. ".previous")
+  os.rename(base .. "data/generated", base .. "data/generated.previous")
+  write("yellow/" .. ImportJob.LOCK_PATH, "0 1")
+  local realInterrupted = ImportJob.interrupted
+  ImportJob.interrupted = function() return true end
+  check(ImportJob.recover("yellow"), "a half-made backup with its list is recovered")
+  ImportJob.interrupted = realInterrupted
+  eq(realFs.read("yellow/assets/generated/tiles.png"), "old tiles", "the unmoved tree is kept")
+  eq(realFs.read("yellow/data/generated/maps.lua"), "old maps", "and the moved one is back")
+end
+
 os.execute("rm -rf '" .. root .. "'")
 T.finish("import backup")
