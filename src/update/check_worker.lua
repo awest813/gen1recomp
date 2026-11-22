@@ -305,6 +305,11 @@ end
 -- progress.  We deliberately do not capture curl's exit code: an incomplete or
 -- failed transfer simply fails the checksum below, which is the real gate.
 local function launchDownload(url, partAbs, doneAbs)
+  -- https only (and after any redirect), and nothing that could leave the
+  -- quotes below: a " in the URL broke out of dl.bat's command line
+  if type(url) ~= "string" or not url:match("^https://") or url:find('[%s"%c]') then
+    return false
+  end
   if isWindows then
     local batRel = "updates/dl.bat"
     local partName = partAbs:match("[^/\\]+$")
@@ -312,8 +317,8 @@ local function launchDownload(url, partAbs, doneAbs)
     love.filesystem.write(batRel,
       "@echo off\r\n"
       .. "cd /d \"%~dp0\"\r\n"
-      .. "curl -fsSL --connect-timeout 15 --max-time 900 -o \""
-      .. partName .. "\" \"" .. url:gsub("%%", "%%%%") .. "\"\r\n"
+      .. "curl -fsSL --proto =https --proto-redir =https --connect-timeout 15 --max-time 900 -o \""
+      .. partName .. "\" -- \"" .. url:gsub("%%", "%%%%") .. "\"\r\n"
       .. "type nul > \"" .. doneName .. "\"\r\n")
     local updatesDir = (saveDir .. "/updates"):gsub("/", "\\")
     local comspec = os.getenv("ComSpec")
@@ -333,8 +338,8 @@ local function launchDownload(url, partAbs, doneAbs)
     local curlPath, curlKind = HostShell.resolveCurl()
     os.execute("( " .. HostShell.curlEnvPrefix(curlKind)
       .. HostShell.quote(curlPath)
-      .. " -fsSL --connect-timeout 15 --max-time 900 -o "
-      .. shq(partAbs) .. " " .. shq(url)
+      .. " -fsSL --proto =https --proto-redir =https --connect-timeout 15 --max-time 900 -o "
+      .. shq(partAbs) .. " -- " .. shq(url)
       .. " ; touch " .. shq(doneAbs) .. " ) >/dev/null 2>&1 &")
   end
 end
@@ -359,7 +364,10 @@ local function doDownload()
   local size    = rel.payload.size or 0
 
   if HostShell and HostShell.haveCurl() then
-    launchDownload(rel.payload.url, partAbs, doneAbs)
+    if launchDownload(rel.payload.url, partAbs, doneAbs) == false then
+      post({ status = "error", error = "the update's download address was refused" })
+      return
+    end
 
     -- poll the .part size for progress until curl drops the done-marker; a
     -- stalled or run-away transfer breaks out and lets verification fail cleanly

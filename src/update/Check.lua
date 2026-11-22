@@ -180,6 +180,14 @@ local function target()
   return { os = osName, arch = arch, port = port }
 end
 
+-- Where a release asset may be fetched or opened from: GitHub's release
+-- downloads, over https.  updates/full-update.json lives in the save folder,
+-- so anything that can write there could otherwise point the launcher's
+-- "Download update" button at any binary.
+function Check.trustedAssetUrl(url)
+  return type(url) == "string" and url:match("^https://github%.com/[^%s\"]+$") ~= nil
+end
+
 local function readPersistedFullRequirement()
   if not (love and love.filesystem and love.filesystem.getInfo) then return nil end
   local path = "updates/full-update.json"
@@ -191,6 +199,9 @@ local function readPersistedFullRequirement()
   local decodedOk, requirement = pcall(Json.decode, text)
   if not decodedOk or type(requirement) ~= "table" then return nil end
   if type(requirement.version) ~= "string" then return nil end
+  if type(requirement.full) == "table" and not Check.trustedAssetUrl(requirement.full.url) then
+    requirement.full = nil
+  end
   return requirement
 end
 
@@ -295,27 +306,30 @@ function Check.fullUpdateAction()
   drain()
   local st = Check.state()
   if st.status ~= "needs_full" and st.status ~= "full_ready" then return nil end
+  -- only a GitHub release link becomes a "Download ... update" button (the
+  -- record can come from the save folder); otherwise the releases page
+  local full = type(st.full) == "table" and Check.trustedAssetUrl(st.full.url) and st.full or nil
   local osName = love and love.system and love.system.getOS and love.system.getOS() or ""
-  if osName == "Android" and type(st.full) == "table"
-      and type(st.full.url) == "string" then
+  if osName == "Android" and type(full) == "table"
+      and type(full.url) == "string" then
     if type(love.system.installApk) == "function" then
-      if st.status == "full_ready" and type(st.full.path) == "string" then
+      if st.status == "full_ready" and type(full.path) == "string" then
         return { label = "Install Android update", kind = "install" }
       end
       return { label = "Download Android update", kind = "download" }
     end
-    return { label = "Update app manually", url = st.full.url }
+    return { label = "Update app manually", url = full.url }
   end
   if osName == "iOS" then
     return { label = "Re-sideload app", url =
       "https://github.com/awest813/gen1recomp/raw/refs/heads/main/mobile/ios/app-repo.json" }
   elseif osName == "UWP" then
     return { label = "Open Xbox install guide", url = Check.releaseUrl() }
-  elseif osName == "Linux" and type(st.full) == "table"
-      and type(st.full.url) == "string" then
-    local name = type(st.full.name) == "string" and st.full.name or ""
+  elseif osName == "Linux" and type(full) == "table"
+      and type(full.url) == "string" then
+    local name = type(full.name) == "string" and full.name or ""
     if name:find("%.flatpak$") or os.getenv("FLATPAK_ID") then
-      return { label = "Download Flatpak update", url = st.full.url }
+      return { label = "Download Flatpak update", url = full.url }
     end
     if Check.hostPort() then
       -- A handheld has no browser to open a download in, so fetch the port
@@ -330,9 +344,9 @@ function Check.fullUpdateAction()
       end
       return { label = "Open releases", url = Check.releaseUrl() }
     end
-    return { label = "Download AppImage update", url = st.full.url }
-  elseif type(st.full) == "table" and type(st.full.url) == "string" then
-    return { label = "Download full update", url = st.full.url }
+    return { label = "Download AppImage update", url = full.url }
+  elseif type(full) == "table" and type(full.url) == "string" then
+    return { label = "Download full update", url = full.url }
   end
   return { label = "Open releases", url = Check.releaseUrl() }
 end
@@ -340,7 +354,7 @@ end
 function Check.downloadFull()
   drain()
   if not cmdCh or cache.status ~= "needs_full" then return false end
-  if not (cache.full and cache.full.url) then return false end
+  if not (cache.full and Check.trustedAssetUrl(cache.full.url)) then return false end
   cache = { status = "full_downloading", latest = cache.latest, progress = 0,
     reason = cache.reason, full = cache.full, notes = cache.notes }
   cmdCh:push({ cmd = "download_full" })

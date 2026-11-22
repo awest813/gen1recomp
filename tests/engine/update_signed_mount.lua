@@ -61,4 +61,22 @@ love.filesystem.mount = realMount
 Boot._directMount = nil
 Boot._directUnmount = nil
 
+-- a payload's Version.lua is read as data, never run: probing happens
+-- before anything chooses the archive
+love.filesystem._mounts = {}
+love.filesystem.write(REL .. "/src/core/Version.lua",
+  "PROBE_RAN = true\nreturn { engine = \"9.9.9\", minShell = 2, payloadHost = \"love\" }\n")
+_G.PROBE_RAN = nil
+local probed = Boot.probePayload(REL)
+eq(_G.PROBE_RAN, nil, "probing a payload runs none of its code")
+eq(probed and probed.engine, "9.9.9", "and still reads its engine version")
+eq(probed and probed.minShell, 2, "and its minShell")
+
+-- only GitHub release links become update buttons or downloads
+local Check = require("src.update.Check")
+eq(Check.trustedAssetUrl("https://github.com/awest813/gen1recomp/releases/download/v1/x.AppImage"), true,
+  "a GitHub release link is trusted")
+eq(Check.trustedAssetUrl("https://evil.example/x.AppImage"), false, "another host is not")
+eq(Check.trustedAssetUrl("http://github.com/x"), false, "nor plain http")
+
 T.finish("update signed mount")

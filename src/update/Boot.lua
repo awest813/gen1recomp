@@ -180,18 +180,35 @@ end
 -- mountpoint, read its src/core/Version.lua by executing the source with
 -- loadstring (NEVER require -- we must not cache or run it as a module), then
 -- unmount.  Version.lua is zero-require, so running its chunk is safe.
+-- engine / minShell / payloadHost from a Version.lua's source, as data.
+function Boot.readVersionFields(src)
+  if type(src) ~= "string" then return nil end
+  local function str(name)
+    local _, value = src:match("[%s{,]" .. name .. "%s*=%s*([\"'])(.-)%1")
+    return value
+  end
+  return {
+    engine = str("engine"),
+    minShell = tonumber(src:match("[%s{,]minShell%s*=%s*(%d+)")),
+    payloadHost = str("payloadHost"),
+  }
+end
+
 function Boot.probePayload(rel)
   local mounted = mountArchive(rel, PROBE_MOUNT, false)
   if not mounted then
     return nil, "could not mount " .. tostring(rel)
   end
   local chunkPath = PROBE_MOUNT .. "/src/core/Version.lua"
+  -- Read as text, never run: a payload is probed before anything chooses it
+  -- (a stale one, another host's, one with no business here), and running
+  -- its Version.lua with full globals let any archive in updates/ run code
+  -- at boot.  The fields are the ones the build stamps and reads back with
+  -- the same patterns (scripts/build.sh).
   local ok, result = pcall(function()
     local src = love.filesystem.read(chunkPath)
     if not src then error("Version.lua missing", 0) end
-    local chunk = loadstring(src, "@" .. chunkPath)
-    if not chunk then error("Version.lua would not compile", 0) end
-    return chunk()
+    return Boot.readVersionFields(src)
   end)
   unmountArchive(mounted)
   if not ok then return nil, tostring(result) end
