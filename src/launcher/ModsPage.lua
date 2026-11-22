@@ -236,7 +236,9 @@ function ModsPage:toggleMod(version, row)
   if not (row and row.id) or row.broken then return end
   local ModLibrary = require("src.mods.ModLibrary")
   local ok, err = pcall(ModLibrary.setEnabled, row.id, not row.enabled, version)
-  if not ok then return l:say("Could not change that mod: " .. tostring(err), "error") end
+  if not ok then
+    return l:say("Could not change that mod: " .. require("src.launcher.Reason")(ok, err) .. ".", "error")
+  end
   self:changed()
   l:say(("%s is %s for %s. It applies the next time the game starts."):format(
     row.name, row.enabled and "off" or "on", gameName(version)), "info")
@@ -277,7 +279,7 @@ function ModsPage:installMod(data, name)
           tostring(info.manifest.version or "")), "info")
     end
     return l:say("Could not install " .. tostring(name or "that mod") .. ": "
-      .. tostring(err), "error")
+      .. require("src.launcher.Reason")(true, nil, err) .. ".", "error")
   end
   local missing = ModLibrary.missingDependencies(manifest, ModLibrary.list())
   local text = ("Installed %s."):format(manifest.name or manifest.id)
@@ -361,12 +363,12 @@ function ModsPage:storeModFile(data, err)
   local want = l.pendingModFile
   l.pendingModFile = nil
   if not want then return end
-  if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
+  if not data then return l:say("Could not read that file: " .. require("src.launcher.Reason")(true, nil, err) .. ".", "error") end
   local RequiredImports = require("src.mods.RequiredImports")
   local ok, why = RequiredImports.importData(want.manifest, want.spec.id, data)
   l.modRows = nil
   if not ok then
-    return l:say(tostring(want.spec.name) .. " was not accepted: " .. tostring(why), "error")
+    return l:say(tostring(want.spec.name) .. " was not accepted: " .. require("src.launcher.Reason")(true, nil, why) .. ".", "error")
   end
   l:say(("%s now has %s."):format(tostring(want.name), tostring(want.spec.name)), "info")
 end
@@ -436,14 +438,14 @@ function ModsPage:startImporter(data, err)
   local id = l.pendingImporter
   l.pendingImporter = nil
   if not id then return end
-  if not data then return l:say("Could not read that file: " .. tostring(err), "error") end
+  if not data then return l:say("Could not read that file: " .. require("src.launcher.Reason")(true, nil, err) .. ".", "error") end
   local desc = require("src.import.Importers").get(id)
   local okM, module = pcall(require, desc and desc.module or "")
   if not okM or type(module) ~= "table" or type(module.job) ~= "function" then
     return l:say("That importer is not available in this build.", "error")
   end
   local okJ, co = pcall(module.job, data)
-  if not okJ or type(co) ~= "thread" then return l:say(tostring(co), "error") end
+  if not okJ or type(co) ~= "thread" then return l:sayFailure(co) end
   l.assetJob = { id = id, name = desc.name, co = co, done = 0, total = 1,
     status = "Starting" }
 end
@@ -458,7 +460,7 @@ function ModsPage:stepImporter(budget)
     local ok, info = coroutine.resume(job.co)
     if not ok then
       l.assetJob, self.importerStates = nil, nil
-      return l:say(tostring(job.name) .. " import failed: " .. tostring(info), "error")
+      return l:say(tostring(job.name) .. " import failed: " .. require("src.launcher.Reason")(true, nil, info) .. ".", "error")
     end
     if coroutine.status(job.co) == "dead" then
       l.assetJob, l.modRows, self.importerStates = nil, nil, nil
@@ -760,8 +762,9 @@ function ModsPage:setOption(id, key, value)
   values[key] = value
   local ok, saved, err = pcall(require("src.mods.ModLibrary").setModOptions, id, values)
   if not ok or not saved then
-    local why = ok and err or (not ok and saved) or "the options file could not be written"
-    self.launcher:say("Could not save that option: " .. tostring(why), "error")
+    local why = (ok and not err) and "the options file could not be written"
+      or require("src.launcher.Reason")(ok, saved, err)
+    self.launcher:say("Could not save that option: " .. why .. ".", "error")
   end
 end
 
@@ -775,9 +778,10 @@ function ModsPage:resetOptions(row)
   end
   local ok, saved, err = pcall(require("src.mods.ModLibrary").setModOptions, row.id, values)
   if not ok or not saved then
-    local why = ok and err or (not ok and saved) or "the options file could not be written"
+    local why = (ok and not err) and "the options file could not be written"
+      or require("src.launcher.Reason")(ok, saved, err)
     return self.launcher:say("Could not reset " .. tostring(row.name) .. "'s options: "
-      .. tostring(why), "error")
+      .. why .. ".", "error")
   end
   self.launcher:say(tostring(row.name) .. "'s options are back to their defaults.", "info")
 end
@@ -990,7 +994,7 @@ function ModsPage:finishBatch()
   l:say(text, kind or "info")
   if type(b.done) == "function" then
     local ok, err = pcall(b.done, result)
-    if not ok then l:say(tostring(err), "error") end
+    if not ok then l:sayFailure(err) end
   end
 end
 
@@ -1327,8 +1331,9 @@ function ModsPage:addFeed(text)
   text = trim(text)
   if text == "" then return l:say("Paste an index address first.", "error") end
   local ok, row, err = pcall(require("src.mods.ModIndex").addSource, text)
-  if not ok then row, err = nil, row end
-  if not row then return l:say("Could not add that index: " .. tostring(err), "error") end
+  if not row then
+    return l:say("Could not add that index: " .. require("src.launcher.Reason")(ok, row, err) .. ".", "error")
+  end
   self.feedDraft = ""
   self:refreshCatalog(false)
   l:say("Added " .. tostring(row.label or row.feed) .. ".", "info")
@@ -1584,7 +1589,7 @@ function ModsPage:installExample(row)
     { replace = row.outdated == true })
   if not ok then manifest, err = nil, manifest end
   if not manifest then
-    return l:say("Could not install " .. tostring(row.title) .. ": " .. tostring(err), "error")
+    return l:say("Could not install " .. tostring(row.title) .. ": " .. require("src.launcher.Reason")(true, nil, err) .. ".", "error")
   end
   self:changed()
   self.exampleRows = nil
