@@ -492,6 +492,22 @@ function SaveConvert.importSav(bytes, version, gameVersion)
     end
   end
 
+  -- Red, Blue and Yellow saves share a size and a checksum, but Yellow
+  -- numbers its event flags differently (#838): a save for the other game
+  -- imports with its events on the wrong flags.  The same marker Compat
+  -- uses on export (Pikachu's friendship byte, the starter) says which it
+  -- looks like; a heuristic, so it is a note, not a refusal.
+  local looksYellow = GenSave.looksLikeYellow and GenSave.looksLikeYellow(bytes)
+  if looksYellow ~= nil then
+    decoded.warnings = decoded.warnings or {}
+    if gameVersion == "yellow" and not looksYellow then
+      decoded.warnings[#decoded.warnings + 1] = "this looks like a Red or Blue save, so as a Yellow save "
+        .. "some events may read as done or not done; import it into Red or Blue if it is one"
+    elseif (gameVersion == "red" or gameVersion == "blue") and looksYellow then
+      decoded.warnings[#decoded.warnings + 1] = "this looks like a Yellow save, so as a Red or Blue "
+        .. "save some events may read as done or not done; import it into Yellow if it is one"
+    end
+  end
   local note = warningNote(decoded.warnings)
   return mergeDefaults(decoded, version), nil, note
 end

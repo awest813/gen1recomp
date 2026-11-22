@@ -261,6 +261,16 @@ function GenSave.mainChecksumValid(bytes)
   return checksum(bytes, O.checksumStart, O.checksumEnd) == u8(bytes, O.mainChecksum)
 end
 
+-- Whether a Gen 1 save looks like Yellow's: its starter is Pikachu (0x54
+-- at 0x29C3), or it has no starter and keeps Pikachu's friendship (0x271C)
+-- -- the same marker src/save_convert/Compat.lua checks on export.  nil for
+-- a file too short to tell.
+function GenSave.looksLikeYellow(bytes)
+  if type(bytes) ~= "string" or #bytes < 0x29C4 then return nil end
+  local starter, pika = bytes:byte(0x29C3 + 1), bytes:byte(0x271C + 1)
+  return (starter ~= 0 and starter == 0x54) or (starter == 0 and pika ~= 0)
+end
+
 function GenSave.looksLikeJapaneseSave(bytes)
   if type(bytes) ~= "string" or #bytes < 0x3595 then return false end
   if checksum(bytes, O.checksumStart, 0x3594) ~= u8(bytes, 0x3594) then return false end

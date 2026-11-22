@@ -17,14 +17,14 @@ local function build(L)
     olderSlot = "The newest copy of that save was damaged, so the previous save was imported.",
   }
   if L.FAMILY == "emerald" then
-    Gen3Save.MSG.size = "An Emerald save must be 128 KB; this one is %d bytes."
+    Gen3Save.MSG.size = "An Emerald save must be 128 KB (or 64 KB); this one is %d bytes."
     Gen3Save.MSG.japanese = "Japanese Emerald saves can't be imported."
     Gen3Save.MSG.notFrlg = nil
     Gen3Save.MSG.frlg = "That is a FireRed/LeafGreen save, not Emerald."
     Gen3Save.MSG.rs = "That is a Ruby/Sapphire save, not Emerald."
   end
   if L.FAMILY == "rs" then
-    Gen3Save.MSG.size = "A Ruby/Sapphire save must be 128 KB; this one is %d bytes."
+    Gen3Save.MSG.size = "A Ruby/Sapphire save must be 128 KB (or 64 KB); this one is %d bytes."
     Gen3Save.MSG.japanese = "Japanese Ruby/Sapphire saves can't be imported."
     Gen3Save.MSG.notFrlg, Gen3Save.MSG.rs = nil, nil
     Gen3Save.MSG.frlg = "That is a FireRed/LeafGreen save, not Ruby/Sapphire."
