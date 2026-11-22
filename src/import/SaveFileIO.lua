@@ -248,8 +248,17 @@ function SaveFileIO.importToSlot(source, version, force)
       return false, checkWhy or ("A save file must be %d bytes (32 KB); this one is %d.")
         :format(SAVE_SIZE, #bytes)
     end
-    if check == false then
-      return false, "save data checksum invalid (main data checksum mismatch)"
+    -- (a Gen 2 cart keeps a backup copy, which its decoder falls back to as
+    -- the game does: every real Gold/Silver/Crystal .sav has the clock footer
+    -- and came through here, so a damaged main copy refused a good save)
+    if check == false and not SaveConvert.isGen2Cart(version) then
+      return false, "The save failed its checksum: it is damaged, or not a save for this game."
+    end
+    -- a Gen 1 file short of 32 KB is not a whole save: padded with zeros it
+    -- imported with every PC box empty, and exported that way too
+    if #bytes < SAVE_SIZE and not SaveConvert.isGen2Cart(version) then
+      return false, ("A save file must be %d bytes (32 KB); this one is %d, so part of it is missing.")
+        :format(SAVE_SIZE, #bytes)
     end
     -- The confirm exists because a Gen 1 save bigger than 32768 is a surprise
     -- worth asking about.  On a Gen 2 cart it is the normal shape -- every

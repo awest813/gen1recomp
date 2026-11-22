@@ -486,7 +486,9 @@ function SaveConvert.importSav(bytes, version, gameVersion)
   -- trustworthy save, so reject it.
   for _, w in ipairs(decoded.warnings or {}) do
     if tostring(w):find("checksum") then
-      return nil, "save data checksum invalid (" .. tostring(w) .. ")"
+      -- (the decoder's own wording ends "importing anyway", which the
+      -- player read under "Save import failed")
+      return nil, "The save failed its checksum: it is damaged, or not a save for this game."
     end
   end
 

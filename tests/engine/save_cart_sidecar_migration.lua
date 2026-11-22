@@ -106,6 +106,32 @@ do
 end
 
 do
+  -- a Gen 1 file short of 32 KB is not padded into a save with empty boxes
+  local G1 = require("tests.fixtures.save.gen1_build")
+  local files = fresh("red")
+  files["short.sav"] = G1.build({}):sub(1, 0x4000)
+  local ok, why = SaveFileIO.importToSlot("short.sav", "red")
+  eq(ok, false, "a truncated Gen 1 save is refused")
+  check(tostring(why):find("part of it is missing", 1, true) ~= nil, "saying so -- " .. tostring(why))
+end
+
+do
+  -- the real cart's shape: a damaged main copy, the clock footer after it
+  local B = require("tests.fixtures.save.bytes")
+  local files = fresh("gold")
+  local L = G2.layout("gold")
+  local footer = string.rep("\0", 0x28) .. "\97\226\117\106\0\0\0\0"
+  local b = B.fromString(G2.build({ version = "gold" }))
+  b[L.sGameData + 20] = (b[L.sGameData + 20] + 1) % 256
+  files["real.sav"] = B.pack(b) .. footer
+  local ok, slotId, info = SaveFileIO.importToSlot("real.sav", "gold")
+  eq(ok, true, "a real cart (with its clock footer) whose main copy is damaged imports its backup -- "
+    .. tostring(slotId))
+  check(info and type(info.note) == "string" and info.note:find("backup", 1, true) ~= nil,
+    "and says it took the backup")
+end
+
+do
   local files = fresh("gold")
   files["picked.sav"] = G2.build({ version = "gold", lowByteZero = true })
   local ok, slotId = SaveFileIO.importToSlot("picked.sav", "gold")

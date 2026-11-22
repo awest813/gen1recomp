@@ -899,7 +899,11 @@ function Launcher:importSave(source, name, force, cleanup)
   local SaveData = require("src.core.SaveData")
   local okA, active = pcall(SaveData.activeSlot, v)
   if okA and active then self.selectedSlot[v] = active end
-  self:say((name and (name .. " ") or "The save ") .. "was imported as a new save.", "info")
+  -- the importer's note says when it took the backup or an older copy:
+  -- the player should know which save they got
+  local note = type(info) == "table" and type(info.note) == "string" and info.note ~= "" and info.note
+  self:say((name and (name .. " ") or "The save ") .. "was imported as a new save."
+    .. (note and (" " .. note) or ""), note and "notice" or "info")
   return true
 end
 
@@ -949,14 +953,15 @@ function Launcher:exportSave()
   local SaveData = require("src.core.SaveData")
   SaveData.setActiveSlot(v, id)
   local SaveFileIO = require("src.import.SaveFileIO")
-  local ok, result = SaveFileIO.exportActiveSlot(v)
+  local ok, result, exportNote = SaveFileIO.exportActiveSlot(v)
   if not ok then return self:say("Export failed: " .. tostring(result), "error") end
   if self:shareExport(result) then return end
-  self:sayExported(result)
+  self:sayExported(result, exportNote)
 end
 
 -- "Exported to <path>", with Open folder where the system can show one.
-function Launcher:sayExported(path)
+-- `note`: what the export could not carry (a lossy .sav), said with it
+function Launcher:sayExported(path, note)
   local dir = tostring(path):match("^(.*)[/\\][^/\\]+$")
   local sys = love and love.system
   local okP, Platform = pcall(require, "src.core.Platform")
@@ -964,7 +969,9 @@ function Launcher:sayExported(path)
   if dir and sys and sys.openURL and okP and Platform.canSpawnProcess() then
     action = { label = "Open folder", run = function() self:openFolder(dir) end }
   end
-  self:say("Exported to " .. tostring(path), "info", action)
+  note = type(note) == "string" and note ~= "" and note or nil
+  self:say("Exported to " .. tostring(path) .. (note and (". " .. note) or ""),
+    note and "notice" or "info", action)
 end
 
 -- The selected save as its original .lua file (it keeps everything the .sav

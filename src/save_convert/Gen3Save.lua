@@ -1813,7 +1813,7 @@ local function build(L)
     local c, blocks, orig
     local md = type(save.modData) == "table" and save.modData or {}
     local candidates = { opts.template, md.cartImage }
-    local damaged
+    local damaged, foreign
     for i = 1, 2 do
       local source = candidates[i]
       if not c and source ~= nil and source ~= false then
@@ -1825,7 +1825,7 @@ local function build(L)
           if not c then
             damaged = true
           elseif not Gen3Save.templateBelongs(c, save) then
-            c, blocks = nil, nil
+            c, blocks, foreign = nil, nil, true
           else
             orig = Gen3Save.decode(tpl)
           end
@@ -1833,7 +1833,16 @@ local function build(L)
       end
     end
     if not c and damaged then return nil, Gen3Save.MSG.damagedTemplate end
-    if not c then c, blocks = freshCart(), nil end
+    if not c then
+      c, blocks = freshCart(), nil
+      -- said, not silent: the cart image is only reused for the same trainer
+      -- (name, TID, SID), and an edited one loses the parts PK:GB does not
+      -- model along with the cartridge's backup copy
+      if foreign then
+        c.notes = { "The trainer's name or ID changed since this save was imported, so the export "
+          .. "was rebuilt without the original cartridge's backup copy and the data PK:GB does not edit." }
+      end
+    end
     if not opts.toNational then return nil, Gen3Save.MSG.noData end
     local tplTower = c.trainerTowerBest
     local tid, sid = num(save.trainerId, 0) % 65536, num(save.secretId, 0) % 65536
