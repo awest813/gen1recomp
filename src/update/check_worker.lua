@@ -42,6 +42,14 @@ local HostShell = loadModule("src/core/HostShell.lua")
 -- (no src.* searcher), which would leave Boot nil and the minShell gate
 -- unavailable. Seed the loaded table first so it resolves.
 if Semver then package.loaded["src.update.Semver"] = Semver end
+-- the update signature (src/update/Signing.lua) and the ed25519 code it
+-- checks with, seeded the same way
+local Sha512 = loadModule("src/core/crypto/sha512.lua")
+if Sha512 then package.loaded["src.core.crypto.sha512"] = Sha512 end
+local Ed25519 = loadModule("src/core/crypto/ed25519.lua")
+if Ed25519 then package.loaded["src.core.crypto.ed25519"] = Ed25519 end
+local Signing = loadModule("src/update/Signing.lua")
+if Signing then package.loaded["src.update.Signing"] = Signing end
 local Boot    = loadModule("src/update/Boot.lua")
 
 local cmdCh   = love.thread.getChannel("update_check_cmd")
@@ -128,6 +136,19 @@ local function sha256hex(data)
     digest = digest:getString()
   end
   return love.data.encode("string", "hex", digest)
+end
+
+-- The release's checksum list, and its signature checked against the key in
+-- src/update/Signing.lua.  nil plus why when either is missing or the
+-- signature does not hold: nothing downloaded is kept or run without it.
+local function signedSums(rel)
+  local sums = rel.sums and rel.sums.url and fetchText(rel.sums.url)
+  if not sums then return nil, nil, "checksum fetch failed" end
+  if not Signing then return nil, nil, "update signing is unavailable" end
+  local sig = rel.sig and rel.sig.url and fetchText(rel.sig.url)
+  local ok, why = Signing.verifySums(sums, sig)
+  if not ok then return nil, nil, "the update is not signed: " .. tostring(why) end
+  return sums, sig
 end
 
 -- Confirm the save-dir file `rel` hashes to the sum listed for `payloadName`.
@@ -266,6 +287,12 @@ local function doCheck(target)
     postFullRequirement(rel, "payload_missing")
     return
   end
+  -- an in-place update is only taken signed: a release without the
+  -- signature, or a build with no key yet, gets the full installer instead
+  if not (rel.sig and rel.sig.url and Signing and Signing.configured()) then
+    postFullRequirement(rel, "payload_unsigned")
+    return
+  end
 
   -- Already downloaded on a previous run?  Verify and gate it rather than
   -- pulling the bytes again.
@@ -278,8 +305,9 @@ local function doCheck(target)
     love.filesystem.remove(finalRel .. ".bad")
   end
   if love.filesystem.getInfo(finalRel) then
-    local sums = fetchText(rel.sums.url)
-    if sums and verifyPayload(finalRel, rel.payloadName, sums) then
+    local sums, sig = signedSums(rel)
+    if sums and verifyPayload(finalRel, rel.payloadName, sums)
+        and Signing.store("updates", rel.payloadName, sums, sig) then
       local allowed, reason = gatePasses(finalRel)
       if allowed == false then
         love.filesystem.remove(finalRel)
@@ -411,10 +439,10 @@ local function doDownload()
     post({ status = "downloading", latest = rel.version, progress = 0.999 })
   end
 
-  local sums = fetchText(rel.sums and rel.sums.url or "")
+  local sums, sig, sumsErr = signedSums(rel)
   if not sums then
     love.filesystem.remove(partRel)
-    post({ status = "error", error = "checksum fetch failed" })
+    post({ status = "error", error = sumsErr })
     return
   end
 
@@ -442,6 +470,12 @@ local function doDownload()
     end
     love.filesystem.write(finalRel, data)
     love.filesystem.remove(partRel)
+  end
+  -- what Boot checks again before it mounts this
+  if not Signing.store("updates", rel.payloadName, sums, sig) then
+    love.filesystem.remove(finalRel)
+    post({ status = "error", error = "could not keep the update's signature" })
+    return
   end
 
   post({ status = "ready", latest = rel.version })
@@ -478,10 +512,10 @@ local function doDownloadFull()
     return
   end
 
-  local sums = fetchText(rel.sums.url)
+  local sums, _, sumsErr = signedSums(rel)
   if not sums then
     love.filesystem.remove(partRel)
-    postFullRequirement(rel, "full_checksum_fetch_failed")
+    post({ status = "error", error = sumsErr })
     return
   end
   local valid, err = verifyFullPackage(partRel, name, sums)

@@ -7,6 +7,7 @@ These docs cover the port itself.
 - [Rulesets](guides/rulesets.md): gen1_faithful vs modern_clean battle rules
 - [Online play](guides/online-play.md): lobby, battles, tournaments, trading
 - [Launch options](guides/launch-options.md): CLI flags and `gen1recomp++://` URLs
+- [Signing in-place updates](releasing-updates.md): the update signing key and how releases are signed
 - [Portable mode](guides/portable-mode.md): keep saves and cache next to the game
 - [Running from source](guides/running-from-source.md)
 - [New features](new-features.md): what this port adds over the originals

@@ -122,6 +122,8 @@ function Check.parseRelease(jsonText, Json, target)
     payloadName = payloadName,
     payload = Check.pickAsset(doc.assets, payloadName),
     sums = Check.pickAsset(doc.assets, "sha256sums.txt"),
+    -- its ed25519 signature (src/update/Signing.lua)
+    sig = Check.pickAsset(doc.assets, "sha256sums.txt.sig"),
     fullName = fullName,
     full = fullName and Check.pickAsset(doc.assets, fullName) or nil,
     -- GitHub release body: already fetched with the update check, shown by

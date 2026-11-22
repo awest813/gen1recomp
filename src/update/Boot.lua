@@ -194,6 +194,15 @@ function Boot.readVersionFields(src)
   }
 end
 
+-- Whether updates/<name> carries a valid signature and checksum.  Tests that
+-- build unsigned payloads replace it.
+function Boot.verifyPayload(name)
+  local ok, Signing = pcall(require, "src.update.Signing")
+  if not ok then return false end
+  local okV, valid = pcall(Signing.verifyStored, PAYLOAD_DIR, name)
+  return okV and valid == true
+end
+
 function Boot.probePayload(rel)
   local mounted = mountArchive(rel, PROBE_MOUNT, false)
   if not mounted then
@@ -350,10 +359,67 @@ local function chainload(name, args)
     return false
   end
 
-  -- Success: the payload owns the game now.  Drop the marker and tell the
-  -- caller to stop so the bundled love.load does not run on top of it.
-  love.filesystem.remove(PENDING)
+  -- Success: the payload owns the game now, and the caller stops so the
+  -- bundled love.load does not run on top of it.  The marker stays until the
+  -- payload has run a while (or quits cleanly): one that started and then
+  -- broke loaded again on every launch, and only deleting updates/ by hand
+  -- got the game back.  A crash before then leaves the marker, and the next
+  -- boot's crash guard sets the payload aside; an error the game's own error
+  -- screen catches marks it bad at once.
+  Boot.settle(name)
   return true
+end
+
+-- How long a chainloaded payload runs before it counts as good.  Short: a
+-- phone that kills the app without a clean quit must not condemn a working
+-- update.
+Boot.SETTLE_SECONDS = 10
+
+function Boot.settle(name)
+  local done = false
+  local function good()
+    if done then return end
+    done = true
+    love.filesystem.remove(PENDING)
+  end
+  local run, update = 0, love.update
+  love.update = function(dt, ...)
+    if not done then
+      run = run + (tonumber(dt) or 0)
+      if run >= Boot.SETTLE_SECONDS then
+        good()
+        love.update = update
+      end
+    end
+    if update then return update(dt, ...) end
+  end
+  local quit = love.quit
+  love.quit = function(...)
+    local abort = quit and quit(...)
+    if not abort then good() end
+    return abort
+  end
+  local handler = love.errorhandler or love.errhand
+  local function failed(msg, ...)
+    if not done then
+      done = true
+      markBad(name, msg)
+      pcall(love.filesystem.append, PAYLOAD_DIR .. "/handoff.log",
+        name .. ": failed after starting: " .. tostring(msg) .. "\n")
+      love.filesystem.remove(PENDING)
+    end
+    if handler then return handler(msg, ...) end
+  end
+  if love.errorhandler then love.errorhandler = failed else love.errhand = failed end
+end
+
+-- Whether this launch was asked to skip downloaded updates.
+function Boot.skipRequested(args)
+  if os.getenv("POKEPORT_SKIP_UPDATES") == "1" then return true end
+  for _, a in ipairs(type(args) == "table" and args or {}) do
+    if a == "--skip-updates" then return true end
+  end
+  return false
 end
 
 -- Everything after the fused / flag guards, wrapped so an unexpected error in
@@ -378,7 +444,9 @@ local function runInner(args)
   local candidates = {}
   if love.filesystem.getInfo(PAYLOAD_DIR, "directory") then
     for _, entry in ipairs(love.filesystem.getDirectoryItems(PAYLOAD_DIR)) do
-      if isPayloadName(entry) and not Boot.isBad(entry) then
+      -- signed first: nothing in updates/ is opened, let alone run, unless
+      -- its signature and checksum hold (src/update/Signing.lua)
+      if isPayloadName(entry) and not Boot.isBad(entry) and Boot.verifyPayload(entry) then
         local info = Boot.probePayload(PAYLOAD_DIR .. "/" .. entry)
         if info then
           candidates[#candidates + 1] = {
@@ -398,6 +466,7 @@ local function runInner(args)
 
   for _, victim in ipairs(toDelete) do
     love.filesystem.remove(PAYLOAD_DIR .. "/" .. victim)
+    pcall(function() require("src.update.Signing").forget(PAYLOAD_DIR, victim) end)
   end
 
   if not chosen then return false end
@@ -434,6 +503,9 @@ function Boot.run(args)
   if not Boot.canUpdateInPlace() then
     return false
   end
+  -- the way out of a bad update without deleting files: start the version
+  -- that came with the app (--skip-updates, or POKEPORT_SKIP_UPDATES=1)
+  if Boot.skipRequested(args) then return false end
   -- Switch (and any host without validated network): never probe payloads.
   local okp, Platform = pcall(require, "src.core.Platform")
   if okp and Platform and Platform.networkValidated

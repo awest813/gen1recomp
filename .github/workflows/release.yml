@@ -1265,6 +1265,36 @@ jobs:
           (cd "$outdir" && shasum -a 256 gen1recomp-* > sha256sums.txt)
           cat "$outdir/sha256sums.txt"
 
+      # In-place updates are taken only with the project's ed25519 signature
+      # over sha256sums.txt (src/update/Signing.lua; docs/releasing-updates.md).
+      # The key is a PEM private key in the UPDATE_SIGNING_KEY secret.  The
+      # signature is checked against the public key pinned in the game before
+      # it ships, so a key that does not match fails the release here instead
+      # of in every player's launcher.
+      - name: Sign the update checksums
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          outdir="dist/release"
+          if [ -z "${UPDATE_SIGNING_KEY:-}" ]; then
+            echo "::warning::UPDATE_SIGNING_KEY is not set: this release has no update signature, so installed games offer the full package instead of updating in place."
+            exit 0
+          fi
+          keyfile="$(mktemp)"
+          trap 'rm -f "$keyfile" "$outdir/sha256sums.sig.bin"' EXIT
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > "$keyfile"
+          openssl pkeyutl -sign -inkey "$keyfile" -rawin \
+            -in "$outdir/sha256sums.txt" -out "$outdir/sha256sums.sig.bin"
+          od -An -v -tx1 "$outdir/sha256sums.sig.bin" | tr -d ' \n' > "$outdir/sha256sums.txt.sig"
+          pub="$(openssl pkey -in "$keyfile" -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n')"
+          pinned="$(sed -n 's/^Signing\.PUBKEY = "\([0-9a-fA-F]*\)".*/\1/p' src/update/Signing.lua)"
+          if [ "$pub" != "$pinned" ]; then
+            echo "::error::the signing key's public half ($pub) is not the one pinned in src/update/Signing.lua (${pinned:-none})"
+            exit 1
+          fi
+          echo "signed sha256sums.txt with key $pub"
+
       - name: Publish GitHub Release
         if: vars.CANONICAL_RELEASES == 'true'
         env:
@@ -1294,6 +1324,10 @@ jobs:
             "dist/release/gen1recomp-${v}-web.zip"
             "dist/release/sha256sums.txt"
           )
+
+          if [ -f "dist/release/sha256sums.txt.sig" ]; then
+            release_files+=("dist/release/sha256sums.txt.sig")
+          fi
 
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)" = "true" ]; then
             gh release delete "$tag" --yes

@@ -14,6 +14,7 @@ local body = Json.encode({
   assets = {
     { name = payloadName, browser_download_url = "fixture:payload", size = 7 },
     { name = "sha256sums.txt", browser_download_url = "fixture:sums" },
+    { name = "sha256sums.txt.sig", browser_download_url = "fixture:sig" },
     { name = "gen1recomp-0.3.47-windows.zip", browser_download_url = "fixture:full" },
   },
 })
@@ -33,11 +34,18 @@ local function runWorker(boot, cached)
     ["src/update/Semver.lua"] = Semver,
     ["src/core/Version.lua"] = { engine = "0.3.46", shell = 2, payloadHost = "love" },
     ["src/update/Boot.lua"] = boot,
+    -- the signature is the subject of update_signing_test; here it holds
+    ["src/update/Signing.lua"] = {
+      configured = function() return true end,
+      verifySums = function(_, sig) return sig == "fixture-signature" end,
+      store = function() return true end,
+    },
     ["src/core/HostShell.lua"] = {
       canFetch = function() return true end,
       haveCurl = function() return false end,
       httpGet = function(url)
         if url == "fixture:sums" then return hash .. "  " .. payloadName .. "\n" end
+        if url == "fixture:sig" then return "fixture-signature" end
         return body
       end,
       httpDownload = function(_, path)
